@@ -1,9 +1,13 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UsersService } from '../users/users.service';
+import {
+  toUserResponseDto,
+  UserResponseDto,
+} from '../users/dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -36,7 +40,7 @@ export class AuthService {
     try {
       const user = await this.usersService.create(registerDto);
 
-      return this.toResponse(user);
+      return toUserResponseDto(user);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -63,29 +67,7 @@ export class AuthService {
 
     return {
       accessToken: await this.jwtService.signAsync({ sub: updatedUser.id }),
-      user: this.toResponse(updatedUser),
-    };
-  }
-
-  private toResponse(user: {
-    id: string;
-    name: string;
-    cpf: string;
-    email: string;
-    role: UserRole;
-    isActive: boolean;
-    lastLoginAt: Date | null;
-    createdAt: Date;
-  }) {
-    return {
-      id: user.id,
-      name: user.name,
-      cpf: user.cpf,
-      email: user.email,
-      role: user.role,
-      isActive: user.isActive,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
+      user: toUserResponseDto(updatedUser),
     };
   }
 }

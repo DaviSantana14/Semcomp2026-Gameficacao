@@ -10,27 +10,28 @@ import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { toUserResponseDto, UserResponseDto } from './dto/user-response.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Get('me')
-  me(
-    @Req()
-    request: {
-      user: Awaited<ReturnType<UsersService['findById']>>;
-    },
+  me(@Req() request: {
+    user: UserResponseDto;
+  },
   ) {
-    return request.user;
+    return toUserResponseDto(request.user);
   }
 
   @Get()
   @Roles(UserRole.ADMIN)
-  findAll() {
-    return this.usersService.findAll();
+  async findAll() {
+    const users = await this.usersService.findAll();
+
+    return users.map(toUserResponseDto);
   }
 
   @Get(':id')
@@ -42,6 +43,6 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    return toUserResponseDto(user);
   }
 }
