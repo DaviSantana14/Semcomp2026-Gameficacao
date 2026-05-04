@@ -68,7 +68,9 @@ export class ActionsService {
       }
 
       if (!action.isActive) {
-        throw new BadRequestException('Esta action está inativa e não pode ser resgatada.');
+        throw new BadRequestException(
+          'Esta action está inativa e não pode ser resgatada.',
+        );
       }
 
       const existingRedeem = await tx.pointEvent.findFirst({

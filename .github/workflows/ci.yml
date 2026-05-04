@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: semcomp_ci
+      DB_USER: semcomp_ci
+      DB_PASSWORD: semcomp_ci
+      DB_SCHEMA: public
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Activate pinned npm version
+        run: |
+          corepack enable
+          corepack prepare npm@11.9.0 --activate
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint API
+        run: npm --workspace api run lint:check
+
+      - name: Lint web app
+        run: npm --workspace web run lint
+
+      - name: Generate Prisma client
+        run: npm --workspace api run prisma:generate
+
+      - name: Build API
+        run: npm --workspace api run build
+
+      - name: Build web app
+        run: npm --workspace web run build

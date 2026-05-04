@@ -16,7 +16,9 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Semcomp Gamification API')
-    .setDescription('API para autenticação, usuários e ações de gamificação da Semcomp.')
+    .setDescription(
+      'API para autenticação, usuários e ações de gamificação da Semcomp.',
+    )
     .setVersion('1.0.0')
     .addBearerAuth(
       {
@@ -33,4 +35,8 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3001);
 }
-bootstrap();
+
+bootstrap().catch((error) => {
+  console.error('Failed to bootstrap application.', error);
+  process.exit(1);
+});
