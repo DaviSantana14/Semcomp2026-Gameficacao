@@ -1,7 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsEmail, Matches } from 'class-validator';
 
-export class LoginUserDto {
+export class LoginDto {
   @Transform(({ value }: { value: string }) => value?.replace(/\D/g, ''))
   @Matches(/^\d{11}$/)
   cpf: string;
