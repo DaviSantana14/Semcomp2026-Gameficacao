@@ -1,13 +1,14 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UsersService } from '../users/users.service';
-import {
-  toUserResponseDto,
-  UserResponseDto,
-} from '../users/dto/user-response.dto';
+import { toUserResponseDto } from '../users/dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -27,7 +28,9 @@ export class AuthService {
         existingUser.cpf === registerDto.cpf &&
         existingUser.email === registerDto.email
       ) {
-        throw new ConflictException('Já existe um usuário com este CPF e este email.');
+        throw new ConflictException(
+          'Já existe um usuário com este CPF e este email.',
+        );
       }
 
       if (existingUser.cpf === registerDto.cpf) {
@@ -46,7 +49,9 @@ export class AuthService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Já existe um usuário com este CPF ou email.');
+        throw new ConflictException(
+          'Já existe um usuário com este CPF ou email.',
+        );
       }
 
       throw error;

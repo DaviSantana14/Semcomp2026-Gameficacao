@@ -28,7 +28,7 @@ import { UsersService } from './users.service';
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
   @ApiOperation({ summary: 'Obter o usuário autenticado' })
@@ -42,10 +42,7 @@ export class UsersController {
       error: 'Unauthorized',
     },
   })
-  me(@Req() request: {
-    user: UserResponseDto;
-  },
-  ) {
+  me(@Req() request: { user: UserResponseDto }) {
     return toUserResponseDto(request.user);
   }
 

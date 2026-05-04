@@ -8,7 +8,11 @@ import { JwtStrategy } from './jwt.strategy';
 import { ensureJwtSecret } from './jwt-env';
 
 @Module({
-  imports: [UsersModule, PassportModule, JwtModule.register({ secret: ensureJwtSecret() })],
+  imports: [
+    UsersModule,
+    PassportModule,
+    JwtModule.register({ secret: ensureJwtSecret() }),
+  ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
 })

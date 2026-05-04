@@ -27,7 +27,10 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { ActionsService } from './actions.service';
-import { ActionResponseDto, toActionResponseDto } from './dto/action-response.dto';
+import {
+  ActionResponseDto,
+  toActionResponseDto,
+} from './dto/action-response.dto';
 import { CreateActionDto } from './dto/create-action.dto';
 import { RedeemActionResponseDto } from './dto/redeem-action-response.dto';
 
