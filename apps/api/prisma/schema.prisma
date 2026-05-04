@@ -16,6 +16,28 @@ enum UserRole {
   ADMIN
 }
 
+enum ActionType {
+  CHECKIN
+  ATTENDANCE
+  STAND_VISIT
+  EASTER_EGG
+  QUESTION
+  DYNAMIC
+  BONUS
+}
+
+enum PointEventKind {
+  CREDIT
+  DEBIT
+}
+
+enum PointEventSource {
+  ACTION_REDEEM
+  ADMIN_GRANT
+  ADMIN_ADJUST
+  REWARD_REDEMPTION
+}
+
 model User {
   id          String    @id @default(cuid())
   name        String
@@ -27,6 +49,36 @@ model User {
   level       Int       @default(1)
   isActive    Boolean   @default(true)
   lastLoginAt DateTime?
+  pointEvents PointEvent[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Action {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  type        ActionType
+  points      Int
+  isActive    Boolean      @default(true)
+  pointEvents PointEvent[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model PointEvent {
+  id          String           @id @default(cuid())
+  userId      String
+  actionId    String?
+  points      Int
+  kind        PointEventKind
+  source      PointEventSource
+  description String?
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action      Action?          @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+  @@index([actionId])
+  @@index([createdAt])
 }
