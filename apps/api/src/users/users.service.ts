@@ -31,6 +31,16 @@ export class UsersService {
     });
   }
 
+  findActiveSummaryById(id: string) {
+    return this.prisma.user.findFirst({
+      where: {
+        id,
+        isActive: true,
+      },
+      select: userSummarySelect,
+    });
+  }
+
   findByCpfOrEmail(cpf: string, email: string) {
     return this.prisma.user.findFirst({
       where: {

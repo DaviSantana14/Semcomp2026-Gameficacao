@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Prisma, UserRole } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -6,7 +7,10 @@ import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   async register(registerDto: RegisterDto) {
     const existingUser = await this.usersService.findByCpfOrEmail(
@@ -57,7 +61,10 @@ export class AuthService {
 
     const updatedUser = await this.usersService.updateLastLoginAt(user.id);
 
-    return this.toResponse(updatedUser);
+    return {
+      accessToken: await this.jwtService.signAsync({ sub: updatedUser.id }),
+      user: this.toResponse(updatedUser),
+    };
   }
 
   private toResponse(user: {
