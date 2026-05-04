@@ -27,14 +27,14 @@ export class AuthService {
         existingUser.cpf === registerDto.cpf &&
         existingUser.email === registerDto.email
       ) {
-        throw new ConflictException('User with this cpf and email already exists');
+        throw new ConflictException('Já existe um usuário com este CPF e este email.');
       }
 
       if (existingUser.cpf === registerDto.cpf) {
-        throw new ConflictException('User with this cpf already exists');
+        throw new ConflictException('Já existe um usuário com este CPF.');
       }
 
-      throw new ConflictException('User with this email already exists');
+      throw new ConflictException('Já existe um usuário com este email.');
     }
 
     try {
@@ -46,7 +46,7 @@ export class AuthService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('User with this cpf or email already exists');
+        throw new ConflictException('Já existe um usuário com este CPF ou email.');
       }
 
       throw error;
@@ -60,7 +60,7 @@ export class AuthService {
     );
 
     if (!user) {
-      throw new UnauthorizedException('Invalid cpf or email');
+      throw new UnauthorizedException('CPF ou email inválido.');
     }
 
     const updatedUser = await this.usersService.updateLastLoginAt(user.id);

@@ -1,4 +1,5 @@
 import { Transform, Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEnum,
@@ -10,11 +11,17 @@ import {
 import { ActionType } from '@prisma/client';
 
 export class CreateActionDto {
+  @ApiProperty({
+    example: 'Check-in Dia 1',
+  })
   @Transform(({ value }: { value: string }) => value?.trim())
   @IsString()
   @IsNotEmpty()
   name: string;
 
+  @ApiPropertyOptional({
+    example: 'Presença registrada no primeiro dia da Semcomp.',
+  })
   @Transform(({ value }: { value: string | null | undefined }) => {
     if (value == null) {
       return undefined;
@@ -28,13 +35,23 @@ export class CreateActionDto {
   @IsString()
   description?: string;
 
+  @ApiProperty({
+    enum: ActionType,
+    example: ActionType.CHECKIN,
+  })
   @IsEnum(ActionType)
   type: ActionType;
 
+  @ApiProperty({
+    example: 10,
+  })
   @Type(() => Number)
   @IsInt()
   points: number;
 
+  @ApiPropertyOptional({
+    example: true,
+  })
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
