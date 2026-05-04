@@ -1,6 +1,8 @@
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -16,6 +18,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
@@ -26,6 +29,7 @@ import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { ActionsService } from './actions.service';
 import { ActionResponseDto, toActionResponseDto } from './dto/action-response.dto';
 import { CreateActionDto } from './dto/create-action.dto';
+import { RedeemActionResponseDto } from './dto/redeem-action-response.dto';
 
 @ApiTags('Actions')
 @ApiBearerAuth('bearer')
@@ -61,6 +65,67 @@ export class ActionsController {
     const action = await this.actionsService.create(createActionDto);
 
     return toActionResponseDto(action);
+  }
+
+  @Post(':id/redeem')
+  @ApiOperation({ summary: 'Resgatar uma action pontuável' })
+  @ApiCreatedResponse({ type: RedeemActionResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente ou inválido.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 401,
+      message: 'Autenticação necessária ou token inválido.',
+      error: 'Unauthorized',
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Action inativa.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 400,
+      message: 'Esta action está inativa e não pode ser resgatada.',
+      error: 'Bad Request',
+    },
+  })
+  @ApiConflictResponse({
+    description: 'Action já resgatada pelo usuário.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 409,
+      message: 'Você já resgatou esta action.',
+      error: 'Conflict',
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'Action não encontrada.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 404,
+      message: 'Action não encontrada.',
+      error: 'Not Found',
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Sem permissão para acessar o recurso.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 403,
+      message: 'Você não tem permissão para acessar este recurso.',
+      error: 'Forbidden',
+    },
+  })
+  async redeem(
+    @Param('id') id: string,
+    @Req() request: { user: { id: string } },
+  ) {
+    const redeemed = await this.actionsService.redeem(id, request.user.id);
+
+    return {
+      message: 'Action resgatada com sucesso.',
+      ...redeemed,
+      action: toActionResponseDto(redeemed.action),
+    };
   }
 
   @Get()
