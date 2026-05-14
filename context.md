@@ -132,6 +132,65 @@ cumpre esse papel).
 - `User` --< `PointEvent` (cascade delete)
 - `Action` --< `PointEvent` (set null on delete)
 
+### Models a implementar
+
+#### `Reward` (recompensa da lojinha)
+
+| campo | tipo | descrição |
+|-------|------|-----------|
+| `id` | `String @id @default(cuid())` | identificador único |
+| `name` | `String` | nome do item (ex: "Camiseta Semcomp 2026") |
+| `description` | `String?` | descrição opcional |
+| `costInPoints` | `Int` | quantos points custa |
+| `stock` | `Int` | quantidade disponível |
+| `isActive` | `Boolean @default(true)` | permite desativar sem excluir |
+| `imageUrl` | `String?` | foto do item (opcional) |
+| `createdAt` | `DateTime @default(now())` | data de criação |
+| `updatedAt` | `DateTime @updatedAt` | última atualização |
+
+#### `RewardRedemption` (resgate de recompensa)
+
+| campo | tipo | descrição |
+|-------|------|-----------|
+| `id` | `String @id @default(cuid())` | identificador único |
+| `userId` | `String` | quem resgatou |
+| `rewardId` | `String` | qual item |
+| `pointsSpent` | `Int` | quantos pontos gastou |
+| `status` | `RedemptionStatus @default(PENDING)` | `PENDING \| DELIVERED \| CANCELLED` |
+| `createdAt` | `DateTime @default(now())` | data do resgate |
+| `updatedAt` | `DateTime @updatedAt` | última atualização |
+
+**Fluxo:** participante resgata no app (self-service) → desconta `points` do `User`,
+reduz `stock` do `Reward`, cria `RewardRedemption` com status `PENDING` e
+`PointEvent` de débito (`REWARD_REDEMPTION`, `DEBIT`). Staff da lojinha
+acessa painel de pedidos pendentes, entrega o item físico e clica em "Entregue"
+→ status muda para `DELIVERED`. Cancelamento reverte `points` e `stock`,
+cria `PointEvent` de estorno (`CREDIT`).
+
+#### `ClaimCode` (código de uso único)
+
+| campo | tipo | descrição |
+|-------|------|-----------|
+| `id` | `String @id @default(cuid())` | identificador único |
+| `code` | `String @unique` | código aleatório (ex: `K7XM-9N2P`) |
+| `actionId` | `String` | qual action concede pontos |
+| `isUsed` | `Boolean @default(false)` | já foi usado |
+| `usedBy` | `String?` | userId de quem usou |
+| `usedAt` | `DateTime?` | quando foi usado |
+| `createdAt` | `DateTime @default(now())` | data de geração |
+
+**Formato:** 8 caracteres alfanuméricos maiúsculos aleatórios, sem `I`, `O`, `0`, `1`
+para evitar confusão, com hífen no meio (ex: `K7XM-9N2P`). Sem padrão sequencial.
+
+**Geração:** admin gera lotes pré-evento com opção de gerar na hora
+(`POST /admin/actions/:id/claim-codes/generate`, `body: { quantity: 50 }`).
+
+#### Campo `code` na `Action` (código reutilizável)
+
+Adicionar campo opcional `code String?` na `Action`. Ex: `"DIA1"`.
+Vários usuários usam o mesmo código; proteção contra duplicidade por `PointEvent`
+(um resgate por usuário por action). Resolve check-in/stands/presença.
+
 ---
 
 ## Variáveis de ambiente
@@ -211,6 +270,38 @@ Rotas admin de CRUD (ex: `POST /actions`, `GET /users`) permanecem nos seus
 módulos de domínio. Apenas operações que agregam múltiplos domínios ou não
 pertencem naturalmente a um módulo específico vão para o `AdminModule`.
 
+### Ranking (protegido — a implementar)
+
+| método | rota | descrição |
+|--------|------|-----------|
+| `GET` | `/ranking?period=daily&limit=10` | top N por período |
+
+**Parâmetros:** `period` (`daily`, `weekly`, `all`), `limit` (padrão 10, máx 50).
+
+**Resposta:** `{ ranking: [{ position, name, xp }], me: { position, name, xp } }`.
+Sempre inclui a posição do usuário logado, mesmo que fora do top N.
+
+**Ranking geral:** ordena por `User.xp`.
+
+**Ranking diário/semanal:** calcula o XP ganho no período a partir de eventos que
+concedem XP, inicialmente `ACTION_REDEEM`, dentro da janela solicitada.
+Movimentações da lojinha, débitos e estornos/cancelamentos de rewards não entram
+no ranking.
+
+`xpDelta` em `PointEvent` é uma possível evolução futura se surgirem muitos tipos
+de bônus, ajustes administrativos ou regras diferentes de ganho de XP. Não é
+requisito para o MVP.
+
+### Rewards (protegido — a implementar)
+
+| método | rota | acesso | descrição |
+|--------|------|--------|-----------|
+| `POST` | `/rewards` | `ADMIN` | criar recompensa |
+| `GET` | `/rewards` | autenticado | catálogo da lojinha |
+| `GET` | `/rewards/:id` | autenticado | detalhe do item |
+| `POST` | `/rewards/:id/redeem` | autenticado | resgatar (self-service) |
+| `PATCH` | `/rewards/:id` | `ADMIN` | editar recompensa |
+
 ---
 
 ## Autenticação e autorização
@@ -222,12 +313,17 @@ pertencem naturalmente a um módulo específico vão para o `AdminModule`.
 4. seta cookie `access_token` (httpOnly, secure em prod, sameSite lax, 8h)
 5. retorna dados do usuário no body
 
-### `Points` vs `XP`
-- `points` = moeda gastável (lojinha)
-- `xp` = progresso total acumulativo (ranking, nunca diminui)
+### `points` vs `xp`
+- `points` = exclusivamente moeda gastável da lojinha
+- `xp` = exclusivamente progresso competitivo, usado para ranking e nível
+- Actions incrementam `points` e `xp`
+- Rewards debitam apenas `points`
+- Cancelamentos de rewards devolvem apenas `points` e `stock`
+- Todo ranking é baseado em `xp`, nunca em saldo de `points`
 
-Ambos são incrementados juntos no resgate de action. Apenas `points` é debitado
-no resgate de reward.
+Para rankings por período, usar apenas eventos que concedem XP, como resgates de
+actions, dentro da janela solicitada. Movimentações da lojinha, incluindo débitos
+e estornos, não entram no ranking.
 
 ### Resgate de action — regras
 1. usuário autenticado chama `POST /actions/:id/redeem`
@@ -341,15 +437,16 @@ como trava de duplicidade, sem criar tabela `ActionRedemption`.
 seria redundante. `PointEvent` cumpre dois papéis: histórico e controle de duplicidade.
 
 ### 10. `points` vs `xp` separados
-**Decisão:** dois campos independentes com propósitos diferentes.
-**Motivo:** `xp` é acumulativo (ranking, nunca diminui); `points` é moeda (gastável
-na lojinha). Ambos são incrementados juntos no resgate de action; apenas `points`
-é debitado no resgate de reward.
+**Decisão:** `points` é exclusivamente moeda gastável da lojinha; `xp` é
+exclusivamente progresso competitivo para ranking e nível.
+**Motivo:** separar moeda de competição evita que compras, débitos ou estornos da
+lojinha distorçam o ranking. Actions incrementam `points` e `xp`; rewards debitam
+apenas `points`; cancelamentos de rewards devolvem apenas `points` e `stock`.
 
 ### 11. Resgate self-service com confirmação de entrega
 **Decisão:** participante resgata sozinho no app; staff da lojinha marca como entregue.
 **Motivo:** evita fila e gargalo operacional, mas mantém controle de retirada física.
-Cancelamento reverte pontos e estoque.
+Cancelamento reverte `points` e `stock`, sem alterar `xp`.
 **Modelo (a implementar):** `RewardRedemption` com `status: PENDING | DELIVERED | CANCELLED`.
 
 ### 12. Códigos de resgate: reutilizáveis + uso único
@@ -433,6 +530,61 @@ está em `ActionsModule`). Mas o dashboard agrega dados de múltiplos módulos
 Centralizar no `AdminModule` evita acoplamento cruzado e mantém os módulos de
 domínio coesos, sem forçar dependências desnecessárias entre eles.
 
+### 26. Frontend: dependências iniciais enxutas
+**Decisão:** instalar no início apenas as bibliotecas necessárias para o primeiro
+fluxo real: `shadcn/ui`, `lucide-react`, `react-hook-form`, `zod`,
+`@hookform/resolvers`, `@tanstack/react-query` e `sonner`.
+**Motivo:** shadcn/ui acelera UI com componentes acessíveis; react-query gerencia cache e
+loading states; react-hook-form + zod reduz boilerplate de formulários e mantém validação
+consistente com o backend; sonner resolve feedbacks de sucesso/erro; lucide-react cobre
+ícones. `recharts`, `nuqs` e `date-fns` ficam como opcionais para instalar apenas quando
+houver necessidade concreta.
+
+### 27. Autenticação no frontend via Next.js Middleware/Proxy
+**Decisão:** usar Next.js Middleware/Proxy para redirecionamento e proteção visual
+de rotas, em vez de depender apenas de verificação no cliente (useEffect).
+**Motivo:** Middleware roda antes do React, sem flash de conteúdo não autorizado,
+mais rápido e padrão Next.js atual. Lê cookie `access_token`, redireciona para
+`/login` se ausente. Página `/login` é pública, todas as outras são protegidas.
+Essa é uma checagem otimista baseada no cookie; a autorização definitiva continua
+no backend com `JwtAuthGuard` e `RolesGuard`.
+
+---
+
+## Frontend — planejado
+
+### Stack de bibliotecas
+
+| lib | uso |
+|-----|-----|
+| shadcn/ui | componentes base (cards, inputs, tabelas, navigation) |
+| react-hook-form + zod | formulários com validação |
+| @hookform/resolvers | integração entre react-hook-form e zod |
+| @tanstack/react-query | chamadas à API, cache, loading/error states |
+| lucide-react | ícones (já incluso no shadcn/ui) |
+| sonner | toasts de feedback (resgate concluído, erro) |
+| date-fns | opcional; formatação de datas quando houver histórico/feed |
+| recharts | opcional; gráficos quando houver dashboard visual |
+| nuqs | opcional; filtros via URL quando forem necessários |
+
+### Estrutura de páginas
+
+| rota | acesso | descrição |
+|------|--------|-----------|
+| `/login` | público | formulário CPF + email |
+| `/home` | autenticado | dashboard do participante |
+| `/ranking` | autenticado | leaderboard |
+| `/lojinha` | autenticado | catálogo e resgate de recompensas |
+| `/admin` | `ADMIN` | dashboard administrativo |
+
+### Layout da Home
+
+- saudação com nome e nível
+- cards lado a lado: XP total e Pontos disponíveis
+- barra de progresso para próximo nível
+- cards de atalho: Resgatar código, Ranking, Lojinha
+- feed de atividade recente (últimas actions resgatadas)
+
 ---
 
 ## Próximos passos (ordem de implementação)
@@ -445,16 +597,17 @@ domínio coesos, sem forçar dependências desnecessárias entre eles.
 | 4 | Swagger + mensagens HTTP | ✅ |
 | 5 | CI (GitHub Actions) | ✅ |
 | 6 | **Migrar auth para cookie httpOnly** | ❌ |
-| 7 | **Ranking (diário + semanal + geral)** | ❌ |
-| 8 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |
-| 9 | **ClaimCode: códigos de uso único** | ❌ |
-| 10 | **AdminModule + admin dashboard** | ❌ |
-| 11 | **Campo `code` na Action (código reutilizável)** | ❌ |
-| 12 | **Frontend: login + home + ranking + lojinha** | ❌ |
-| 13 | **Frontend: admin dashboard** | ❌ |
-| 14 | **Deploy Render + Vercel** | ❌ |
-| 15 | QR codes | ❌ (futuro) |
-| 16 | Cálculo de nível (level) | ❌ (futuro) |
+| 7 | **Frontend mínimo: login + home + sessão** | ❌ |
+| 8 | **Campo `code` na Action + resgate por código reutilizável** | ❌ |
+| 9 | **Ranking geral por `User.xp`** | ❌ |
+| 10 | **Ranking diário/semanal por XP ganho no período** | ❌ |
+| 11 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |
+| 12 | **ClaimCode: códigos de uso único** | ❌ |
+| 13 | **AdminModule + admin dashboard** | ❌ |
+| 14 | **Frontend: ranking + lojinha + admin dashboard** | ❌ |
+| 15 | **Deploy Render + Vercel** | ❌ |
+| 16 | QR codes | ❌ (futuro) |
+| 17 | Cálculo de nível (level) | ❌ (futuro) |
 
 ---
 
