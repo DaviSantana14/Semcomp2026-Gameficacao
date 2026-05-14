@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
+import { randomBytes } from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UsersService } from '../users/users.service';
@@ -69,9 +70,14 @@ export class AuthService {
     }
 
     const updatedUser = await this.usersService.updateLastLoginAt(user.id);
+    const csrfToken = randomBytes(32).toString('base64url');
 
     return {
-      accessToken: await this.jwtService.signAsync({ sub: updatedUser.id }),
+      accessToken: await this.jwtService.signAsync(
+        { sub: updatedUser.id, csrfToken },
+        { expiresIn: '8h' },
+      ),
+      csrfToken,
       user: toUserResponseDto(updatedUser),
     };
   }

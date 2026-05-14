@@ -1,13 +1,14 @@
 import {
   ApiBadRequestResponse,
-  ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -21,6 +22,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { CsrfGuard } from '../auth/csrf.guard';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -35,15 +37,19 @@ import { CreateActionDto } from './dto/create-action.dto';
 import { RedeemActionResponseDto } from './dto/redeem-action-response.dto';
 
 @ApiTags('Actions')
-@ApiBearerAuth('bearer')
+@ApiSecurity('access-token-cookie')
 @Controller('actions')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
 export class ActionsController {
   constructor(private readonly actionsService: ActionsService) {}
 
   @Post()
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Criar uma action pontuável (admin)' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
   @ApiBody({ type: CreateActionDto })
   @ApiCreatedResponse({ type: ActionResponseDto })
   @ApiUnauthorizedResponse({
@@ -72,6 +78,10 @@ export class ActionsController {
 
   @Post(':id/redeem')
   @ApiOperation({ summary: 'Resgatar uma action pontuável' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
   @ApiCreatedResponse({ type: RedeemActionResponseDto })
   @ApiUnauthorizedResponse({
     description: 'Token ausente ou inválido.',

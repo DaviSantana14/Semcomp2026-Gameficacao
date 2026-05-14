@@ -3,9 +3,11 @@ import { UserResponseDto } from '../../users/dto/user-response.dto';
 
 export class LoginResponseDto {
   @ApiProperty({
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    example: '0ZfR-QGLwixWYqrXYQyGvA5SNJTtPpBTLtLqoDXJB8I',
+    description:
+      'Token que deve ser enviado no header X-CSRF-Token em mutações autenticadas.',
   })
-  accessToken: string;
+  csrfToken: string;
 
   @ApiProperty({
     type: UserResponseDto,
