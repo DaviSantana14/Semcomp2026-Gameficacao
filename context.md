@@ -219,6 +219,8 @@ Arquivo: `apps/api/.env` (não versionado) / `apps/api/.env.example` (versionado
 | `DB_SCHEMA` | `public` | schema |
 | `JWT_SECRET` | `your_jwt_secret` | segredo para assinar JWT |
 | `FRONTEND_URL` | `http://localhost:3000` | origem do frontend para CORS |
+| `COOKIE_SAME_SITE` | `lax` | política SameSite do cookie (`lax`, `strict` ou `none`) |
+| `COOKIE_SECURE` | `false` | define se cookies usam `Secure` (`true` ou `false`) |
 
 O helper `buildDatabaseUrl()` monta a connection string no runtime a partir dessas
 variáveis separadas. Decisão: usar variáveis independentes em vez de uma única
@@ -234,9 +236,10 @@ variáveis separadas. Decisão: usar variáveis independentes em vez de uma úni
 |--------|------|-----------|
 | `POST` | `/auth/register` | cadastrar novo participante |
 | `POST` | `/auth/login` | autenticar e iniciar sessão |
+| `GET` | `/auth/csrf` | recuperar token CSRF da sessão autenticada |
 
-`POST /auth/login` retorna `{ user }` e **seta cookie httpOnly** com o JWT.
-Não retorna token no body.
+`POST /auth/login` retorna `{ user, csrfToken }` e **seta cookie httpOnly** com
+o JWT. Não retorna token JWT no body.
 
 ### Users (protegido)
 
@@ -309,9 +312,11 @@ requisito para o MVP.
 ### Fluxo de login
 1. participante envia CPF + email
 2. sistema valida credenciais
-3. gera JWT assinado com `JWT_SECRET`
-4. seta cookie `access_token` (httpOnly, secure em prod, sameSite lax, 8h)
-5. retorna dados do usuário no body
+3. gera `csrfToken` aleatório
+4. gera JWT assinado com `JWT_SECRET`, contendo `sub` e `csrfToken`
+5. seta cookie `access_token` (httpOnly, 8h; política `sameSite`/`secure`
+   configurável por ambiente)
+6. retorna `{ user, csrfToken }` no body
 
 ### `points` vs `xp`
 - `points` = exclusivamente moeda gastável da lojinha
@@ -335,9 +340,13 @@ e estornos, não entram no ranking.
 
 ### Guards
 - `JwtAuthGuard`: extrai e valida o JWT (do cookie httpOnly no runtime)
+- `CsrfGuard`: exige `X-CSRF-Token` em mutações autenticadas e compara com o
+  `csrfToken` da sessão JWT
 - `RolesGuard`: verifica se o usuário tem a role exigida (`@Roles(UserRole.ADMIN)`)
 
 Rotas sem `@Roles()` são acessíveis por qualquer usuário autenticado.
+Métodos seguros (`GET`, `HEAD`, `OPTIONS`) não exigem CSRF. Métodos mutantes
+autenticados (`POST`, `PUT`, `PATCH`, `DELETE`) exigem o header `X-CSRF-Token`.
 
 ### `level` (nível)
 O campo `level` existe com default `1`, mas o cálculo de progressão
@@ -412,12 +421,19 @@ cada valor individualmente. O helper `buildDatabaseUrl()` monta a string no runt
 **Motivo:** proteção contra XSS (JS não lê o token); browser envia automaticamente;
 compatível com SSR; padrão de segurança recomendado.
 **Implementação:** `cookie-parser`, CORS com `credentials: true`, `jwtFromRequest`
-via `ExtractJwt.fromExtractors`, `secure: true` em produção, `sameSite: 'lax'`.
+via `ExtractJwt.fromExtractors`, JWT com `expiresIn: '8h'`, política de cookie
+configurável por `COOKIE_SAME_SITE` e `COOKIE_SECURE`, e proteção CSRF via
+header `X-CSRF-Token` para mutações autenticadas.
+**Configuração:** local/dev usa `COOKIE_SAME_SITE=lax` e `COOKIE_SECURE=false`.
+Teste cross-site (ex: Vercel + Render) usa `COOKIE_SAME_SITE=none` e
+`COOKIE_SECURE=true`. Produção same-site pode usar `COOKIE_SAME_SITE=lax` e
+`COOKIE_SECURE=true`.
 
-### 6. JWT sem expiração definida (MVP)
-**Decisão:** não configurar `expiresIn` ainda.
-**Motivo:** MVP inicial, sem decisão de tempo de sessão do evento.
-**Ação pendente:** definir `expiresIn` (ex: 8h) e renovação antes do evento real.
+### 6. Sessão JWT com expiração de 8h
+**Decisão:** configurar `expiresIn: '8h'` no JWT e `maxAge` de 8h no cookie.
+**Motivo:** a validade precisa existir no token validado pelo backend, não apenas
+no armazenamento do navegador. Isso evita reaproveitamento indefinido de tokens
+copiados fora do cookie.
 
 ### 7. `UserRole` em enum Prisma + `RolesGuard` desacoplado do `JwtAuthGuard`
 **Decisão:** enum no Prisma, decorator `@Roles()`, `RolesGuard` separado.
