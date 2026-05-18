@@ -567,13 +567,13 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 
 ---
 
-## Frontend — planejado
+## Frontend — estado atual e planejado
 
 ### Stack de bibliotecas
 
 | lib | uso |
 |-----|-----|
-| shadcn/ui | componentes base (cards, inputs, tabelas, navigation) |
+| shadcn/ui | padrão de composição e componentes base versionados no app |
 | react-hook-form + zod | formulários com validação |
 | @hookform/resolvers | integração entre react-hook-form e zod |
 | @tanstack/react-query | chamadas à API, cache, loading/error states |
@@ -587,19 +587,30 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 
 | rota | acesso | descrição |
 |------|--------|-----------|
-| `/login` | público | formulário CPF + email |
-| `/home` | autenticado | dashboard do participante |
-| `/ranking` | autenticado | leaderboard |
-| `/lojinha` | autenticado | catálogo e resgate de recompensas |
-| `/admin` | `ADMIN` | dashboard administrativo |
+| `/login` | público | formulário CPF + email em dark mode arcade tech |
+| `/cadastro` | público | cadastro com nome, CPF e email; faz login automático após sucesso |
+| `/home` | autenticado | central do participante com nome, nível, XP, pontos e atalhos |
+| `/ranking` | autenticado | leaderboard (a implementar) |
+| `/lojinha` | autenticado | catálogo e resgate de recompensas (a implementar) |
+| `/admin` | `ADMIN` | dashboard administrativo (a implementar) |
 
 ### Layout da Home
 
-- saudação com nome e nível
-- cards lado a lado: XP total e Pontos disponíveis
-- barra de progresso para próximo nível
-- cards de atalho: Resgatar código, Ranking, Lojinha
-- feed de atividade recente (últimas actions resgatadas)
+- visual dark mode arcade tech, com atmosfera de placar/competição
+- bloco principal com identidade do participante e botão de resgate de código
+- cards de status: `PTS` como moeda da loja, `XP` como ranking e `LVL` como nível
+- barra de progresso do nível atual
+- atalhos para Ranking e Lojinha ainda desabilitados até os módulos existirem
+
+### Decisões de sessão no frontend
+
+- Chamadas à API usam `credentials: "include"` para enviar o cookie httpOnly.
+- `POST /auth/login` salva `csrfToken` em memória no frontend.
+- Após refresh, `/home` chama `GET /auth/csrf` para reidratar o CSRF da sessão.
+- `AUTH_PROXY_ENABLED=false` deve ser usado no frontend quando API e web estiverem
+  em domínios diferentes, como Vercel + Render, porque o Proxy do Next não enxerga
+  cookie host-only da API nesse cenário.
+- Em produção same-site, `AUTH_PROXY_ENABLED=true` mantém a proteção visual por Proxy.
 
 ---
 
@@ -612,8 +623,8 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | 3 | Action redeem | ✅ |
 | 4 | Swagger + mensagens HTTP | ✅ |
 | 5 | CI (GitHub Actions) | ✅ |
-| 6 | **Migrar auth para cookie httpOnly** | ❌ |
-| 7 | **Frontend mínimo: login + home + sessão** | ❌ |
+| 6 | **Migrar auth para cookie httpOnly** | ✅ |
+| 7 | **Frontend mínimo: login + cadastro + home + sessão** | ✅ |
 | 8 | **Campo `code` na Action + resgate por código reutilizável** | ❌ |
 | 9 | **Ranking geral por `User.xp`** | ❌ |
 | 10 | **Ranking diário/semanal por XP ganho no período** | ❌ |
