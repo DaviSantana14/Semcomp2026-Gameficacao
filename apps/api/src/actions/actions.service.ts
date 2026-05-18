@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PointEventKind, PointEventSource } from '@prisma/client';
+import { PointEventKind, PointEventSource, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateActionDto } from './dto/create-action.dto';
 
@@ -57,66 +57,64 @@ export class ActionsService {
   }
 
   async redeem(actionId: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const action = await tx.action.findUnique({
-        where: { id: actionId },
-        select: actionSummarySelect,
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const action = await tx.action.findUnique({
+          where: { id: actionId },
+          select: actionSummarySelect,
+        });
+
+        if (!action) {
+          throw new NotFoundException('Action não encontrada.');
+        }
+
+        if (!action.isActive) {
+          throw new BadRequestException(
+            'Esta action está inativa e não pode ser resgatada.',
+          );
+        }
+
+        const redeemedAt = new Date();
+
+        await tx.pointEvent.create({
+          data: {
+            userId,
+            actionId,
+            points: action.points,
+            kind: PointEventKind.CREDIT,
+            source: PointEventSource.ACTION_REDEEM,
+            description: `Resgate da action: ${action.name}`,
+            createdAt: redeemedAt,
+          },
+        });
+
+        const updatedUser = await tx.user.update({
+          where: { id: userId },
+          data: {
+            points: { increment: action.points },
+            xp: { increment: action.points },
+          },
+          select: userProgressSelect,
+        });
+
+        return {
+          action,
+          awardedPoints: action.points,
+          currentPoints: updatedUser.points,
+          currentXp: updatedUser.xp,
+          currentLevel: updatedUser.level,
+          redeemedAt,
+        };
       });
-
-      if (!action) {
-        throw new NotFoundException('Action não encontrada.');
-      }
-
-      if (!action.isActive) {
-        throw new BadRequestException(
-          'Esta action está inativa e não pode ser resgatada.',
-        );
-      }
-
-      const existingRedeem = await tx.pointEvent.findFirst({
-        where: {
-          userId,
-          actionId,
-          kind: PointEventKind.CREDIT,
-          source: PointEventSource.ACTION_REDEEM,
-        },
-      });
-
-      if (existingRedeem) {
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
         throw new ConflictException('Você já resgatou esta action.');
       }
 
-      const redeemedAt = new Date();
-
-      const updatedUser = await tx.user.update({
-        where: { id: userId },
-        data: {
-          points: { increment: action.points },
-          xp: { increment: action.points },
-        },
-        select: userProgressSelect,
-      });
-
-      await tx.pointEvent.create({
-        data: {
-          userId,
-          actionId,
-          points: action.points,
-          kind: PointEventKind.CREDIT,
-          source: PointEventSource.ACTION_REDEEM,
-          description: `Resgate da action: ${action.name}`,
-          createdAt: redeemedAt,
-        },
-      });
-
-      return {
-        action,
-        awardedPoints: action.points,
-        currentPoints: updatedUser.points,
-        currentXp: updatedUser.xp,
-        currentLevel: updatedUser.level,
-        redeemedAt,
-      };
-    });
+      throw error;
+    }
   }
 }
