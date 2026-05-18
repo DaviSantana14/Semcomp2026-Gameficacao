@@ -63,4 +63,13 @@ describe('CsrfGuard', () => {
 
     expect(guard.canActivate(context)).toBe(true);
   });
+
+  it('requires the CSRF header for action redeem requests', () => {
+    const context = createExecutionContext({
+      method: 'POST',
+      user: { csrfToken: 'redeem-token' },
+    });
+
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
 });
