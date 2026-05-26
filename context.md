@@ -280,23 +280,21 @@ pertencem naturalmente a um módulo específico vão para o `AdminModule`.
 | método | rota | descrição |
 |--------|------|-----------|
 | `GET` | `/ranking?limit=10` | top N geral por XP |
-| `GET` | `/ranking?period=daily&limit=10` | top N por período (a implementar) |
+| `GET` | `/ranking?period=daily&limit=10` | top N de XP ganho no dia |
 
-**Parâmetros atuais:** `limit` (padrão 10, máx 50).
-**Parâmetros futuros:** `period` (`daily`, `weekly`, `all`).
+**Parâmetros atuais:** `limit` (padrão 10, máx 50) e `period` (`all`, `daily`).
 
 **Resposta:** `{ ranking: [{ position, name, xp }], me: { position, name, xp } | null }`.
 Participantes elegíveis sempre veem sua posição, mesmo que fora do top N.
 Admins ou usuários não elegíveis recebem `me: null`.
 
 **Ranking geral:** implementado em `GET /ranking?limit=10`; ordena participantes
-ativos por `User.xp` (`xp DESC`, `createdAt ASC`, `id ASC`). Admins não entram
-no placar competitivo.
+ativos com XP maior que zero por `User.xp` (`xp DESC`, `createdAt ASC`, `id ASC`).
+Admins não entram no placar competitivo.
 
-**Ranking diário/semanal:** calcula o XP ganho no período a partir de eventos que
-concedem XP, inicialmente `ACTION_REDEEM`, dentro da janela solicitada.
-Movimentações da lojinha, débitos e estornos/cancelamentos de rewards não entram
-no ranking.
+**Ranking diário:** calcula o XP ganho no dia a partir de eventos que concedem XP,
+inicialmente `ACTION_REDEEM`, dentro da janela solicitada. Movimentações da
+lojinha, débitos e estornos/cancelamentos de rewards não entram no ranking.
 
 `xpDelta` em `PointEvent` é uma possível evolução futura se surgirem muitos tipos
 de bônus, ajustes administrativos ou regras diferentes de ganho de XP. Não é
@@ -634,7 +632,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | 7 | **Frontend mínimo: login + cadastro + home + sessão** | ✅ |
 | 8 | **Campo `code` na Action + resgate por código reutilizável** | ✅ |
 | 9 | **Ranking geral por `User.xp`** | ✅ |
-| 10 | **Ranking diário/semanal por XP ganho no período** | ❌ |
+| 10 | **Ranking diário por XP ganho no dia** | ✅ |
 | 11 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |
 | 12 | **ClaimCode: códigos de uso único** | ❌ |
 | 13 | **AdminModule + admin dashboard** | ❌ |

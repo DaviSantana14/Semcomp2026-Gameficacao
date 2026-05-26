@@ -78,6 +78,8 @@ export type RankingEntry = {
   xp: number;
 };
 
+export type RankingPeriod = "all" | "daily";
+
 export type RankingResponse = {
   ranking: RankingEntry[];
   me: RankingEntry | null;
@@ -211,6 +213,11 @@ export async function createAction(payload: CreateActionPayload) {
   });
 }
 
-export async function fetchRanking(limit = 10) {
-  return apiFetch<RankingResponse>(`/ranking?limit=${limit}`);
+export async function fetchRanking(limit = 10, period: RankingPeriod = "all") {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    period,
+  });
+
+  return apiFetch<RankingResponse>(`/ranking?${params.toString()}`);
 }

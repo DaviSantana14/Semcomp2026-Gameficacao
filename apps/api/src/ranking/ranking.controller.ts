@@ -21,20 +21,28 @@ export class RankingController {
   constructor(private readonly rankingService: RankingService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar ranking geral por XP' })
+  @ApiOperation({ summary: 'Listar ranking por XP' })
   @ApiQuery({
     name: 'limit',
     required: false,
     example: 10,
     description: 'Quantidade de participantes no topo. Valor entre 1 e 50.',
   })
+  @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['daily', 'all'],
+    example: 'all',
+    description:
+      'Período do ranking. all usa XP acumulado; daily usa XP ganho no dia.',
+  })
   @ApiOkResponse({ type: RankingResponseDto })
   @ApiBadRequestResponse({
-    description: 'Limit inválido.',
+    description: 'Limit ou period inválido.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 400,
-      message: 'limit deve ser um inteiro entre 1 e 50.',
+      message: 'period deve ser daily ou all.',
       error: 'Bad Request',
     },
   })
@@ -50,7 +58,8 @@ export class RankingController {
   getGeneralRanking(
     @Req() request: { user: { id: string } },
     @Query('limit') limit?: string,
+    @Query('period') period?: string,
   ) {
-    return this.rankingService.getGeneralRanking(request.user.id, limit);
+    return this.rankingService.getRanking(request.user.id, { limit, period });
   }
 }
