@@ -104,6 +104,7 @@ Define uma oportunidade de ganhar pontos. Ex: "Check-in Dia 1", "Stand X", "Perg
 | `name` | `String` | nome da ação |
 | `description` | `String?` | descrição opcional |
 | `type` | `ActionType` | tipo da ação |
+| `code` | `String? @unique` | código reutilizável opcional para resgate no evento |
 | `points` | `Int` | quantos pontos/XP concede |
 | `isActive` | `Boolean @default(true)` | permite desativar sem excluir |
 | `createdAt` | `DateTime @default(now())` | data de criação |
@@ -256,7 +257,8 @@ o JWT. Não retorna token JWT no body.
 | `POST` | `/actions` | `ADMIN` | criar ação pontuável |
 | `GET` | `/actions` | `ADMIN` | listar ações |
 | `GET` | `/actions/:id` | `ADMIN` | buscar ação por id |
-| `POST` | `/actions/:id/redeem` | autenticado | resgatar ação (ganhar pontos) |
+| `POST` | `/actions/:id/redeem` | autenticado | resgatar ação por id (uso interno/admin) |
+| `POST` | `/actions/redeem-code` | autenticado | resgatar ação por código reutilizável |
 
 ### Admin (protegido, ADMIN only — a implementar)
 
@@ -592,7 +594,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | `/home` | autenticado | central do participante com nome, nível, XP, pontos e atalhos |
 | `/ranking` | autenticado | leaderboard (a implementar) |
 | `/lojinha` | autenticado | catálogo e resgate de recompensas (a implementar) |
-| `/admin` | `ADMIN` | dashboard administrativo (a implementar) |
+| `/admin` | `ADMIN` | formulário administrativo mínimo para criar actions com código |
 
 ### Layout da Home
 
@@ -625,7 +627,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | 5 | CI (GitHub Actions) | ✅ |
 | 6 | **Migrar auth para cookie httpOnly** | ✅ |
 | 7 | **Frontend mínimo: login + cadastro + home + sessão** | ✅ |
-| 8 | **Campo `code` na Action + resgate por código reutilizável** | ❌ |
+| 8 | **Campo `code` na Action + resgate por código reutilizável** | ✅ |
 | 9 | **Ranking geral por `User.xp`** | ❌ |
 | 10 | **Ranking diário/semanal por XP ganho no período** | ❌ |
 | 11 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |

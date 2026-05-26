@@ -1,6 +1,14 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export type UserRole = "ADMIN" | "PARTICIPANT";
+export type ActionType =
+  | "CHECKIN"
+  | "ATTENDANCE"
+  | "STAND_VISIT"
+  | "EASTER_EGG"
+  | "QUESTION"
+  | "DYNAMIC"
+  | "BONUS";
 
 export type User = {
   id: string;
@@ -32,6 +40,36 @@ export type LoginResponse = {
 
 export type CsrfTokenResponse = {
   csrfToken: string;
+};
+
+export type Action = {
+  id: string;
+  name: string;
+  description: string | null;
+  type: ActionType;
+  code: string | null;
+  points: number;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type CreateActionPayload = {
+  name: string;
+  description?: string;
+  type: ActionType;
+  code?: string;
+  points: number;
+  isActive?: boolean;
+};
+
+export type RedeemActionResponse = {
+  message: string;
+  action: Action;
+  awardedPoints: number;
+  currentPoints: number;
+  currentXp: number;
+  currentLevel: number;
+  redeemedAt: string;
 };
 
 export class ApiError extends Error {
@@ -137,4 +175,27 @@ export async function fetchCsrfToken() {
   const response = await apiFetch<CsrfTokenResponse>("/auth/csrf");
   setCsrfToken(response.csrfToken);
   return response;
+}
+
+export async function logout() {
+  await apiFetch<void>("/auth/logout", {
+    method: "POST",
+    skipCsrf: true,
+  });
+
+  setCsrfToken(null);
+}
+
+export async function redeemActionCode(code: string) {
+  return apiFetch<RedeemActionResponse>("/actions/redeem-code", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function createAction(payload: CreateActionPayload) {
+  return apiFetch<Action>("/actions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

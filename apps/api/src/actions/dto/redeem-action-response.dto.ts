@@ -3,7 +3,7 @@ import { ActionResponseDto } from './action-response.dto';
 
 export class RedeemActionResponseDto {
   @ApiProperty({
-    example: 'Action resgatada com sucesso.',
+    example: 'Atividade resgatada com sucesso.',
   })
   message: string;
 

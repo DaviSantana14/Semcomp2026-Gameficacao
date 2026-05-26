@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { CookieOptions, Response } from 'express';
 import { AuthController } from './auth.controller';
 
 const user = {
@@ -67,5 +67,30 @@ describe('AuthController', () => {
       user,
     });
     expect(result).not.toHaveProperty('accessToken');
+  });
+
+  it('clears the access token cookie on logout', () => {
+    const authService = {
+      register: jest.fn(),
+      login: jest.fn(),
+    };
+    const controller = new AuthController(authService as never);
+    const clearCookieMock = jest.fn<void, [string, CookieOptions]>();
+    const response = {
+      clearCookie: clearCookieMock,
+    } as unknown as Response;
+
+    const result = controller.logout(response);
+
+    expect(clearCookieMock).toHaveBeenCalledWith(
+      'access_token',
+      expect.objectContaining({
+        httpOnly: true,
+        path: '/',
+      }),
+    );
+    const clearCookieOptions = clearCookieMock.mock.calls[0]?.[1];
+    expect(clearCookieOptions).not.toHaveProperty('maxAge');
+    expect(result).toBeUndefined();
   });
 });

@@ -13,6 +13,7 @@ const actionSummarySelect = {
   name: true,
   description: true,
   type: true,
+  code: true,
   points: true,
   isActive: true,
   createdAt: true,
@@ -29,17 +30,31 @@ const userProgressSelect = {
 export class ActionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createActionDto: CreateActionDto) {
-    return this.prisma.action.create({
-      data: {
-        name: createActionDto.name,
-        description: createActionDto.description,
-        type: createActionDto.type,
-        points: createActionDto.points,
-        isActive: createActionDto.isActive,
-      },
-      select: actionSummarySelect,
-    });
+  async create(createActionDto: CreateActionDto) {
+    try {
+      return await this.prisma.action.create({
+        data: {
+          name: createActionDto.name,
+          description: createActionDto.description,
+          type: createActionDto.type,
+          code: normalizeActionCode(createActionDto.code),
+          points: createActionDto.points,
+          isActive: createActionDto.isActive,
+        },
+        select: actionSummarySelect,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Já existe uma atividade pontuável com este código.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   findAll() {
@@ -56,6 +71,25 @@ export class ActionsService {
     });
   }
 
+  async redeemByCode(code: string, userId: string) {
+    const normalizedCode = normalizeActionCode(code);
+
+    if (!normalizedCode) {
+      throw new NotFoundException('Atividade pontuável não encontrada.');
+    }
+
+    const action = await this.prisma.action.findUnique({
+      where: { code: normalizedCode },
+      select: { id: true },
+    });
+
+    if (!action) {
+      throw new NotFoundException('Atividade pontuável não encontrada.');
+    }
+
+    return this.redeem(action.id, userId);
+  }
+
   async redeem(actionId: string, userId: string) {
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -65,12 +99,12 @@ export class ActionsService {
         });
 
         if (!action) {
-          throw new NotFoundException('Action não encontrada.');
+          throw new NotFoundException('Atividade pontuável não encontrada.');
         }
 
         if (!action.isActive) {
           throw new BadRequestException(
-            'Esta action está inativa e não pode ser resgatada.',
+            'Esta atividade está inativa e não pode ser resgatada.',
           );
         }
 
@@ -83,7 +117,7 @@ export class ActionsService {
             points: action.points,
             kind: PointEventKind.CREDIT,
             source: PointEventSource.ACTION_REDEEM,
-            description: `Resgate da action: ${action.name}`,
+            description: `Resgate da atividade: ${action.name}`,
             createdAt: redeemedAt,
           },
         });
@@ -111,10 +145,20 @@ export class ActionsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Você já resgatou esta action.');
+        throw new ConflictException('Você já resgatou esta atividade.');
       }
 
       throw error;
     }
   }
+}
+
+function normalizeActionCode(code: string | null | undefined) {
+  if (code == null) {
+    return undefined;
+  }
+
+  const normalized = code.trim().toUpperCase();
+
+  return normalized.length > 0 ? normalized : undefined;
 }

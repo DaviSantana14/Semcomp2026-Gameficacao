@@ -34,6 +34,7 @@ import {
   toActionResponseDto,
 } from './dto/action-response.dto';
 import { CreateActionDto } from './dto/create-action.dto';
+import { RedeemActionCodeDto } from './dto/redeem-action-code.dto';
 import { RedeemActionResponseDto } from './dto/redeem-action-response.dto';
 
 @ApiTags('Actions')
@@ -45,7 +46,7 @@ export class ActionsController {
 
   @Post()
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Criar uma action pontuável (admin)' })
+  @ApiOperation({ summary: 'Criar uma atividade pontuável (admin)' })
   @ApiHeader({
     name: 'X-CSRF-Token',
     description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
@@ -76,8 +77,68 @@ export class ActionsController {
     return toActionResponseDto(action);
   }
 
+  @Post('redeem-code')
+  @ApiOperation({ summary: 'Resgatar uma atividade por código reutilizável' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiBody({ type: RedeemActionCodeDto })
+  @ApiCreatedResponse({ type: RedeemActionResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente ou inválido.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 401,
+      message: 'Autenticação necessária ou token inválido.',
+      error: 'Unauthorized',
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Código inválido ou atividade inativa.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 400,
+      message: 'Esta atividade está inativa e não pode ser resgatada.',
+      error: 'Bad Request',
+    },
+  })
+  @ApiConflictResponse({
+    description: 'Atividade já resgatada pelo usuário.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 409,
+      message: 'Você já resgatou esta atividade.',
+      error: 'Conflict',
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'Atividade não encontrada para o código informado.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 404,
+      message: 'Atividade pontuável não encontrada.',
+      error: 'Not Found',
+    },
+  })
+  async redeemByCode(
+    @Body() redeemActionCodeDto: RedeemActionCodeDto,
+    @Req() request: { user: { id: string } },
+  ) {
+    const redeemed = await this.actionsService.redeemByCode(
+      redeemActionCodeDto.code,
+      request.user.id,
+    );
+
+    return {
+      message: 'Atividade resgatada com sucesso.',
+      ...redeemed,
+      action: toActionResponseDto(redeemed.action),
+    };
+  }
+
   @Post(':id/redeem')
-  @ApiOperation({ summary: 'Resgatar uma action pontuável' })
+  @ApiOperation({ summary: 'Resgatar uma atividade pontuável' })
   @ApiHeader({
     name: 'X-CSRF-Token',
     description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
@@ -93,29 +154,29 @@ export class ActionsController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'Action inativa.',
+    description: 'Atividade inativa.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 400,
-      message: 'Esta action está inativa e não pode ser resgatada.',
+      message: 'Esta atividade está inativa e não pode ser resgatada.',
       error: 'Bad Request',
     },
   })
   @ApiConflictResponse({
-    description: 'Action já resgatada pelo usuário.',
+    description: 'Atividade já resgatada pelo usuário.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 409,
-      message: 'Você já resgatou esta action.',
+      message: 'Você já resgatou esta atividade.',
       error: 'Conflict',
     },
   })
   @ApiNotFoundResponse({
-    description: 'Action não encontrada.',
+    description: 'Atividade não encontrada.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 404,
-      message: 'Action não encontrada.',
+      message: 'Atividade pontuável não encontrada.',
       error: 'Not Found',
     },
   })
@@ -135,7 +196,7 @@ export class ActionsController {
     const redeemed = await this.actionsService.redeem(id, request.user.id);
 
     return {
-      message: 'Action resgatada com sucesso.',
+      message: 'Atividade resgatada com sucesso.',
       ...redeemed,
       action: toActionResponseDto(redeemed.action),
     };
@@ -143,7 +204,7 @@ export class ActionsController {
 
   @Get()
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Listar actions (admin)' })
+  @ApiOperation({ summary: 'Listar atividades pontuáveis (admin)' })
   @ApiOkResponse({ type: ActionResponseDto, isArray: true })
   @ApiUnauthorizedResponse({
     description: 'Token ausente ou inválido.',
@@ -171,7 +232,7 @@ export class ActionsController {
 
   @Get(':id')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Buscar action por id (admin)' })
+  @ApiOperation({ summary: 'Buscar atividade por id (admin)' })
   @ApiOkResponse({ type: ActionResponseDto })
   @ApiUnauthorizedResponse({
     description: 'Token ausente ou inválido.',
@@ -192,11 +253,11 @@ export class ActionsController {
     },
   })
   @ApiNotFoundResponse({
-    description: 'Action não encontrada.',
+    description: 'Atividade não encontrada.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 404,
-      message: 'Action não encontrada.',
+      message: 'Atividade pontuável não encontrada.',
       error: 'Not Found',
     },
   })
@@ -204,7 +265,7 @@ export class ActionsController {
     const action = await this.actionsService.findById(id);
 
     if (!action) {
-      throw new NotFoundException('Action não encontrada.');
+      throw new NotFoundException('Atividade pontuável não encontrada.');
     }
 
     return toActionResponseDto(action);
