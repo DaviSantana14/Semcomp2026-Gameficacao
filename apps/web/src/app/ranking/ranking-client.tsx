@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Medal, Trophy, UserRound, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,45 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LogoutButton } from "@/components/logout-button";
-import { ApiError, fetchRanking, type RankingEntry } from "@/lib/api";
+import {
+  ApiError,
+  fetchRanking,
+  type RankingEntry,
+  type RankingPeriod,
+} from "@/lib/api";
+
+const RANKING_PERIOD_OPTIONS: Array<{
+  label: string;
+  value: RankingPeriod;
+}> = [
+  { label: "Geral", value: "all" },
+  { label: "Hoje", value: "daily" },
+  { label: "Semana", value: "weekly" },
+];
+
+const RANKING_PERIOD_COPY: Record<
+  RankingPeriod,
+  { badge: string; description: string; topDescription: string }
+> = {
+  all: {
+    badge: "Ranking geral",
+    description:
+      "O ranking usa XP acumulado. Points continuam sendo moeda da lojinha e nao entram no placar.",
+    topDescription: "Participantes ativos ordenados por XP acumulado",
+  },
+  daily: {
+    badge: "Ranking de hoje",
+    description:
+      "O ranking diario usa apenas XP ganho hoje em resgates de atividades. Points da lojinha nao entram no placar.",
+    topDescription: "Participantes ativos ordenados por XP ganho hoje",
+  },
+  weekly: {
+    badge: "Ranking semanal",
+    description:
+      "O ranking semanal usa apenas XP ganho desde segunda-feira em resgates de atividades. Points da lojinha nao entram no placar.",
+    topDescription: "Participantes ativos ordenados por XP ganho na semana",
+  },
+};
 
 function getPositionLabel(position: number) {
   return `#${position.toString().padStart(2, "0")}`;
@@ -44,13 +82,15 @@ function RankingRow({ entry }: { entry: RankingEntry }) {
 
 export function RankingClient() {
   const router = useRouter();
+  const [period, setPeriod] = useState<RankingPeriod>("all");
+  const periodCopy = RANKING_PERIOD_COPY[period];
   const {
     data,
     error,
     isLoading,
   } = useQuery({
-    queryKey: ["ranking", 10],
-    queryFn: () => fetchRanking(10),
+    queryKey: ["ranking", period, 10],
+    queryFn: () => fetchRanking(10, period),
     retry: false,
   });
 
@@ -124,7 +164,7 @@ export function RankingClient() {
           <div className="relative z-10 flex flex-col gap-5">
             <Badge className="w-fit border-primary/40 bg-primary/10 text-primary">
               <Trophy aria-hidden="true" data-icon="inline-start" />
-              Ranking geral
+              {periodCopy.badge}
             </Badge>
             <div className="flex flex-col gap-2">
               <p className="font-mono text-sm font-semibold uppercase text-muted-foreground">
@@ -134,9 +174,25 @@ export function RankingClient() {
                 Placar competitivo
               </h1>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-                O ranking usa apenas XP acumulado. Points continuam sendo moeda da
-                lojinha e nao entram no placar.
+                {periodCopy.description}
               </p>
+            </div>
+            <div className="grid max-w-xl grid-cols-3 gap-2 rounded-lg border border-border bg-muted/45 p-1">
+              {RANKING_PERIOD_OPTIONS.map((option) => {
+                const isActive = option.value === period;
+
+                return (
+                  <Button
+                    aria-pressed={isActive}
+                    className="h-10"
+                    key={option.value}
+                    onClick={() => setPeriod(option.value)}
+                    variant={isActive ? "primary" : "ghost"}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
             </div>
           </div>
         </header>
@@ -148,7 +204,7 @@ export function RankingClient() {
                 <Trophy aria-hidden="true" className="text-primary" />
                 Top 10
               </CardTitle>
-              <CardDescription>Participantes ativos ordenados por XP</CardDescription>
+              <CardDescription>{periodCopy.topDescription}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
               {data.ranking.length > 0 ? (
