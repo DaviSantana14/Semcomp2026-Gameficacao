@@ -46,7 +46,7 @@ export class CreateActionDto {
   @ApiPropertyOptional({
     example: 'DIA1',
     description:
-      'Código reutilizável da action. Normalizado para maiúsculas quando informado.',
+      'Código reutilizável da atividade pontuável. Normalizado para maiúsculas quando informado.',
   })
   @Transform(({ value }: { value: string | null | undefined }) => {
     if (value == null) {

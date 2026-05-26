@@ -13,6 +13,7 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiSecurity,
@@ -22,7 +23,10 @@ import {
 import type { Request, Response } from 'express';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { AuthService } from './auth.service';
-import { getAuthCookieOptions } from './cookie-options';
+import {
+  getAuthCookieOptions,
+  getClearAuthCookieOptions,
+} from './cookie-options';
 import { CsrfTokenResponseDto } from './dto/csrf-token-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -100,5 +104,13 @@ export class AuthController {
   })
   csrf(@Req() request: CsrfRequest) {
     return { csrfToken: request.user.csrfToken };
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Encerrar sessão autenticada' })
+  @ApiNoContentResponse({ description: 'Sessão encerrada.' })
+  logout(@Res({ passthrough: true }) response: Response) {
+    response.clearCookie('access_token', getClearAuthCookieOptions());
   }
 }

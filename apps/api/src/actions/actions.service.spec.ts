@@ -217,7 +217,7 @@ describe('ActionsService', () => {
           points: 10,
           kind: 'CREDIT',
           source: 'ACTION_REDEEM',
-          description: 'Resgate da action: Check-in',
+          description: 'Resgate da atividade: Check-in',
           createdAt: expect.any(Date) as Date,
         },
       });

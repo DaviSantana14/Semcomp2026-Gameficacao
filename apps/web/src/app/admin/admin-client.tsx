@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Shield } from "lucide-react";
+import { ArrowLeft, Plus, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LogoutButton } from "@/components/logout-button";
 import {
   Card,
   CardContent,
@@ -38,7 +39,7 @@ const actionTypes: ActionType[] = [
 ];
 
 const createActionSchema = z.object({
-  name: z.string().trim().min(2, "Informe o nome da action."),
+  name: z.string().trim().min(2, "Informe o nome da atividade pontuavel."),
   description: z
     .string()
     .transform((value) => value.trim())
@@ -105,7 +106,7 @@ export function AdminClient() {
         isActive: values.isActive,
       });
 
-      toast.success(`Action ${action.name} criada.`);
+      toast.success(`Atividade ${action.name} criada.`);
       reset({
         name: "",
         description: "",
@@ -118,7 +119,7 @@ export function AdminClient() {
       const message =
         error instanceof ApiError
           ? error.message
-          : "Nao foi possivel criar a action.";
+          : "Nao foi possivel criar a atividade pontuavel.";
       toast.error(message);
     }
   }
@@ -134,6 +135,18 @@ export function AdminClient() {
   return (
     <main className="arcade-grid min-h-dvh px-4 py-6 md:px-8">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+          <Button
+            className="w-full sm:w-fit"
+            onClick={() => router.push("/home")}
+            variant="outline"
+          >
+            <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+            Voltar
+          </Button>
+          <LogoutButton className="w-full sm:w-fit" />
+        </div>
+
         <header className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-card/85 p-5 md:p-6">
           <Badge className="w-fit border-primary/40 bg-primary/10 text-primary">
             <Shield aria-hidden="true" data-icon="inline-start" />
@@ -141,18 +154,18 @@ export function AdminClient() {
           </Badge>
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl font-black tracking-normal md:text-5xl">
-              Criar action
+              Criar atividade pontuavel
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-              Cadastre uma action pontuavel com codigo reutilizavel para check-in,
-              stand, presenca ou dinamica do evento.
+              Cadastre uma atividade com codigo reutilizavel para check-in, stand,
+              presenca ou dinamica do evento.
             </p>
           </div>
         </header>
 
         <Card className="border-primary/20 bg-card/90">
           <CardHeader>
-            <CardTitle>Nova action</CardTitle>
+            <CardTitle>Nova atividade pontuavel</CardTitle>
             <CardDescription>O codigo e opcional, mas deve ser unico.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -227,12 +240,12 @@ export function AdminClient() {
                   type="checkbox"
                   {...register("isActive")}
                 />
-                Action ativa
+                Atividade ativa
               </label>
 
               <Button className="w-full md:w-fit" disabled={isSubmitting} type="submit">
                 <Plus aria-hidden="true" data-icon="inline-start" />
-                {isSubmitting ? "Criando..." : "Criar action"}
+                {isSubmitting ? "Criando..." : "Criar atividade"}
               </Button>
             </form>
           </CardContent>

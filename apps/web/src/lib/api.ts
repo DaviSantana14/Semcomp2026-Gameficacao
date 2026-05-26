@@ -177,6 +177,15 @@ export async function fetchCsrfToken() {
   return response;
 }
 
+export async function logout() {
+  await apiFetch<void>("/auth/logout", {
+    method: "POST",
+    skipCsrf: true,
+  });
+
+  setCsrfToken(null);
+}
+
 export async function redeemActionCode(code: string) {
   return apiFetch<RedeemActionResponse>("/actions/redeem-code", {
     method: "POST",

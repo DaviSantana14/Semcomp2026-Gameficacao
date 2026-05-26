@@ -48,7 +48,9 @@ export class ActionsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Já existe uma action com este código.');
+        throw new ConflictException(
+          'Já existe uma atividade pontuável com este código.',
+        );
       }
 
       throw error;
@@ -73,7 +75,7 @@ export class ActionsService {
     const normalizedCode = normalizeActionCode(code);
 
     if (!normalizedCode) {
-      throw new NotFoundException('Action não encontrada.');
+      throw new NotFoundException('Atividade pontuável não encontrada.');
     }
 
     const action = await this.prisma.action.findUnique({
@@ -82,7 +84,7 @@ export class ActionsService {
     });
 
     if (!action) {
-      throw new NotFoundException('Action não encontrada.');
+      throw new NotFoundException('Atividade pontuável não encontrada.');
     }
 
     return this.redeem(action.id, userId);
@@ -97,12 +99,12 @@ export class ActionsService {
         });
 
         if (!action) {
-          throw new NotFoundException('Action não encontrada.');
+          throw new NotFoundException('Atividade pontuável não encontrada.');
         }
 
         if (!action.isActive) {
           throw new BadRequestException(
-            'Esta action está inativa e não pode ser resgatada.',
+            'Esta atividade está inativa e não pode ser resgatada.',
           );
         }
 
@@ -115,7 +117,7 @@ export class ActionsService {
             points: action.points,
             kind: PointEventKind.CREDIT,
             source: PointEventSource.ACTION_REDEEM,
-            description: `Resgate da action: ${action.name}`,
+            description: `Resgate da atividade: ${action.name}`,
             createdAt: redeemedAt,
           },
         });
@@ -143,7 +145,7 @@ export class ActionsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Você já resgatou esta action.');
+        throw new ConflictException('Você já resgatou esta atividade.');
       }
 
       throw error;

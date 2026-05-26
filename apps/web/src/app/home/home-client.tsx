@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LogoutButton } from "@/components/logout-button";
 import { Progress } from "@/components/ui/progress";
 import { useMe } from "@/hooks/use-auth";
 import { ApiError, fetchCsrfToken } from "@/lib/api";
@@ -108,10 +109,13 @@ export function HomeClient() {
               </div>
             </div>
 
-            <Button className="w-full lg:w-auto" onClick={() => setIsRedeemOpen(true)}>
-              <ScanLine aria-hidden="true" data-icon="inline-start" />
-              Resgatar codigo
-            </Button>
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+              <LogoutButton className="w-full sm:w-auto" />
+              <Button className="w-full sm:w-auto" onClick={() => setIsRedeemOpen(true)}>
+                <ScanLine aria-hidden="true" data-icon="inline-start" />
+                Resgatar codigo
+              </Button>
+            </div>
           </div>
         </header>
 

@@ -5,7 +5,7 @@ import { IsNotEmpty, IsString, Matches } from 'class-validator';
 export class RedeemActionCodeDto {
   @ApiProperty({
     example: 'DIA1',
-    description: 'Código reutilizável da action.',
+    description: 'Código reutilizável da atividade pontuável.',
   })
   @Transform(({ value }: { value: string }) => value?.trim().toUpperCase())
   @IsString()

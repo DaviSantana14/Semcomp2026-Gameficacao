@@ -44,7 +44,7 @@ function parseCookieSecure(value: string | undefined): boolean {
   );
 }
 
-export function getAuthCookieOptions(httpOnly: boolean): CookieOptions {
+function getAuthCookieBaseOptions(httpOnly: boolean): CookieOptions {
   const secure = parseCookieSecure(process.env.COOKIE_SECURE);
   const sameSite = parseCookieSameSite(process.env.COOKIE_SAME_SITE);
 
@@ -59,6 +59,16 @@ export function getAuthCookieOptions(httpOnly: boolean): CookieOptions {
     secure,
     sameSite,
     path: '/',
+  };
+}
+
+export function getAuthCookieOptions(httpOnly: boolean): CookieOptions {
+  return {
+    ...getAuthCookieBaseOptions(httpOnly),
     maxAge: COOKIE_MAX_AGE_IN_MS,
   };
+}
+
+export function getClearAuthCookieOptions(): CookieOptions {
+  return getAuthCookieBaseOptions(true);
 }
