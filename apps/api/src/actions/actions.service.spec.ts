@@ -37,6 +37,7 @@ type PointEventCreateArgs = {
 function createService() {
   const action = {
     create: jest.fn(),
+    findUnique: jest.fn(),
   };
 
   const tx = {
@@ -250,6 +251,55 @@ describe('ActionsService', () => {
         ConflictException,
       );
       expect(tx.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('redeemByCode', () => {
+    it('throws NotFoundException when no action has the given code', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue(null);
+
+      await expect(service.redeemByCode('missing', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.action.findUnique).toHaveBeenCalledWith({
+        where: { code: 'MISSING' },
+        select: { id: true },
+      });
+    });
+
+    it('normalizes the code and reuses the action redeem flow', async () => {
+      const { service, prisma, tx } = createService();
+      prisma.action.findUnique.mockResolvedValue({ id: 'action-1' });
+      tx.action.findUnique.mockResolvedValue(activeAction);
+      tx.pointEvent.create.mockResolvedValue(undefined);
+      tx.user.update.mockResolvedValue({
+        id: 'user-1',
+        points: 110,
+        xp: 210,
+        level: 1,
+      });
+
+      const result = await service.redeemByCode(' dia1 ', 'user-1');
+
+      expect(prisma.action.findUnique).toHaveBeenCalledWith({
+        where: { code: 'DIA1' },
+        select: { id: true },
+      });
+      expect(tx.pointEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actionId: 'action-1',
+            userId: 'user-1',
+          }) as object,
+        }),
+      );
+      expect(result).toMatchObject({
+        action: activeAction,
+        awardedPoints: 10,
+        currentPoints: 110,
+        currentXp: 210,
+      });
     });
   });
 });

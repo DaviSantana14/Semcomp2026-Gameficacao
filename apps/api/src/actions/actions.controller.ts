@@ -34,6 +34,7 @@ import {
   toActionResponseDto,
 } from './dto/action-response.dto';
 import { CreateActionDto } from './dto/create-action.dto';
+import { RedeemActionCodeDto } from './dto/redeem-action-code.dto';
 import { RedeemActionResponseDto } from './dto/redeem-action-response.dto';
 
 @ApiTags('Actions')
@@ -74,6 +75,66 @@ export class ActionsController {
     const action = await this.actionsService.create(createActionDto);
 
     return toActionResponseDto(action);
+  }
+
+  @Post('redeem-code')
+  @ApiOperation({ summary: 'Resgatar uma action por código reutilizável' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiBody({ type: RedeemActionCodeDto })
+  @ApiCreatedResponse({ type: RedeemActionResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente ou inválido.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 401,
+      message: 'Autenticação necessária ou token inválido.',
+      error: 'Unauthorized',
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Código inválido ou action inativa.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 400,
+      message: 'Esta action está inativa e não pode ser resgatada.',
+      error: 'Bad Request',
+    },
+  })
+  @ApiConflictResponse({
+    description: 'Action já resgatada pelo usuário.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 409,
+      message: 'Você já resgatou esta action.',
+      error: 'Conflict',
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'Action não encontrada para o código informado.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 404,
+      message: 'Action não encontrada.',
+      error: 'Not Found',
+    },
+  })
+  async redeemByCode(
+    @Body() redeemActionCodeDto: RedeemActionCodeDto,
+    @Req() request: { user: { id: string } },
+  ) {
+    const redeemed = await this.actionsService.redeemByCode(
+      redeemActionCodeDto.code,
+      request.user.id,
+    );
+
+    return {
+      message: 'Action resgatada com sucesso.',
+      ...redeemed,
+      action: toActionResponseDto(redeemed.action),
+    };
   }
 
   @Post(':id/redeem')

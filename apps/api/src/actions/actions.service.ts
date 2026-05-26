@@ -69,6 +69,25 @@ export class ActionsService {
     });
   }
 
+  async redeemByCode(code: string, userId: string) {
+    const normalizedCode = normalizeActionCode(code);
+
+    if (!normalizedCode) {
+      throw new NotFoundException('Action não encontrada.');
+    }
+
+    const action = await this.prisma.action.findUnique({
+      where: { code: normalizedCode },
+      select: { id: true },
+    });
+
+    if (!action) {
+      throw new NotFoundException('Action não encontrada.');
+    }
+
+    return this.redeem(action.id, userId);
+  }
+
   async redeem(actionId: string, userId: string) {
     try {
       return await this.prisma.$transaction(async (tx) => {
