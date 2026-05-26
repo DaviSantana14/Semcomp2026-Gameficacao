@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PointEventKind, PointEventSource, UserRole } from '@prisma/client';
 import { RankingService } from './ranking.service';
 
 const baseDate = new Date('2026-05-17T12:00:00.000Z');
@@ -25,6 +25,9 @@ function createService() {
       findFirst: jest.fn(),
       count: jest.fn(),
     },
+    pointEvent: {
+      groupBy: jest.fn(),
+    },
   };
 
   return {
@@ -34,6 +37,10 @@ function createService() {
 }
 
 describe('RankingService', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('returns the top participants ordered by xp desc with stable tiebreakers', async () => {
     const { service, prisma } = createService();
 
@@ -56,7 +63,10 @@ describe('RankingService', () => {
       createUser('user-high', 'Grace Hopper', 200),
     );
 
-    const result = await service.getGeneralRanking('user-high', '3');
+    const result = await service.getRanking('user-high', {
+      limit: '3',
+      period: 'all',
+    });
 
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       where: {
@@ -88,7 +98,7 @@ describe('RankingService', () => {
     prisma.user.findMany.mockResolvedValue([]);
     prisma.user.findFirst.mockResolvedValue(null);
 
-    const result = await service.getGeneralRanking('admin-1');
+    const result = await service.getRanking('admin-1');
 
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -134,7 +144,10 @@ describe('RankingService', () => {
     prisma.user.findFirst.mockResolvedValue(currentUser);
     prisma.user.count.mockResolvedValue(8);
 
-    const result = await service.getGeneralRanking('user-current', '2');
+    const result = await service.getRanking('user-current', {
+      limit: '2',
+      period: 'all',
+    });
 
     expect(prisma.user.count).toHaveBeenCalledWith({
       where: {
@@ -165,7 +178,7 @@ describe('RankingService', () => {
     ]);
     prisma.user.findFirst.mockResolvedValue(null);
 
-    const result = await service.getGeneralRanking('admin-1');
+    const result = await service.getRanking('admin-1');
 
     expect(prisma.user.count).not.toHaveBeenCalled();
     expect(result.me).toBeNull();
@@ -177,19 +190,144 @@ describe('RankingService', () => {
     prisma.user.findMany.mockResolvedValue([]);
     prisma.user.findFirst.mockResolvedValue(null);
 
-    await service.getGeneralRanking('user-1', '50');
+    await service.getRanking('user-1', { limit: '50', period: 'all' });
 
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 50 }),
     );
-    await expect(service.getGeneralRanking('user-1', '0')).rejects.toThrow(
-      BadRequestException,
+    await expect(
+      service.getRanking('user-1', { limit: '0', period: 'all' }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.getRanking('user-1', { limit: '51', period: 'all' }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.getRanking('user-1', { limit: 'abc', period: 'all' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('returns daily ranking from action redeem credits in the Sao Paulo day', async () => {
+    const { service, prisma } = createService();
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-05-20T15:00:00.000Z'));
+
+    prisma.user.findMany.mockResolvedValue([
+      createUser('user-low', 'Alan Turing', 900),
+      createUser(
+        'user-high',
+        'Grace Hopper',
+        100,
+        new Date('2026-05-17T10:00:00.000Z'),
+      ),
+      createUser(
+        'user-current',
+        'Mary Jackson',
+        50,
+        new Date('2026-05-17T11:00:00.000Z'),
+      ),
+    ]);
+    prisma.user.findFirst.mockResolvedValue(
+      createUser(
+        'user-current',
+        'Mary Jackson',
+        50,
+        new Date('2026-05-17T11:00:00.000Z'),
+      ),
     );
-    await expect(service.getGeneralRanking('user-1', '51')).rejects.toThrow(
-      BadRequestException,
+    prisma.pointEvent.groupBy.mockResolvedValue([
+      { userId: 'user-high', _sum: { points: 40 } },
+      { userId: 'user-current', _sum: { points: 20 } },
+    ]);
+
+    const result = await service.getRanking('user-current', {
+      limit: '2',
+      period: 'daily',
+    });
+
+    expect(prisma.pointEvent.groupBy).toHaveBeenCalledWith({
+      by: ['userId'],
+      where: {
+        kind: PointEventKind.CREDIT,
+        source: PointEventSource.ACTION_REDEEM,
+        createdAt: {
+          gte: new Date('2026-05-20T03:00:00.000Z'),
+          lt: new Date('2026-05-21T03:00:00.000Z'),
+        },
+      },
+      _sum: {
+        points: true,
+      },
+    });
+    expect(result).toEqual({
+      ranking: [
+        { position: 1, name: 'Grace Hopper', xp: 40 },
+        { position: 2, name: 'Mary Jackson', xp: 20 },
+      ],
+      me: { position: 2, name: 'Mary Jackson', xp: 20 },
+    });
+  });
+
+  it('returns weekly ranking from action redeem credits since Monday in Sao Paulo', async () => {
+    const { service, prisma } = createService();
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-05-21T15:00:00.000Z'));
+
+    prisma.user.findMany.mockResolvedValue([
+      createUser(
+        'user-current',
+        'Mary Jackson',
+        50,
+        new Date('2026-05-17T11:00:00.000Z'),
+      ),
+      createUser(
+        'user-high',
+        'Grace Hopper',
+        100,
+        new Date('2026-05-17T10:00:00.000Z'),
+      ),
+      createUser('user-zero', 'Ada Lovelace', 80),
+    ]);
+    prisma.user.findFirst.mockResolvedValue(
+      createUser(
+        'user-current',
+        'Mary Jackson',
+        50,
+        new Date('2026-05-17T11:00:00.000Z'),
+      ),
     );
-    await expect(service.getGeneralRanking('user-1', 'abc')).rejects.toThrow(
-      BadRequestException,
+    prisma.pointEvent.groupBy.mockResolvedValue([
+      { userId: 'user-current', _sum: { points: 60 } },
+      { userId: 'user-high', _sum: { points: 60 } },
+    ]);
+
+    const result = await service.getRanking('user-current', {
+      limit: '1',
+      period: 'weekly',
+    });
+
+    expect(prisma.pointEvent.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          createdAt: {
+            gte: new Date('2026-05-18T03:00:00.000Z'),
+            lt: new Date('2026-05-25T03:00:00.000Z'),
+          },
+        }),
+      }),
     );
+    expect(result).toEqual({
+      ranking: [{ position: 1, name: 'Grace Hopper', xp: 60 }],
+      me: { position: 2, name: 'Mary Jackson', xp: 60 },
+    });
+  });
+
+  it('rejects invalid period values', async () => {
+    const { service } = createService();
+
+    await expect(
+      service.getRanking('user-1', { limit: '10', period: 'monthly' }),
+    ).rejects.toThrow(BadRequestException);
   });
 });
