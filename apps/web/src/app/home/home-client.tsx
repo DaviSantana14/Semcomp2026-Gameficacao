@@ -10,7 +10,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useMe } from "@/hooks/use-auth";
 import { ApiError, fetchCsrfToken } from "@/lib/api";
+import { RedeemCodeDialog } from "./redeem-code-dialog";
 
 function getInitials(name: string) {
   return name
@@ -40,6 +41,7 @@ function getLevelProgress(xp: number) {
 export function HomeClient() {
   const router = useRouter();
   const { data: user, error, isLoading } = useMe();
+  const [isRedeemOpen, setIsRedeemOpen] = useState(false);
 
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) {
@@ -105,7 +107,7 @@ export function HomeClient() {
               </div>
             </div>
 
-            <Button className="w-full lg:w-auto" disabled>
+            <Button className="w-full lg:w-auto" onClick={() => setIsRedeemOpen(true)}>
               <ScanLine aria-hidden="true" data-icon="inline-start" />
               Resgatar codigo
             </Button>
@@ -180,6 +182,10 @@ export function HomeClient() {
           </Card>
         </section>
       </div>
+      <RedeemCodeDialog
+        isOpen={isRedeemOpen}
+        onClose={() => setIsRedeemOpen(false)}
+      />
     </main>
   );
 }

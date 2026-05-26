@@ -34,6 +34,27 @@ export type CsrfTokenResponse = {
   csrfToken: string;
 };
 
+export type Action = {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  code: string | null;
+  points: number;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type RedeemActionResponse = {
+  message: string;
+  action: Action;
+  awardedPoints: number;
+  currentPoints: number;
+  currentXp: number;
+  currentLevel: number;
+  redeemedAt: string;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -137,4 +158,11 @@ export async function fetchCsrfToken() {
   const response = await apiFetch<CsrfTokenResponse>("/auth/csrf");
   setCsrfToken(response.csrfToken);
   return response;
+}
+
+export async function redeemActionCode(code: string) {
+  return apiFetch<RedeemActionResponse>("/actions/redeem-code", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
 }
