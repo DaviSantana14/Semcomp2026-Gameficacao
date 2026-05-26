@@ -285,8 +285,9 @@ pertencem naturalmente a um módulo específico vão para o `AdminModule`.
 **Parâmetros atuais:** `limit` (padrão 10, máx 50).
 **Parâmetros futuros:** `period` (`daily`, `weekly`, `all`).
 
-**Resposta:** `{ ranking: [{ position, name, xp }], me: { position, name, xp } }`.
-Sempre inclui a posição do usuário logado, mesmo que fora do top N.
+**Resposta:** `{ ranking: [{ position, name, xp }], me: { position, name, xp } | null }`.
+Participantes elegíveis sempre veem sua posição, mesmo que fora do top N.
+Admins ou usuários não elegíveis recebem `me: null`.
 
 **Ranking geral:** implementado em `GET /ranking?limit=10`; ordena participantes
 ativos por `User.xp` (`xp DESC`, `createdAt ASC`, `id ASC`). Admins não entram
