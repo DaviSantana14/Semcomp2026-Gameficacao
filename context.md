@@ -634,7 +634,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | 7 | **Frontend mínimo: login + cadastro + home + sessão** | ✅ |
 | 8 | **Campo `code` na Action + resgate por código reutilizável** | ✅ |
 | 9 | **Ranking geral por `User.xp`** | ✅ |
-| 10 | **Ranking diário/semanal por XP ganho no período** | ❌ |
+| 10 | **Ranking diário/semanal por XP ganho no período** | ✅ |
 | 11 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |
 | 12 | **ClaimCode: códigos de uso único** | ❌ |
 | 13 | **AdminModule + admin dashboard** | ❌ |
