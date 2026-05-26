@@ -78,7 +78,7 @@ export type RankingEntry = {
   xp: number;
 };
 
-export type RankingPeriod = "all" | "daily" | "weekly";
+export type RankingPeriod = "all" | "daily";
 
 export type RankingResponse = {
   ranking: RankingEntry[];

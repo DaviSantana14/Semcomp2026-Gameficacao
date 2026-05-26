@@ -27,7 +27,6 @@ const RANKING_PERIOD_OPTIONS: Array<{
 }> = [
   { label: "Geral", value: "all" },
   { label: "Hoje", value: "daily" },
-  { label: "Semana", value: "weekly" },
 ];
 
 const RANKING_PERIOD_COPY: Record<
@@ -45,12 +44,6 @@ const RANKING_PERIOD_COPY: Record<
     description:
       "O ranking diario usa apenas XP ganho hoje em resgates de atividades. Points da lojinha nao entram no placar.",
     topDescription: "Participantes ativos ordenados por XP ganho hoje",
-  },
-  weekly: {
-    badge: "Ranking semanal",
-    description:
-      "O ranking semanal usa apenas XP ganho desde segunda-feira em resgates de atividades. Points da lojinha nao entram no placar.",
-    topDescription: "Participantes ativos ordenados por XP ganho na semana",
   },
 };
 
@@ -177,7 +170,7 @@ export function RankingClient() {
                 {periodCopy.description}
               </p>
             </div>
-            <div className="grid max-w-xl grid-cols-3 gap-2 rounded-lg border border-border bg-muted/45 p-1">
+            <div className="grid max-w-sm grid-cols-2 gap-2 rounded-lg border border-border bg-muted/45 p-1">
               {RANKING_PERIOD_OPTIONS.map((option) => {
                 const isActive = option.value === period;
 
