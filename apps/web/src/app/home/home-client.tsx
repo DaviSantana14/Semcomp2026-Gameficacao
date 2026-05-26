@@ -4,6 +4,7 @@ import {
   Coins,
   Medal,
   ScanLine,
+  Shield,
   ShoppingBag,
   Sparkles,
   Trophy,
@@ -178,6 +179,16 @@ export function HomeClient() {
                 <ShoppingBag aria-hidden="true" data-icon="inline-start" />
                 Lojinha
               </Button>
+              {user.role === "ADMIN" ? (
+                <Button
+                  className="justify-start"
+                  onClick={() => router.push("/admin")}
+                  variant="secondary"
+                >
+                  <Shield aria-hidden="true" data-icon="inline-start" />
+                  Admin
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         </section>

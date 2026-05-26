@@ -1,6 +1,14 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export type UserRole = "ADMIN" | "PARTICIPANT";
+export type ActionType =
+  | "CHECKIN"
+  | "ATTENDANCE"
+  | "STAND_VISIT"
+  | "EASTER_EGG"
+  | "QUESTION"
+  | "DYNAMIC"
+  | "BONUS";
 
 export type User = {
   id: string;
@@ -38,11 +46,20 @@ export type Action = {
   id: string;
   name: string;
   description: string | null;
-  type: string;
+  type: ActionType;
   code: string | null;
   points: number;
   isActive: boolean;
   createdAt: string;
+};
+
+export type CreateActionPayload = {
+  name: string;
+  description?: string;
+  type: ActionType;
+  code?: string;
+  points: number;
+  isActive?: boolean;
 };
 
 export type RedeemActionResponse = {
@@ -164,5 +181,12 @@ export async function redeemActionCode(code: string) {
   return apiFetch<RedeemActionResponse>("/actions/redeem-code", {
     method: "POST",
     body: JSON.stringify({ code }),
+  });
+}
+
+export async function createAction(payload: CreateActionPayload) {
+  return apiFetch<Action>("/actions", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
