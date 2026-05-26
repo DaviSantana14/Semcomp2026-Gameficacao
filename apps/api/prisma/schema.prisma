@@ -59,6 +59,7 @@ model Action {
   name        String
   description String?
   type        ActionType
+  code        String?      @unique
   points      Int
   isActive    Boolean      @default(true)
   pointEvents PointEvent[]

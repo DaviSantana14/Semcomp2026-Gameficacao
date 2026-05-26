@@ -16,6 +16,7 @@ const activeAction = {
   name: 'Check-in',
   description: null,
   type: ActionType.CHECKIN,
+  code: null,
   points: 10,
   isActive: true,
   createdAt: new Date('2026-05-17T12:00:00.000Z'),
@@ -34,6 +35,10 @@ type PointEventCreateArgs = {
 };
 
 function createService() {
+  const action = {
+    create: jest.fn(),
+  };
+
   const tx = {
     action: {
       findUnique: jest.fn(),
@@ -47,6 +52,7 @@ function createService() {
   };
 
   const prisma = {
+    action,
     $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
       callback(tx),
     ),
@@ -59,20 +65,98 @@ function createService() {
   };
 }
 
-function createUniqueConstraintError() {
+function createUniqueConstraintError(target = ['userId', 'actionId']) {
   return new Prisma.PrismaClientKnownRequestError(
-    'Unique constraint failed on the fields: (`userId`,`actionId`)',
+    `Unique constraint failed on the fields: (${target.join(',')})`,
     {
       code: 'P2002',
       clientVersion: '7.8.0',
       meta: {
-        target: ['userId', 'actionId'],
+        target,
       },
     },
   );
 }
 
 describe('ActionsService', () => {
+  describe('create', () => {
+    it('normalizes reusable action codes before creating the action', async () => {
+      const { service, prisma } = createService();
+      prisma.action.create.mockResolvedValue({
+        ...activeAction,
+        code: 'DIA1',
+      });
+
+      await service.create({
+        name: 'Check-in Dia 1',
+        description: undefined,
+        type: ActionType.CHECKIN,
+        points: 10,
+        code: 'dia1',
+        isActive: true,
+      });
+
+      expect(prisma.action.create).toHaveBeenCalledWith({
+        data: {
+          name: 'Check-in Dia 1',
+          description: undefined,
+          type: ActionType.CHECKIN,
+          points: 10,
+          code: 'DIA1',
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          type: true,
+          code: true,
+          points: true,
+          isActive: true,
+          createdAt: true,
+        },
+      });
+    });
+
+    it('stores empty reusable action codes as undefined', async () => {
+      const { service, prisma } = createService();
+      prisma.action.create.mockResolvedValue(activeAction);
+
+      await service.create({
+        name: 'Check-in Dia 1',
+        description: undefined,
+        type: ActionType.CHECKIN,
+        points: 10,
+        code: '',
+        isActive: true,
+      });
+
+      expect(prisma.action.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            code: undefined,
+          }) as object,
+        }),
+      );
+    });
+
+    it('maps duplicate action code constraint errors to ConflictException', async () => {
+      const { service, prisma } = createService();
+      prisma.action.create.mockRejectedValue(createUniqueConstraintError(['code']));
+
+      await expect(
+        service.create({
+          name: 'Check-in Dia 1',
+          description: undefined,
+          type: ActionType.CHECKIN,
+          points: 10,
+          code: 'DIA1',
+          isActive: true,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   describe('redeem', () => {
     it('throws NotFoundException when the action does not exist', async () => {
       const { service, tx } = createService();

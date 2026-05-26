@@ -25,6 +25,12 @@ export class ActionResponseDto {
   type: ActionType;
 
   @ApiProperty({
+    example: 'DIA1',
+    nullable: true,
+  })
+  code: string | null;
+
+  @ApiProperty({
     example: 10,
   })
   points: number;
@@ -45,6 +51,7 @@ export class ActionResponseDto {
     this.name = data.name;
     this.description = data.description;
     this.type = data.type;
+    this.code = data.code;
     this.points = data.points;
     this.isActive = data.isActive;
     this.createdAt = data.createdAt;
@@ -56,6 +63,7 @@ export type ActionResponseSource = {
   name: string;
   description: string | null;
   type: ActionType;
+  code: string | null;
   points: number;
   isActive: boolean;
   createdAt: Date;

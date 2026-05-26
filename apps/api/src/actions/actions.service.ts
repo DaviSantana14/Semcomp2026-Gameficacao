@@ -13,6 +13,7 @@ const actionSummarySelect = {
   name: true,
   description: true,
   type: true,
+  code: true,
   points: true,
   isActive: true,
   createdAt: true,
@@ -29,17 +30,29 @@ const userProgressSelect = {
 export class ActionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createActionDto: CreateActionDto) {
-    return this.prisma.action.create({
-      data: {
-        name: createActionDto.name,
-        description: createActionDto.description,
-        type: createActionDto.type,
-        points: createActionDto.points,
-        isActive: createActionDto.isActive,
-      },
-      select: actionSummarySelect,
-    });
+  async create(createActionDto: CreateActionDto) {
+    try {
+      return await this.prisma.action.create({
+        data: {
+          name: createActionDto.name,
+          description: createActionDto.description,
+          type: createActionDto.type,
+          code: normalizeActionCode(createActionDto.code),
+          points: createActionDto.points,
+          isActive: createActionDto.isActive,
+        },
+        select: actionSummarySelect,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Já existe uma action com este código.');
+      }
+
+      throw error;
+    }
   }
 
   findAll() {
@@ -117,4 +130,14 @@ export class ActionsService {
       throw error;
     }
   }
+}
+
+function normalizeActionCode(code: string | null | undefined) {
+  if (code == null) {
+    return undefined;
+  }
+
+  const normalized = code.trim().toUpperCase();
+
+  return normalized.length > 0 ? normalized : undefined;
 }
