@@ -29,6 +29,21 @@ export class UserResponseDto {
   role: UserRole;
 
   @ApiProperty({
+    example: 120,
+  })
+  points: number;
+
+  @ApiProperty({
+    example: 240,
+  })
+  xp: number;
+
+  @ApiProperty({
+    example: 2,
+  })
+  level: number;
+
+  @ApiProperty({
     example: true,
   })
   isActive: boolean;
@@ -52,6 +67,9 @@ export class UserResponseDto {
     this.cpf = data.cpf;
     this.email = data.email;
     this.role = data.role;
+    this.points = data.points;
+    this.xp = data.xp;
+    this.level = data.level;
     this.isActive = data.isActive;
     this.lastLoginAt = data.lastLoginAt;
     this.createdAt = data.createdAt;
@@ -64,6 +82,9 @@ export type UserResponseSource = {
   cpf: string;
   email: string;
   role: UserRole;
+  points: number;
+  xp: number;
+  level: number;
   isActive: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
