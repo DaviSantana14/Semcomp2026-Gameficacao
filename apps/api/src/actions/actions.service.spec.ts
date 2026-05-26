@@ -143,7 +143,9 @@ describe('ActionsService', () => {
 
     it('maps duplicate action code constraint errors to ConflictException', async () => {
       const { service, prisma } = createService();
-      prisma.action.create.mockRejectedValue(createUniqueConstraintError(['code']));
+      prisma.action.create.mockRejectedValue(
+        createUniqueConstraintError(['code']),
+      );
 
       await expect(
         service.create({
