@@ -72,6 +72,17 @@ export type RedeemActionResponse = {
   redeemedAt: string;
 };
 
+export type RankingEntry = {
+  position: number;
+  name: string;
+  xp: number;
+};
+
+export type RankingResponse = {
+  ranking: RankingEntry[];
+  me: RankingEntry | null;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -198,4 +209,8 @@ export async function createAction(payload: CreateActionPayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchRanking(limit = 10) {
+  return apiFetch<RankingResponse>(`/ranking?limit=${limit}`);
 }

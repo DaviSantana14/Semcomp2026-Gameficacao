@@ -275,18 +275,23 @@ Rotas admin de CRUD (ex: `POST /actions`, `GET /users`) permanecem nos seus
 módulos de domínio. Apenas operações que agregam múltiplos domínios ou não
 pertencem naturalmente a um módulo específico vão para o `AdminModule`.
 
-### Ranking (protegido — a implementar)
+### Ranking (protegido)
 
 | método | rota | descrição |
 |--------|------|-----------|
-| `GET` | `/ranking?period=daily&limit=10` | top N por período |
+| `GET` | `/ranking?limit=10` | top N geral por XP |
+| `GET` | `/ranking?period=daily&limit=10` | top N por período (a implementar) |
 
-**Parâmetros:** `period` (`daily`, `weekly`, `all`), `limit` (padrão 10, máx 50).
+**Parâmetros atuais:** `limit` (padrão 10, máx 50).
+**Parâmetros futuros:** `period` (`daily`, `weekly`, `all`).
 
-**Resposta:** `{ ranking: [{ position, name, xp }], me: { position, name, xp } }`.
-Sempre inclui a posição do usuário logado, mesmo que fora do top N.
+**Resposta:** `{ ranking: [{ position, name, xp }], me: { position, name, xp } | null }`.
+Participantes elegíveis sempre veem sua posição, mesmo que fora do top N.
+Admins ou usuários não elegíveis recebem `me: null`.
 
-**Ranking geral:** ordena por `User.xp`.
+**Ranking geral:** implementado em `GET /ranking?limit=10`; ordena participantes
+ativos por `User.xp` (`xp DESC`, `createdAt ASC`, `id ASC`). Admins não entram
+no placar competitivo.
 
 **Ranking diário/semanal:** calcula o XP ganho no período a partir de eventos que
 concedem XP, inicialmente `ACTION_REDEEM`, dentro da janela solicitada.
@@ -592,7 +597,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | `/login` | público | formulário CPF + email em dark mode arcade tech |
 | `/cadastro` | público | cadastro com nome, CPF e email; faz login automático após sucesso |
 | `/home` | autenticado | central do participante com nome, nível, XP, pontos e atalhos |
-| `/ranking` | autenticado | leaderboard (a implementar) |
+| `/ranking` | autenticado | leaderboard geral por XP |
 | `/lojinha` | autenticado | catálogo e resgate de recompensas (a implementar) |
 | `/admin` | `ADMIN` | formulário administrativo mínimo para criar actions com código |
 
@@ -628,7 +633,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | 6 | **Migrar auth para cookie httpOnly** | ✅ |
 | 7 | **Frontend mínimo: login + cadastro + home + sessão** | ✅ |
 | 8 | **Campo `code` na Action + resgate por código reutilizável** | ✅ |
-| 9 | **Ranking geral por `User.xp`** | ❌ |
+| 9 | **Ranking geral por `User.xp`** | ✅ |
 | 10 | **Ranking diário/semanal por XP ganho no período** | ❌ |
 | 11 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |
 | 12 | **ClaimCode: códigos de uso único** | ❌ |

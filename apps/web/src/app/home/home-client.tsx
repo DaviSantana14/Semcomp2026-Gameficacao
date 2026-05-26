@@ -175,7 +175,11 @@ export function HomeClient() {
               <CardDescription>Fluxos principais do evento</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
-              <Button className="justify-start" disabled variant="secondary">
+              <Button
+                className="justify-start"
+                onClick={() => router.push("/ranking")}
+                variant="secondary"
+              >
                 <Medal aria-hidden="true" data-icon="inline-start" />
                 Ranking
               </Button>
