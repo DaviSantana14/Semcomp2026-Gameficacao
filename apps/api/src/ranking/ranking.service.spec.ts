@@ -241,7 +241,7 @@ describe('RankingService', () => {
     ]);
 
     const result = await service.getRanking('user-current', {
-      limit: '2',
+      limit: '3',
       period: 'daily',
     });
 
@@ -265,6 +265,47 @@ describe('RankingService', () => {
         { position: 2, name: 'Mary Jackson', xp: 20 },
       ],
       me: { position: 2, name: 'Mary Jackson', xp: 20 },
+    });
+  });
+
+  it('returns an empty period top list while preserving current participant position with zero xp', async () => {
+    const { service, prisma } = createService();
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-05-20T15:00:00.000Z'));
+
+    prisma.user.findMany.mockResolvedValue([
+      createUser(
+        'user-current',
+        'Mary Jackson',
+        50,
+        new Date('2026-05-17T11:00:00.000Z'),
+      ),
+      createUser(
+        'user-other',
+        'Ada Lovelace',
+        100,
+        new Date('2026-05-17T10:00:00.000Z'),
+      ),
+    ]);
+    prisma.user.findFirst.mockResolvedValue(
+      createUser(
+        'user-current',
+        'Mary Jackson',
+        50,
+        new Date('2026-05-17T11:00:00.000Z'),
+      ),
+    );
+    prisma.pointEvent.groupBy.mockResolvedValue([]);
+
+    const result = await service.getRanking('user-current', {
+      limit: '10',
+      period: 'daily',
+    });
+
+    expect(result).toEqual({
+      ranking: [],
+      me: { position: 2, name: 'Mary Jackson', xp: 0 },
     });
   });
 

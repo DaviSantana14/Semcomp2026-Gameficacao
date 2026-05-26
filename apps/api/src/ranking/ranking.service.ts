@@ -167,8 +167,9 @@ export class RankingService {
         xp: xpByUserId.get(user.id) ?? 0,
       }))
       .sort(compareRankingUsers);
+    const rankedUsersWithPeriodXp = rankedUsers.filter((user) => user.xp > 0);
 
-    const ranking = rankedUsers
+    const ranking = rankedUsersWithPeriodXp
       .slice(0, limit)
       .map((user, index) => toRankingEntry(user, index + 1));
 
