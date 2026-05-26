@@ -31,10 +31,10 @@ export class RankingController {
   @ApiQuery({
     name: 'period',
     required: false,
-    enum: ['daily', 'weekly', 'all'],
+    enum: ['daily', 'all'],
     example: 'all',
     description:
-      'Período do ranking. all usa XP acumulado; daily e weekly usam XP ganho no período.',
+      'Período do ranking. all usa XP acumulado; daily usa XP ganho no dia.',
   })
   @ApiOkResponse({ type: RankingResponseDto })
   @ApiBadRequestResponse({
@@ -42,7 +42,7 @@ export class RankingController {
     type: HttpErrorResponseDto,
     example: {
       statusCode: 400,
-      message: 'limit deve ser um inteiro entre 1 e 50.',
+      message: 'period deve ser daily ou all.',
       error: 'Bad Request',
     },
   })

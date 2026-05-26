@@ -69,10 +69,6 @@ describe('RankingService', () => {
     });
 
     expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: {
-        role: UserRole.PARTICIPANT,
-        isActive: true,
-      },
       select: {
         id: true,
         name: true,
@@ -80,6 +76,11 @@ describe('RankingService', () => {
         createdAt: true,
       },
       orderBy: [{ xp: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      where: {
+        role: UserRole.PARTICIPANT,
+        isActive: true,
+        xp: { gt: 0 },
+      },
       take: 3,
     });
     expect(result).toEqual({
@@ -89,6 +90,45 @@ describe('RankingService', () => {
         { position: 3, name: 'Katherine Johnson', xp: 100 },
       ],
       me: { position: 1, name: 'Grace Hopper', xp: 200 },
+    });
+  });
+
+  it('keeps the current participant visible in general ranking when they have zero xp', async () => {
+    const { service, prisma } = createService();
+    const currentUser = createUser(
+      'user-current',
+      'Mary Jackson',
+      0,
+      new Date('2026-05-17T13:00:00.000Z'),
+    );
+
+    prisma.user.findMany.mockResolvedValue([
+      createUser('user-1', 'Grace Hopper', 200),
+      createUser('user-2', 'Ada Lovelace', 150),
+    ]);
+    prisma.user.findFirst.mockResolvedValue(currentUser);
+    prisma.user.count.mockResolvedValue(2);
+
+    const result = await service.getRanking('user-current', {
+      limit: '10',
+      period: 'all',
+    });
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          role: UserRole.PARTICIPANT,
+          isActive: true,
+          xp: { gt: 0 },
+        },
+      }),
+    );
+    expect(result).toEqual({
+      ranking: [
+        { position: 1, name: 'Grace Hopper', xp: 200 },
+        { position: 2, name: 'Ada Lovelace', xp: 150 },
+      ],
+      me: { position: 3, name: 'Mary Jackson', xp: 0 },
     });
   });
 
@@ -105,6 +145,7 @@ describe('RankingService', () => {
         where: {
           role: UserRole.PARTICIPANT,
           isActive: true,
+          xp: { gt: 0 },
         },
         take: 10,
       }),
@@ -309,66 +350,14 @@ describe('RankingService', () => {
     });
   });
 
-  it('returns weekly ranking from action redeem credits since Monday in Sao Paulo', async () => {
-    const { service, prisma } = createService();
-
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-05-21T15:00:00.000Z'));
-
-    prisma.user.findMany.mockResolvedValue([
-      createUser(
-        'user-current',
-        'Mary Jackson',
-        50,
-        new Date('2026-05-17T11:00:00.000Z'),
-      ),
-      createUser(
-        'user-high',
-        'Grace Hopper',
-        100,
-        new Date('2026-05-17T10:00:00.000Z'),
-      ),
-      createUser('user-zero', 'Ada Lovelace', 80),
-    ]);
-    prisma.user.findFirst.mockResolvedValue(
-      createUser(
-        'user-current',
-        'Mary Jackson',
-        50,
-        new Date('2026-05-17T11:00:00.000Z'),
-      ),
-    );
-    prisma.pointEvent.groupBy.mockResolvedValue([
-      { userId: 'user-current', _sum: { points: 60 } },
-      { userId: 'user-high', _sum: { points: 60 } },
-    ]);
-
-    const result = await service.getRanking('user-current', {
-      limit: '1',
-      period: 'weekly',
-    });
-
-    expect(prisma.pointEvent.groupBy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          createdAt: {
-            gte: new Date('2026-05-18T03:00:00.000Z'),
-            lt: new Date('2026-05-25T03:00:00.000Z'),
-          },
-        }),
-      }),
-    );
-    expect(result).toEqual({
-      ranking: [{ position: 1, name: 'Grace Hopper', xp: 60 }],
-      me: { position: 2, name: 'Mary Jackson', xp: 60 },
-    });
-  });
-
   it('rejects invalid period values', async () => {
     const { service } = createService();
 
     await expect(
       service.getRanking('user-1', { limit: '10', period: 'monthly' }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.getRanking('user-1', { limit: '10', period: 'weekly' }),
     ).rejects.toThrow(BadRequestException);
   });
 });

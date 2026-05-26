@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 const RANKING_TIME_ZONE = 'America/Sao_Paulo';
-const RANKING_PERIODS = ['all', 'daily', 'weekly'] as const;
+const RANKING_PERIODS = ['all', 'daily'] as const;
 
 const rankingUserSelect = {
   id: true,
@@ -63,7 +63,10 @@ export class RankingService {
 
     const [rankingUsers, currentUser] = await Promise.all([
       this.prisma.user.findMany({
-        where: eligibilityWhere,
+        where: {
+          ...eligibilityWhere,
+          xp: { gt: 0 },
+        },
         select: rankingUserSelect,
         orderBy,
         take: limit,
@@ -127,7 +130,7 @@ export class RankingService {
   private async getPeriodRanking(
     userId: string,
     limitQuery: string | undefined,
-    period: Exclude<RankingPeriod, 'all'>,
+    period: 'daily',
   ) {
     const limit = this.parseLimit(limitQuery);
     const window = getPeriodWindow(period, new Date());
@@ -173,7 +176,9 @@ export class RankingService {
       .slice(0, limit)
       .map((user, index) => toRankingEntry(user, index + 1));
 
-    const currentUserIndex = rankedUsers.findIndex((user) => user.id === userId);
+    const currentUserIndex = rankedUsers.findIndex(
+      (user) => user.id === userId,
+    );
 
     return {
       ranking,
@@ -209,7 +214,7 @@ export class RankingService {
       return periodQuery as RankingPeriod;
     }
 
-    throw new BadRequestException('period deve ser daily, weekly ou all.');
+    throw new BadRequestException('period deve ser daily ou all.');
   }
 }
 
@@ -218,7 +223,8 @@ function compareRankingUsers(left: RankingUser, right: RankingUser) {
     return right.xp - left.xp;
   }
 
-  const createdAtDifference = left.createdAt.getTime() - right.createdAt.getTime();
+  const createdAtDifference =
+    left.createdAt.getTime() - right.createdAt.getTime();
 
   if (createdAtDifference !== 0) {
     return createdAtDifference;
@@ -227,23 +233,12 @@ function compareRankingUsers(left: RankingUser, right: RankingUser) {
   return left.id.localeCompare(right.id);
 }
 
-function getPeriodWindow(period: Exclude<RankingPeriod, 'all'>, now: Date) {
+function getPeriodWindow(period: 'daily', now: Date) {
   const startOfToday = getZonedStartOfDayUtc(now, RANKING_TIME_ZONE);
 
-  if (period === 'daily') {
-    return {
-      start: startOfToday,
-      end: addUtcDays(startOfToday, 1),
-    };
-  }
-
-  const dayOfWeek = getZonedDayOfWeek(startOfToday, RANKING_TIME_ZONE);
-  const daysSinceMonday = (dayOfWeek + 6) % 7;
-  const startOfWeek = addUtcDays(startOfToday, -daysSinceMonday);
-
   return {
-    start: startOfWeek,
-    end: addUtcDays(startOfWeek, 7),
+    start: startOfToday,
+    end: addUtcDays(startOfToday, 1),
   };
 }
 
@@ -255,15 +250,6 @@ function getZonedStartOfDayUtc(date: Date, timeZone: string) {
   const offset = getTimeZoneOffsetInMs(utcApproximation, timeZone);
 
   return new Date(utcApproximation.getTime() - offset);
-}
-
-function getZonedDayOfWeek(date: Date, timeZone: string) {
-  const weekDay = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-  }).format(date);
-
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekDay);
 }
 
 function getZonedParts(date: Date, timeZone: string) {
