@@ -118,7 +118,12 @@ export function AdminClient() {
       isActive: true,
     },
   });
-  const { data: pendingRedemptions, isLoading: isPendingLoading } = useQuery({
+  const {
+    data: pendingRedemptions,
+    error: pendingRedemptionsError,
+    isLoading: isPendingLoading,
+    refetch: refetchPendingRedemptions,
+  } = useQuery({
     enabled: user?.role === "ADMIN",
     queryKey: ["admin", "redemptions", "pending"],
     queryFn: fetchPendingRedemptions,
@@ -490,6 +495,26 @@ export function AdminClient() {
             {isPendingLoading ? (
               <div className="rounded-lg border border-border bg-muted/45 p-4 text-sm text-muted-foreground">
                 Carregando entregas pendentes...
+              </div>
+            ) : pendingRedemptionsError ? (
+              <div className="grid gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm">
+                <div>
+                  <p className="font-bold text-destructive">
+                    Nao foi possivel carregar as entregas pendentes.
+                  </p>
+                  <p className="text-muted-foreground">
+                    {pendingRedemptionsError instanceof ApiError
+                      ? pendingRedemptionsError.message
+                      : "Tente novamente em instantes."}
+                  </p>
+                </div>
+                <Button
+                  className="w-full md:w-fit"
+                  onClick={() => void refetchPendingRedemptions()}
+                  variant="outline"
+                >
+                  Tentar novamente
+                </Button>
               </div>
             ) : pendingRedemptions && pendingRedemptions.length > 0 ? (
               pendingRedemptions.map((redemption) => (
