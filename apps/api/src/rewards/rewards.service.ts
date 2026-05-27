@@ -120,6 +120,7 @@ export class RewardsService {
       const rewardUpdate = await tx.reward.updateMany({
         where: {
           id: reward.id,
+          isActive: true,
           stock: { gt: 0 },
         },
         data: {
@@ -128,7 +129,7 @@ export class RewardsService {
       });
 
       if (rewardUpdate.count === 0) {
-        throw new BadRequestException('Esta recompensa está esgotada.');
+        throw new BadRequestException('Esta recompensa está indisponível.');
       }
 
       const redemption = await tx.rewardRedemption.create({

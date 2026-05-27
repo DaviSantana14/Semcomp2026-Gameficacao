@@ -98,6 +98,7 @@ describe('RewardsService', () => {
       expect(tx.reward.updateMany).toHaveBeenCalledWith({
         where: {
           id: 'reward-1',
+          isActive: true,
           stock: { gt: 0 },
         },
         data: {
@@ -157,6 +158,30 @@ describe('RewardsService', () => {
         BadRequestException,
       );
       expect(tx.rewardRedemption.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects redeem when reward is deactivated concurrently', async () => {
+      const { service, tx } = createService();
+
+      tx.reward.findUnique.mockResolvedValue(activeReward);
+      tx.user.updateMany.mockResolvedValue({ count: 1 });
+      tx.reward.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.redeem('reward-1', 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(tx.reward.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'reward-1',
+          isActive: true,
+          stock: { gt: 0 },
+        },
+        data: {
+          stock: { decrement: 1 },
+        },
+      });
+      expect(tx.rewardRedemption.create).not.toHaveBeenCalled();
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
     });
   });
 
