@@ -183,7 +183,11 @@ export function HomeClient() {
                 <Medal aria-hidden="true" data-icon="inline-start" />
                 Ranking
               </Button>
-              <Button className="justify-start" disabled variant="secondary">
+              <Button
+                className="justify-start"
+                onClick={() => router.push("/lojinha")}
+                variant="secondary"
+              >
                 <ShoppingBag aria-hidden="true" data-icon="inline-start" />
                 Lojinha
               </Button>

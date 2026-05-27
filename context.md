@@ -132,8 +132,10 @@ cumpre esse papel).
 ### Relações
 - `User` --< `PointEvent` (cascade delete)
 - `Action` --< `PointEvent` (set null on delete)
+- `User` --< `RewardRedemption` (cascade delete)
+- `Reward` --< `RewardRedemption` (restrict delete)
 
-### Models a implementar
+### Models de lojinha
 
 #### `Reward` (recompensa da lojinha)
 
@@ -167,6 +169,8 @@ reduz `stock` do `Reward`, cria `RewardRedemption` com status `PENDING` e
 acessa painel de pedidos pendentes, entrega o item físico e clica em "Entregue"
 → status muda para `DELIVERED`. Cancelamento reverte `points` e `stock`,
 cria `PointEvent` de estorno (`CREDIT`).
+
+### Models a implementar
 
 #### `ClaimCode` (código de uso único)
 
@@ -260,7 +264,7 @@ o JWT. Não retorna token JWT no body.
 | `POST` | `/actions/:id/redeem` | autenticado | resgatar ação por id (uso interno/admin) |
 | `POST` | `/actions/redeem-code` | autenticado | resgatar ação por código reutilizável |
 
-### Admin (protegido, ADMIN only — a implementar)
+### Admin (protegido, ADMIN only — parcialmente implementado)
 
 Rotas cross-domain e de gestão centralizada no `AdminModule`.
 
@@ -270,6 +274,7 @@ Rotas cross-domain e de gestão centralizada no `AdminModule`.
 | `POST` | `/admin/actions/:id/claim-codes/generate` | gerar lote de códigos de uso único |
 | `GET` | `/admin/redemptions/pending` | pedidos da lojinha aguardando entrega |
 | `PATCH` | `/admin/redemptions/:id/deliver` | marcar pedido como entregue |
+| `PATCH` | `/admin/redemptions/:id/cancel` | cancelar pedido pendente e devolver saldo/estoque |
 
 Rotas admin de CRUD (ex: `POST /actions`, `GET /users`) permanecem nos seus
 módulos de domínio. Apenas operações que agregam múltiplos domínios ou não
@@ -300,7 +305,7 @@ lojinha, débitos e estornos/cancelamentos de rewards não entram no ranking.
 de bônus, ajustes administrativos ou regras diferentes de ganho de XP. Não é
 requisito para o MVP.
 
-### Rewards (protegido — a implementar)
+### Rewards (protegido)
 
 | método | rota | acesso | descrição |
 |--------|------|--------|-----------|
@@ -468,7 +473,7 @@ apenas `points`; cancelamentos de rewards devolvem apenas `points` e `stock`.
 **Decisão:** participante resgata sozinho no app; staff da lojinha marca como entregue.
 **Motivo:** evita fila e gargalo operacional, mas mantém controle de retirada física.
 Cancelamento reverte `points` e `stock`, sem alterar `xp`.
-**Modelo (a implementar):** `RewardRedemption` com `status: PENDING | DELIVERED | CANCELLED`.
+**Modelo:** `RewardRedemption` com `status: PENDING | DELIVERED | CANCELLED`.
 
 ### 12. Códigos de resgate: reutilizáveis + uso único
 **Decisão:** dois mecanismos diferentes.
@@ -596,8 +601,8 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | `/cadastro` | público | cadastro com nome, CPF e email; faz login automático após sucesso |
 | `/home` | autenticado | central do participante com nome, nível, XP, pontos e atalhos |
 | `/ranking` | autenticado | leaderboard geral por XP |
-| `/lojinha` | autenticado | catálogo e resgate de recompensas (a implementar) |
-| `/admin` | `ADMIN` | formulário administrativo mínimo para criar actions com código |
+| `/lojinha` | autenticado | catálogo e resgate de recompensas |
+| `/admin` | `ADMIN` | operação mínima para actions, rewards e entregas pendentes |
 
 ### Layout da Home
 
@@ -605,7 +610,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 - bloco principal com identidade do participante e botão de resgate de código
 - cards de status: `PTS` como moeda da loja, `XP` como ranking e `LVL` como nível
 - barra de progresso do nível atual
-- atalhos para Ranking e Lojinha ainda desabilitados até os módulos existirem
+- atalhos para Ranking, Lojinha e Admin quando aplicável
 
 ### Decisões de sessão no frontend
 
@@ -633,7 +638,7 @@ no backend com `JwtAuthGuard` e `RolesGuard`.
 | 8 | **Campo `code` na Action + resgate por código reutilizável** | ✅ |
 | 9 | **Ranking geral por `User.xp`** | ✅ |
 | 10 | **Ranking diário por XP ganho no dia** | ✅ |
-| 11 | **Rewards: modelo, catálogo, resgate, entrega** | ❌ |
+| 11 | **Rewards: modelo, catálogo, resgate, entrega** | ✅ |
 | 12 | **ClaimCode: códigos de uso único** | ❌ |
 | 13 | **AdminModule + admin dashboard** | ❌ |
 | 14 | **Frontend: ranking + lojinha + admin dashboard** | ❌ |

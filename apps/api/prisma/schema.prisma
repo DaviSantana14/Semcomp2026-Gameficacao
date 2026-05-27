@@ -38,20 +38,27 @@ enum PointEventSource {
   REWARD_REDEMPTION
 }
 
+enum RedemptionStatus {
+  PENDING
+  DELIVERED
+  CANCELLED
+}
+
 model User {
-  id          String    @id @default(cuid())
-  name        String
-  cpf         String    @unique
-  email       String    @unique
-  role        UserRole  @default(PARTICIPANT)
-  points      Int       @default(0)
-  xp          Int       @default(0)
-  level       Int       @default(1)
-  isActive    Boolean   @default(true)
-  lastLoginAt DateTime?
-  pointEvents PointEvent[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                String             @id @default(cuid())
+  name              String
+  cpf               String             @unique
+  email             String             @unique
+  role              UserRole           @default(PARTICIPANT)
+  points            Int                @default(0)
+  xp                Int                @default(0)
+  level             Int                @default(1)
+  isActive          Boolean            @default(true)
+  lastLoginAt       DateTime?
+  pointEvents       PointEvent[]
+  rewardRedemptions RewardRedemption[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }
 
 model Action {
@@ -81,5 +88,35 @@ model PointEvent {
 
   @@index([userId])
   @@index([actionId])
+  @@index([createdAt])
+}
+
+model Reward {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  costInPoints Int
+  stock       Int
+  isActive    Boolean            @default(true)
+  imageUrl    String?
+  redemptions RewardRedemption[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model RewardRedemption {
+  id          String           @id @default(cuid())
+  userId      String
+  rewardId    String
+  pointsSpent Int
+  status      RedemptionStatus @default(PENDING)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reward      Reward           @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([rewardId])
+  @@index([status])
   @@index([createdAt])
 }

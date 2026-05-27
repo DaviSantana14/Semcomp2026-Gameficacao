@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RankingModule } from './ranking/ranking.module';
+import { RewardsModule } from './rewards/rewards.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     ActionsModule,
     RankingModule,
+    RewardsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
