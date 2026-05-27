@@ -85,6 +85,47 @@ export type RankingResponse = {
   me: RankingEntry | null;
 };
 
+export type RedemptionStatus = "PENDING" | "DELIVERED" | "CANCELLED";
+
+export type Reward = {
+  id: string;
+  name: string;
+  description: string | null;
+  costInPoints: number;
+  stock: number;
+  isActive: boolean;
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RewardRedemption = {
+  id: string;
+  userId: string;
+  rewardId: string;
+  pointsSpent: number;
+  status: RedemptionStatus;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  reward: Reward;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateRewardPayload = {
+  name: string;
+  description?: string;
+  costInPoints: number;
+  stock: number;
+  isActive?: boolean;
+  imageUrl?: string;
+};
+
+export type UpdateRewardPayload = Partial<CreateRewardPayload>;
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -210,6 +251,50 @@ export async function createAction(payload: CreateActionPayload) {
   return apiFetch<Action>("/actions", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchRewards() {
+  return apiFetch<Reward[]>("/rewards");
+}
+
+export async function fetchReward(id: string) {
+  return apiFetch<Reward>(`/rewards/${id}`);
+}
+
+export async function createReward(payload: CreateRewardPayload) {
+  return apiFetch<Reward>("/rewards", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateReward(id: string, payload: UpdateRewardPayload) {
+  return apiFetch<Reward>(`/rewards/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function redeemReward(id: string) {
+  return apiFetch<RewardRedemption>(`/rewards/${id}/redeem`, {
+    method: "POST",
+  });
+}
+
+export async function fetchPendingRedemptions() {
+  return apiFetch<RewardRedemption[]>("/admin/redemptions/pending");
+}
+
+export async function deliverRedemption(id: string) {
+  return apiFetch<RewardRedemption>(`/admin/redemptions/${id}/deliver`, {
+    method: "PATCH",
+  });
+}
+
+export async function cancelRedemption(id: string) {
+  return apiFetch<RewardRedemption>(`/admin/redemptions/${id}/cancel`, {
+    method: "PATCH",
   });
 }
 
