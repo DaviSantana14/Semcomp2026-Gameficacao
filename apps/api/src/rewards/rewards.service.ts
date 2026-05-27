@@ -171,11 +171,22 @@ export class RewardsService {
 
       assertPendingRedemption(redemption);
 
-      return tx.rewardRedemption.update({
+      await transitionPendingRedemption(
+        tx.rewardRedemption,
+        redemptionId,
+        RedemptionStatus.DELIVERED,
+      );
+
+      const delivered = await tx.rewardRedemption.findUnique({
         where: { id: redemptionId },
-        data: { status: RedemptionStatus.DELIVERED },
         include: redemptionInclude,
       });
+
+      if (!delivered) {
+        throw new NotFoundException('Resgate de recompensa não encontrado.');
+      }
+
+      return delivered;
     });
   }
 
@@ -188,11 +199,11 @@ export class RewardsService {
 
       assertPendingRedemption(redemption);
 
-      const cancelled = await tx.rewardRedemption.update({
-        where: { id: redemptionId },
-        data: { status: RedemptionStatus.CANCELLED },
-        include: redemptionInclude,
-      });
+      await transitionPendingRedemption(
+        tx.rewardRedemption,
+        redemptionId,
+        RedemptionStatus.CANCELLED,
+      );
 
       await tx.user.update({
         where: { id: redemption.userId },
@@ -214,6 +225,15 @@ export class RewardsService {
         },
       });
 
+      const cancelled = await tx.rewardRedemption.findUnique({
+        where: { id: redemptionId },
+        include: redemptionInclude,
+      });
+
+      if (!cancelled) {
+        throw new NotFoundException('Resgate de recompensa não encontrado.');
+      }
+
       return cancelled;
     });
   }
@@ -228,6 +248,28 @@ function normalizeRewardInput(input: CreateRewardDto | UpdateRewardDto) {
     imageUrl: normalizeOptionalText(input.imageUrl),
     isActive: input.isActive,
   };
+}
+
+async function transitionPendingRedemption(
+  rewardRedemption: {
+    updateMany: (args: {
+      where: { id: string; status: RedemptionStatus };
+      data: { status: RedemptionStatus };
+    }) => Promise<{ count: number }>;
+  },
+  redemptionId: string,
+  status: RedemptionStatus,
+) {
+  const result = await rewardRedemption.updateMany({
+    where: { id: redemptionId, status: RedemptionStatus.PENDING },
+    data: { status },
+  });
+
+  if (result.count === 0) {
+    throw new BadRequestException(
+      'Apenas resgates pendentes podem mudar de status.',
+    );
+  }
 }
 
 function normalizeOptionalText(value: string | null | undefined) {

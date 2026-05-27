@@ -41,6 +41,7 @@ function createService() {
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     pointEvent: {
       create: jest.fn(),
@@ -164,29 +165,22 @@ describe('RewardsService', () => {
       const { service, tx } = createService();
 
       tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
-      tx.rewardRedemption.update.mockResolvedValue({
-        ...pendingRedemption,
-        status: 'CANCELLED',
-      });
+      tx.rewardRedemption.updateMany.mockResolvedValue({ count: 1 });
+      tx.rewardRedemption.findUnique
+        .mockResolvedValueOnce(pendingRedemption)
+        .mockResolvedValueOnce({
+          ...pendingRedemption,
+          status: 'CANCELLED',
+        });
       tx.user.update.mockResolvedValue(undefined);
       tx.reward.update.mockResolvedValue(undefined);
       tx.pointEvent.create.mockResolvedValue(undefined);
 
       await service.cancelRedemption('redemption-1');
 
-      expect(tx.rewardRedemption.update).toHaveBeenCalledWith({
-        where: { id: 'redemption-1' },
+      expect(tx.rewardRedemption.updateMany).toHaveBeenCalledWith({
+        where: { id: 'redemption-1', status: 'PENDING' },
         data: { status: 'CANCELLED' },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-          reward: true,
-        },
       });
       expect(tx.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
@@ -218,6 +212,20 @@ describe('RewardsService', () => {
       await expect(service.cancelRedemption('redemption-1')).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('does not refund points or stock when cancel loses a status race', async () => {
+      const { service, tx } = createService();
+
+      tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
+      tx.rewardRedemption.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.cancelRedemption('redemption-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(tx.reward.update).not.toHaveBeenCalled();
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
     });
   });
 
@@ -282,17 +290,34 @@ describe('RewardsService', () => {
 
   it('marks pending redemptions as delivered', async () => {
     const { service, tx } = createService();
-    tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
-    tx.rewardRedemption.update.mockResolvedValue({
-      ...pendingRedemption,
-      status: 'DELIVERED',
-    });
+    tx.rewardRedemption.findUnique
+      .mockResolvedValueOnce(pendingRedemption)
+      .mockResolvedValueOnce({
+        ...pendingRedemption,
+        status: 'DELIVERED',
+      });
+    tx.rewardRedemption.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
       service.deliverRedemption('redemption-1'),
     ).resolves.toMatchObject({
       status: 'DELIVERED',
     });
+    expect(tx.rewardRedemption.updateMany).toHaveBeenCalledWith({
+      where: { id: 'redemption-1', status: 'PENDING' },
+      data: { status: 'DELIVERED' },
+    });
+  });
+
+  it('rejects deliver when it loses a status race', async () => {
+    const { service, tx } = createService();
+    tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
+    tx.rewardRedemption.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.deliverRedemption('redemption-1')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(tx.rewardRedemption.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it('throws NotFoundException when reward does not exist', async () => {
