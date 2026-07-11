@@ -62,6 +62,16 @@ export type CreateActionPayload = {
   isActive?: boolean;
 };
 
+export type GenerateClaimCodesPayload = {
+  quantity: number;
+};
+
+export type GeneratedClaimCodesResponse = {
+  action: Pick<Action, "id" | "name">;
+  quantity: number;
+  codes: string[];
+};
+
 export type RedeemActionResponse = {
   message: string;
   action: Action;
@@ -252,6 +262,23 @@ export async function createAction(payload: CreateActionPayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchActions(): Promise<Action[]> {
+  return apiFetch<Action[]>("/actions");
+}
+
+export async function generateClaimCodes(
+  actionId: string,
+  payload: GenerateClaimCodesPayload,
+): Promise<GeneratedClaimCodesResponse> {
+  return apiFetch<GeneratedClaimCodesResponse>(
+    `/admin/actions/${actionId}/claim-codes/generate`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function fetchRewards() {
