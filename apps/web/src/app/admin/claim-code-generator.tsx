@@ -172,6 +172,10 @@ export function ClaimCodeGenerator() {
               <div className="flex flex-col gap-2">
                 <Label htmlFor="claim-code-action">Atividade</Label>
                 <select
+                  aria-describedby={
+                    errors.actionId ? "claim-code-action-error" : undefined
+                  }
+                  aria-invalid={Boolean(errors.actionId)}
                   id="claim-code-action"
                   className="min-h-11 rounded-md border border-input bg-muted/70 px-3 py-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                   {...register("actionId")}
@@ -184,7 +188,11 @@ export function ClaimCodeGenerator() {
                   ))}
                 </select>
                 {errors.actionId ? (
-                  <p className="text-sm font-medium text-destructive">
+                  <p
+                    className="text-sm font-medium text-destructive"
+                    id="claim-code-action-error"
+                    role="alert"
+                  >
                     {errors.actionId.message}
                   </p>
                 ) : null}
@@ -192,6 +200,10 @@ export function ClaimCodeGenerator() {
               <div className="flex flex-col gap-2">
                 <Label htmlFor="claim-code-quantity">Quantidade</Label>
                 <Input
+                  aria-describedby={
+                    errors.quantity ? "claim-code-quantity-error" : undefined
+                  }
+                  aria-invalid={Boolean(errors.quantity)}
                   id="claim-code-quantity"
                   inputMode="numeric"
                   max={500}
@@ -200,7 +212,11 @@ export function ClaimCodeGenerator() {
                   {...register("quantity")}
                 />
                 {errors.quantity ? (
-                  <p className="text-sm font-medium text-destructive">
+                  <p
+                    className="text-sm font-medium text-destructive"
+                    id="claim-code-quantity-error"
+                    role="alert"
+                  >
                     {errors.quantity.message}
                   </p>
                 ) : null}
