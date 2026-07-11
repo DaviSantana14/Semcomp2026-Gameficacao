@@ -7,6 +7,7 @@ import { generateClaimCode } from '../common/event-code';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MAX_GENERATION_ROUNDS = 5;
+const MAX_GENERATION_ATTEMPTS_PER_CODE = 10;
 
 @Injectable()
 export class ClaimCodesService {
@@ -31,8 +32,14 @@ export class ClaimCodesService {
     ) {
       const remaining = quantity - insertedCodes.length;
       const candidates = new Set<string>();
+      const maxGenerationAttempts =
+        remaining * MAX_GENERATION_ATTEMPTS_PER_CODE;
 
-      while (candidates.size < remaining) {
+      for (
+        let attempt = 0;
+        attempt < maxGenerationAttempts && candidates.size < remaining;
+        attempt += 1
+      ) {
         candidates.add(generateClaimCode());
       }
 
