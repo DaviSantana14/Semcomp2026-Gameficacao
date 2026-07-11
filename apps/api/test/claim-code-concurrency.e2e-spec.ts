@@ -1,12 +1,15 @@
 import { ConflictException, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PointEventKind, PointEventSource } from '@prisma/client';
+import { PointEventKind, PointEventSource, Prisma } from '@prisma/client';
+import type { User } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { ActionsService } from '../src/actions/actions.service';
 import { AppModule } from '../src/app.module';
 import { generateClaimCode } from '../src/common/event-code';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Claim code transactional guarantees (e2e)', () => {
+  const claimCodeCreationAttempts = 10;
   let app: INestApplication;
   let actionsService: ActionsService;
   let prisma: PrismaService;
@@ -147,19 +150,20 @@ describe('Claim code transactional guarantees (e2e)', () => {
   });
 
   async function createFixture() {
-    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const users = await Promise.all(
-      [1, 2].map((number) =>
-        prisma.user.create({
-          data: {
-            name: `Concurrency user ${number}`,
-            cpf: `task4-cpf-${number}-${suffix}`,
-            email: `task4-${number}-${suffix}@example.test`,
-          },
-        }),
-      ),
-    );
-    createdUserIds.push(...users.map(({ id }) => id));
+    const suffix = randomUUID();
+    const users: User[] = [];
+
+    for (const number of [1, 2]) {
+      const user = await prisma.user.create({
+        data: {
+          name: `Concurrency user ${number}`,
+          cpf: `task4-cpf-${number}-${suffix}`,
+          email: `task4-${number}-${suffix}@example.test`,
+        },
+      });
+      createdUserIds.push(user.id);
+      users.push(user);
+    }
 
     const action = await prisma.action.create({
       data: {
@@ -171,11 +175,31 @@ describe('Claim code transactional guarantees (e2e)', () => {
     });
     createdActionIds.push(action.id);
 
-    const claimCode = await prisma.claimCode.create({
-      data: { code: generateClaimCode(), actionId: action.id },
-    });
+    const claimCode = await createUniqueClaimCode(action.id);
     createdClaimCodeIds.push(claimCode.id);
 
     return { action, claimCode, users };
+  }
+
+  async function createUniqueClaimCode(actionId: string) {
+    for (let attempt = 0; attempt < claimCodeCreationAttempts; attempt += 1) {
+      try {
+        return await prisma.claimCode.create({
+          data: { code: generateClaimCode(), actionId },
+        });
+      } catch (error) {
+        const isCodeCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002';
+
+        if (!isCodeCollision) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error(
+      `Could not create a unique claim code after ${claimCodeCreationAttempts} attempts.`,
+    );
   }
 });
