@@ -3,7 +3,7 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM "Action"
-        WHERE "code" ~ '^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$'
+        WHERE UPPER("code") ~ '^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$'
     ) THEN
         RAISE EXCEPTION 'Migration aborted: Action.code contains values in the namespace reserved for single-use claim codes.';
     END IF;
@@ -11,7 +11,7 @@ END $$;
 
 ALTER TABLE "Action"
 ADD CONSTRAINT "Action_code_not_claim_code_check"
-CHECK ("code" IS NULL OR "code" !~ '^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$');
+CHECK ("code" IS NULL OR UPPER("code") !~ '^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$');
 
 CREATE TABLE "ClaimCode" (
     "id" TEXT NOT NULL,
