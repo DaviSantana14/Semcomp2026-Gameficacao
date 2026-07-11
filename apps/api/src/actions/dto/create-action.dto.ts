@@ -10,6 +10,10 @@ import {
   IsString,
 } from 'class-validator';
 import { ActionType } from '@prisma/client';
+import {
+  normalizeEventCode,
+  REUSABLE_EVENT_CODE_REGEX,
+} from '../../common/event-code';
 
 export class CreateActionDto {
   @ApiProperty({
@@ -48,19 +52,16 @@ export class CreateActionDto {
     description:
       'Código reutilizável da atividade pontuável. Normalizado para maiúsculas quando informado.',
   })
-  @Transform(({ value }: { value: string | null | undefined }) => {
-    if (value == null) {
-      return undefined;
-    }
-
-    const normalized = value.trim().toUpperCase();
-
-    return normalized.length > 0 ? normalized : undefined;
-  })
+  @Transform(({ value }: { value: string | null | undefined }) =>
+    normalizeEventCode(value),
+  )
   @IsOptional()
   @IsString()
   @Matches(/^[A-Z0-9-]+$/, {
     message: 'code deve conter apenas letras, números e hífen.',
+  })
+  @Matches(REUSABLE_EVENT_CODE_REGEX, {
+    message: 'Este formato é reservado para códigos de uso único.',
   })
   code?: string;
 

@@ -7,6 +7,7 @@ import {
 import { PointEventKind, PointEventSource, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateActionDto } from './dto/create-action.dto';
+import { isClaimCode, normalizeEventCode } from '../common/event-code';
 
 const actionSummarySelect = {
   id: true,
@@ -31,13 +32,21 @@ export class ActionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createActionDto: CreateActionDto) {
+    const normalizedCode = normalizeEventCode(createActionDto.code);
+
+    if (isClaimCode(normalizedCode)) {
+      throw new BadRequestException(
+        'Este formato é reservado para códigos de uso único.',
+      );
+    }
+
     try {
       return await this.prisma.action.create({
         data: {
           name: createActionDto.name,
           description: createActionDto.description,
           type: createActionDto.type,
-          code: normalizeActionCode(createActionDto.code),
+          code: normalizedCode,
           points: createActionDto.points,
           isActive: createActionDto.isActive,
         },
@@ -72,7 +81,7 @@ export class ActionsService {
   }
 
   async redeemByCode(code: string, userId: string) {
-    const normalizedCode = normalizeActionCode(code);
+    const normalizedCode = normalizeEventCode(code);
 
     if (!normalizedCode) {
       throw new NotFoundException('Atividade pontuável não encontrada.');
@@ -151,14 +160,4 @@ export class ActionsService {
       throw error;
     }
   }
-}
-
-function normalizeActionCode(code: string | null | undefined) {
-  if (code == null) {
-    return undefined;
-  }
-
-  const normalized = code.trim().toUpperCase();
-
-  return normalized.length > 0 ? normalized : undefined;
 }

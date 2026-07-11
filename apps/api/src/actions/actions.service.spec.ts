@@ -141,6 +141,26 @@ describe('ActionsService', () => {
       );
     });
 
+    it('rejects the namespace reserved for single-use codes', async () => {
+      const { service, prisma } = createService();
+
+      await expect(
+        service.create({
+          name: 'Check-in Dia 1',
+          description: undefined,
+          type: ActionType.CHECKIN,
+          points: 10,
+          code: ' abcd-efgh ',
+          isActive: true,
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Este formato é reservado para códigos de uso único.',
+        ),
+      );
+      expect(prisma.action.create).not.toHaveBeenCalled();
+    });
+
     it('maps duplicate action code constraint errors to ConflictException', async () => {
       const { service, prisma } = createService();
       prisma.action.create.mockRejectedValue(
