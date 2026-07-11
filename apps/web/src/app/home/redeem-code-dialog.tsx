@@ -64,7 +64,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
     },
     onError: (error) => {
       const message =
-        error instanceof ApiError
+        error instanceof ApiError && [400, 404, 409].includes(error.status)
           ? error.message
           : "Nao foi possivel resgatar este codigo.";
       toast.error(message);
@@ -99,7 +99,8 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
                 Digite o codigo
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                Use o codigo informado no evento para receber points e XP.
+                Use um codigo de atividade ou seu codigo individual para receber
+                points e XP.
               </p>
             </div>
             <Button
@@ -122,12 +123,27 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
               <Input
                 id="redeem-code"
                 autoComplete="off"
-                placeholder="DIA1"
+                placeholder="SEU-CODIGO"
+                aria-describedby={
+                  errors.code
+                    ? "redeem-code-help redeem-code-error"
+                    : "redeem-code-help"
+                }
                 aria-invalid={Boolean(errors.code)}
                 {...register("code")}
               />
+              <p
+                className="text-sm text-muted-foreground"
+                id="redeem-code-help"
+              >
+                Aceita letras, numeros e hifen.
+              </p>
               {errors.code ? (
-                <p className="text-sm font-medium text-destructive">
+                <p
+                  className="text-sm font-medium text-destructive"
+                  id="redeem-code-error"
+                  role="alert"
+                >
                   {errors.code.message}
                 </p>
               ) : null}
