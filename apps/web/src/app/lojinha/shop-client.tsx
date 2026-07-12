@@ -104,17 +104,48 @@ function RewardCard({
 
 export function ShopClient() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const {
     data: user,
     error: userError,
     isLoading: isUserLoading,
   } = useMe();
+
+  useEffect(() => {
+    if (userError instanceof ApiError && userError.status === 401) {
+      router.replace("/login");
+    }
+  }, [router, userError]);
+
+  useEffect(() => {
+    if (user?.role === "ADMIN") {
+      router.replace("/admin/lojinha");
+    }
+  }, [router, user]);
+
+  if (isUserLoading) {
+    return (
+      <main className="arcade-grid min-h-dvh px-4 py-6 md:px-8">
+        <div className="mx-auto h-96 w-full max-w-6xl rounded-lg border border-border bg-card" />
+      </main>
+    );
+  }
+
+  if (!user || user.role !== "PARTICIPANT") {
+    return null;
+  }
+
+  return <ParticipantShop user={user} />;
+}
+
+function ParticipantShop({ user }: { user: import("@/lib/api").User }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const {
     data: rewards,
     error: rewardsError,
     isLoading: isRewardsLoading,
   } = useQuery({
+    enabled: user.role === "PARTICIPANT",
     queryKey: ["rewards"],
     queryFn: fetchRewards,
     retry: false,
@@ -141,22 +172,12 @@ export function ShopClient() {
     },
   });
 
-  useEffect(() => {
-    if (userError instanceof ApiError && userError.status === 401) {
-      router.replace("/login");
-    }
-  }, [router, userError]);
-
-  if (isUserLoading || isRewardsLoading) {
+  if (isRewardsLoading) {
     return (
       <main className="arcade-grid min-h-dvh px-4 py-6 md:px-8">
         <div className="mx-auto h-96 w-full max-w-6xl rounded-lg border border-border bg-card" />
       </main>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   if (rewardsError) {

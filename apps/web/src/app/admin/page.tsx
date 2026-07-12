@@ -1,5 +1,5 @@
-import { AdminClient } from "./admin-client";
+import { DashboardClient } from "./dashboard-client";
 
 export default function AdminPage() {
-  return <AdminClient />;
+  return <DashboardClient />;
 }

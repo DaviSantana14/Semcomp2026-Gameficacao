@@ -19,6 +19,7 @@ const activeAction = {
   code: null,
   points: 10,
   isActive: true,
+  isCodeActive: false,
   createdAt: new Date('2026-05-17T12:00:00.000Z'),
 };
 
@@ -30,6 +31,7 @@ const actionSummarySelect = {
   code: true,
   points: true,
   isActive: true,
+  isCodeActive: true,
   createdAt: true,
 };
 
@@ -49,6 +51,9 @@ function createService() {
   const action = {
     create: jest.fn(),
     findUnique: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+    update: jest.fn(),
   };
 
   const tx = {
@@ -61,6 +66,9 @@ function createService() {
     },
     pointEvent: {
       create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      groupBy: jest.fn(),
     },
     user: {
       update: jest.fn(),
@@ -72,6 +80,12 @@ function createService() {
     claimCode: {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
+      groupBy: jest.fn(),
+    },
+    pointEvent: {
+      findMany: jest.fn(),
+      count: jest.fn(),
+      groupBy: jest.fn(),
     },
     $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
       callback(tx),
@@ -124,6 +138,7 @@ describe('ActionsService', () => {
           points: 10,
           code: 'DIA1',
           isActive: true,
+          isCodeActive: true,
         },
         select: {
           id: true,
@@ -133,6 +148,7 @@ describe('ActionsService', () => {
           code: true,
           points: true,
           isActive: true,
+          isCodeActive: true,
           createdAt: true,
         },
       });
@@ -155,6 +171,7 @@ describe('ActionsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             code: undefined,
+            isCodeActive: false,
           }) as object,
         }),
       );
@@ -196,6 +213,307 @@ describe('ActionsService', () => {
           isActive: true,
         }),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('update', () => {
+    it('preserves an active reusable code state when replacing its code', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: 'OLD',
+        isCodeActive: true,
+      });
+      prisma.action.update.mockResolvedValue({ ...activeAction, code: 'NEW' });
+
+      await service.update('action-1', { name: 'Novo nome', code: ' new ' });
+
+      expect(prisma.action.update).toHaveBeenCalledWith({
+        where: { id: 'action-1' },
+        data: { name: 'Novo nome', code: 'NEW', isCodeActive: true },
+        select: actionSummarySelect,
+      });
+    });
+
+    it('preserves a disabled reusable code state when replacing its code', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: 'OLD',
+        isCodeActive: false,
+      });
+      prisma.action.update.mockResolvedValue({ ...activeAction, code: 'NEW' });
+
+      await service.update('action-1', { code: ' new ' });
+
+      expect(prisma.action.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { code: 'NEW', isCodeActive: false },
+        }),
+      );
+    });
+
+    it('activates a newly assigned code unless an explicit flag overrides it', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: null,
+        isCodeActive: false,
+      });
+      prisma.action.update.mockResolvedValue({ ...activeAction, code: 'NEW' });
+
+      await service.update('action-1', { code: 'NEW' });
+      expect(prisma.action.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: { code: 'NEW', isCodeActive: true },
+        }),
+      );
+
+      await service.update('action-1', {
+        code: 'NEW',
+        isCodeActive: false,
+      });
+      expect(prisma.action.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: { code: 'NEW', isCodeActive: false },
+        }),
+      );
+    });
+
+    it('removes a code with null and deactivates code redemption', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: 'OLD',
+      });
+      prisma.action.update.mockResolvedValue({ ...activeAction, code: null });
+      await service.update('action-1', { code: null });
+      expect(prisma.action.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { code: null, isCodeActive: false } }),
+      );
+    });
+
+    it('forces isCodeActive false when an action has no code', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: null,
+      });
+      prisma.action.update.mockResolvedValue(activeAction);
+      await service.update('action-1', { isCodeActive: true });
+      expect(prisma.action.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { isCodeActive: false } }),
+      );
+    });
+
+    it('rejects claim-code-shaped replacements', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: 'OLD',
+      });
+      await expect(
+        service.update('action-1', { code: 'abcd-efgh' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.action.update).not.toHaveBeenCalled();
+    });
+
+    it('maps duplicate replacement codes to conflict', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: 'OLD',
+      });
+      prisma.action.update.mockRejectedValue(
+        createUniqueConstraintError(['code']),
+      );
+      await expect(service.update('action-1', { code: 'NEW' })).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('throws 404 without attempting an update', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue(null);
+      await expect(service.update('missing', { points: 50 })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.action.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('admin queries', () => {
+    it('paginates and filters actions while loading counters without N+1', async () => {
+      const { service, prisma } = createService();
+      prisma.action.count.mockResolvedValue(1);
+      prisma.action.findMany.mockResolvedValue([activeAction]);
+      prisma.claimCode.groupBy.mockResolvedValue([
+        { actionId: 'action-1', _count: { _all: 3 } },
+      ]);
+      prisma.pointEvent.groupBy.mockResolvedValue([
+        { actionId: 'action-1', _count: { _all: 2 } },
+      ]);
+
+      const result = await service.findAdminActions({
+        page: 2,
+        limit: 10,
+        search: ' check ',
+        status: 'active' as never,
+        type: ActionType.CHECKIN,
+      });
+
+      expect(prisma.action.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            isActive: true,
+            type: ActionType.CHECKIN,
+            OR: [
+              { name: { contains: 'check', mode: 'insensitive' } },
+              { description: { contains: 'check', mode: 'insensitive' } },
+              { code: { contains: 'check', mode: 'insensitive' } },
+            ],
+          },
+          skip: 10,
+          take: 10,
+        }),
+      );
+      expect(result).toEqual({
+        items: [
+          expect.objectContaining({
+            claimCodes: { total: 3, used: 0, available: 0 },
+            redemptionsCount: 2,
+          }),
+        ],
+        meta: { page: 2, limit: 10, total: 1, totalPages: 1 },
+      });
+      expect(prisma.claimCode.groupBy).toHaveBeenCalledTimes(1);
+      expect(prisma.pointEvent.groupBy).toHaveBeenCalledTimes(1);
+    });
+
+    it('lists reusable codes using only reusable-code action redemptions', async () => {
+      const { service, prisma } = createService();
+      prisma.action.count.mockResolvedValue(1);
+      prisma.action.findMany.mockResolvedValue([
+        { ...activeAction, code: 'DIA1', isCodeActive: true },
+      ]);
+      prisma.pointEvent.groupBy.mockResolvedValue([
+        {
+          actionId: 'action-1',
+          _count: { _all: 4 },
+          _max: { createdAt: activeAction.createdAt },
+        },
+      ]);
+
+      const result = await service.findReusableCodes({
+        page: 1,
+        limit: 20,
+        search: ' dia ',
+      });
+
+      expect(prisma.action.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            code: { not: null },
+            OR: [
+              { name: { contains: 'dia', mode: 'insensitive' } },
+              { code: { contains: 'dia', mode: 'insensitive' } },
+            ],
+          },
+        }),
+      );
+
+      expect(prisma.pointEvent.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            actionId: { in: ['action-1'] },
+            source: PointEventSource.ACTION_REDEEM,
+            redemptionMethod: 'REUSABLE_CODE',
+          },
+        }),
+      );
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          status: 'ACTIVE',
+          totalUses: 4,
+          lastUsedAt: activeAction.createdAt.toISOString(),
+        }),
+      );
+    });
+
+    it.each([
+      [{ isActive: true, isCodeActive: true }, 'ACTIVE'],
+      [{ isActive: true, isCodeActive: false }, 'DISABLED'],
+      [{ isActive: false, isCodeActive: true }, 'BLOCKED_BY_ACTION'],
+      [{ isActive: false, isCodeActive: false }, 'DISABLED'],
+    ] as const)('maps reusable-code state %o to %s', async (state, status) => {
+      const { service, prisma } = createService();
+      prisma.action.count.mockResolvedValue(1);
+      prisma.action.findMany.mockResolvedValue([
+        { ...activeAction, code: 'DIA1', ...state },
+      ]);
+      prisma.pointEvent.groupBy.mockResolvedValue([]);
+
+      const result = await service.findReusableCodes({ page: 1, limit: 20 });
+
+      expect(result.items[0]?.status).toBe(status);
+      expect(result.items[0]?.isCodeActive).toBe(state.isCodeActive);
+    });
+
+    it.each([
+      ['active', { code: { not: null }, isActive: true, isCodeActive: true }],
+      ['disabled', { code: { not: null }, isCodeActive: false }],
+      ['blocked', { code: { not: null }, isActive: false, isCodeActive: true }],
+    ] as const)(
+      'uses exact %s reusable-code filter semantics',
+      async (status, where) => {
+        const { service, prisma } = createService();
+        prisma.action.count.mockResolvedValue(0);
+        prisma.action.findMany.mockResolvedValue([]);
+
+        await service.findReusableCodes({ page: 1, limit: 20, status });
+
+        expect(prisma.action.count).toHaveBeenCalledWith({ where });
+        expect(prisma.action.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where }),
+        );
+      },
+    );
+
+    it('returns paginated reusable-code redemptions with participant data', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({ id: 'action-1' });
+      prisma.pointEvent.count.mockResolvedValue(1);
+      prisma.pointEvent.findMany.mockResolvedValue([
+        {
+          id: 'event-1',
+          points: 10,
+          createdAt: activeAction.createdAt,
+          user: {
+            id: 'user-1',
+            name: 'Ana',
+            email: 'ana@example.com',
+            cpf: '123',
+          },
+        },
+      ]);
+
+      const result = await service.findReusableCodeRedemptions('action-1', {
+        page: 1,
+        limit: 20,
+      });
+
+      const reusableWhere = {
+        actionId: 'action-1',
+        source: PointEventSource.ACTION_REDEEM,
+        redemptionMethod: 'REUSABLE_CODE',
+      };
+      expect(prisma.pointEvent.count).toHaveBeenCalledWith({
+        where: reusableWhere,
+      });
+      expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: reusableWhere }),
+      );
+      expect(result.items[0]?.participant.id).toBe('user-1');
     });
   });
 
@@ -256,6 +574,8 @@ describe('ActionsService', () => {
           points: 10,
           kind: 'CREDIT',
           source: 'ACTION_REDEEM',
+          redemptionMethod: 'DIRECT',
+          claimCodeId: undefined,
           description: 'Resgate da atividade: Check-in',
           createdAt: expect.any(Date) as Date,
         },
@@ -312,7 +632,11 @@ describe('ActionsService', () => {
     it('normalizes the code and reuses the action redeem flow', async () => {
       const { service, prisma, tx } = createService();
       prisma.action.findUnique.mockResolvedValue({ id: 'action-1' });
-      tx.action.findUnique.mockResolvedValue(activeAction);
+      tx.action.findUnique.mockResolvedValue({
+        ...activeAction,
+        code: 'DIA1',
+        isCodeActive: true,
+      });
       tx.pointEvent.create.mockResolvedValue(undefined);
       tx.user.update.mockResolvedValue({
         id: 'user-1',
@@ -332,11 +656,13 @@ describe('ActionsService', () => {
           data: expect.objectContaining({
             actionId: 'action-1',
             userId: 'user-1',
+            redemptionMethod: 'REUSABLE_CODE',
+            claimCodeId: undefined,
           }) as object,
         }),
       );
       expect(result).toMatchObject({
-        action: activeAction,
+        action: { ...activeAction, code: 'DIA1', isCodeActive: true },
         awardedPoints: 10,
         currentPoints: 110,
         currentXp: 210,
@@ -380,6 +706,7 @@ describe('ActionsService', () => {
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: true,
+        isActive: false,
         action: activeAction,
       });
 
@@ -389,11 +716,28 @@ describe('ActionsService', () => {
       expect(tx.claimCode.updateMany).not.toHaveBeenCalled();
     });
 
+    it('rejects an inactive claim code without writing', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: false,
+        isActive: false,
+        action: activeAction,
+      });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new BadRequestException('Este código está inativo.'),
+      );
+      expect(tx.claimCode.updateMany).not.toHaveBeenCalled();
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
+    });
+
     it('rejects an inactive action without consuming its claim code', async () => {
       const { service, tx } = createService();
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: false,
+        isActive: true,
         action: { ...activeAction, isActive: false },
       });
 
@@ -405,25 +749,48 @@ describe('ActionsService', () => {
 
     it('maps a lost claim-code compare-and-set to the used-code conflict', async () => {
       const { service, tx } = createService();
-      tx.claimCode.findUnique.mockResolvedValue({
-        id: 'claim-1',
-        isUsed: false,
-        action: activeAction,
-      });
+      tx.claimCode.findUnique
+        .mockResolvedValueOnce({
+          id: 'claim-1',
+          isUsed: false,
+          isActive: true,
+          action: activeAction,
+        })
+        .mockResolvedValueOnce({ isUsed: true, isActive: false });
       tx.claimCode.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
         new ConflictException('Este código já foi utilizado.'),
       );
       expect(tx.claimCode.updateMany).toHaveBeenCalledWith({
-        where: { id: 'claim-1', isUsed: false },
+        where: { id: 'claim-1', isUsed: false, isActive: true },
         data: {
           isUsed: true,
+          isActive: false,
           usedById: 'user-1',
           usedAt: expect.any(Date) as Date,
         },
       });
       expect(tx.pointEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('maps a lost compare-and-set caused by deactivation to bad request', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique
+        .mockResolvedValueOnce({
+          id: 'claim-1',
+          isUsed: false,
+          isActive: true,
+          action: activeAction,
+        })
+        .mockResolvedValueOnce({ isUsed: false, isActive: false });
+      tx.claimCode.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new BadRequestException('Este código está inativo.'),
+      );
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
+      expect(tx.user.update).not.toHaveBeenCalled();
     });
 
     it('atomically consumes a claim code and grants its action', async () => {
@@ -432,6 +799,7 @@ describe('ActionsService', () => {
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: false,
+        isActive: true,
         action: activeAction,
       });
       tx.claimCode.updateMany.mockImplementation(() => {
@@ -454,6 +822,14 @@ describe('ActionsService', () => {
         'pointEvent.create',
         'user.update',
       ]);
+      expect(tx.pointEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            redemptionMethod: 'CLAIM_CODE',
+            claimCodeId: 'claim-1',
+          }) as object,
+        }),
+      );
       expect(result).toMatchObject({
         action: activeAction,
         awardedPoints: 10,
@@ -468,6 +844,7 @@ describe('ActionsService', () => {
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: false,
+        isActive: true,
         action: activeAction,
       });
       tx.claimCode.updateMany.mockResolvedValue({ count: 1 });

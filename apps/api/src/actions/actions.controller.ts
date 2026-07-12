@@ -78,6 +78,7 @@ export class ActionsController {
   }
 
   @Post('redeem-code')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({
     summary: 'Resgatar uma atividade por código reutilizável ou individual',
     description:
@@ -96,6 +97,15 @@ export class ActionsController {
       statusCode: 401,
       message: 'Autenticação necessária ou token inválido.',
       error: 'Unauthorized',
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Resgate permitido apenas para participantes.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 403,
+      message: 'Você não tem permissão para acessar este recurso.',
+      error: 'Forbidden',
     },
   })
   @ApiBadRequestResponse({
@@ -156,6 +166,7 @@ export class ActionsController {
   }
 
   @Post(':id/redeem')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Resgatar uma atividade pontuável' })
   @ApiHeader({
     name: 'X-CSRF-Token',
@@ -199,7 +210,7 @@ export class ActionsController {
     },
   })
   @ApiForbiddenResponse({
-    description: 'Sem permissão para acessar o recurso.',
+    description: 'Resgate permitido apenas para participantes.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 403,

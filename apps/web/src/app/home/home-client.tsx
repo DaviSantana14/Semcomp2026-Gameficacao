@@ -4,7 +4,6 @@ import {
   Coins,
   Medal,
   ScanLine,
-  Shield,
   ShoppingBag,
   Sparkles,
   Trophy,
@@ -24,7 +23,7 @@ import {
 import { LogoutButton } from "@/components/logout-button";
 import { Progress } from "@/components/ui/progress";
 import { useMe } from "@/hooks/use-auth";
-import { ApiError, fetchCsrfToken } from "@/lib/api";
+import { ApiError, fetchCsrfToken, type User } from "@/lib/api";
 import { RedeemCodeDialog } from "./redeem-code-dialog";
 
 function getInitials(name: string) {
@@ -43,7 +42,6 @@ function getLevelProgress(xp: number) {
 export function HomeClient() {
   const router = useRouter();
   const { data: user, error, isLoading } = useMe();
-  const [isRedeemOpen, setIsRedeemOpen] = useState(false);
 
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) {
@@ -52,10 +50,10 @@ export function HomeClient() {
   }, [error, router]);
 
   useEffect(() => {
-    if (user) {
-      void fetchCsrfToken().catch(() => undefined);
+    if (user?.role === "ADMIN") {
+      router.replace("/admin");
     }
-  }, [user]);
+  }, [router, user]);
 
   if (isLoading) {
     return (
@@ -72,9 +70,20 @@ export function HomeClient() {
     );
   }
 
-  if (!user) {
+  if (!user || user.role !== "PARTICIPANT") {
     return null;
   }
+
+  return <ParticipantHome user={user} />;
+}
+
+function ParticipantHome({ user }: { user: User }) {
+  const router = useRouter();
+  const [isRedeemOpen, setIsRedeemOpen] = useState(false);
+
+  useEffect(() => {
+    void fetchCsrfToken().catch(() => undefined);
+  }, []);
 
   const progress = getLevelProgress(user.xp);
 
@@ -191,16 +200,6 @@ export function HomeClient() {
                 <ShoppingBag aria-hidden="true" data-icon="inline-start" />
                 Lojinha
               </Button>
-              {user.role === "ADMIN" ? (
-                <Button
-                  className="justify-start"
-                  onClick={() => router.push("/admin")}
-                  variant="secondary"
-                >
-                  <Shield aria-hidden="true" data-icon="inline-start" />
-                  Admin
-                </Button>
-              ) : null}
             </CardContent>
           </Card>
         </section>

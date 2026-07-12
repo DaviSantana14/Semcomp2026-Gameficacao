@@ -123,6 +123,7 @@ describe('Claim code transactional guarantees (e2e)', () => {
         points: action.points,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
+        redemptionMethod: 'LEGACY_UNKNOWN',
       },
     });
 

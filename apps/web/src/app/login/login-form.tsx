@@ -49,13 +49,13 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginFormValues) {
     try {
-      await login({
+      const response = await login({
         cpf: values.cpf,
         email: values.email.trim().toLowerCase(),
       });
 
       toast.success("Login realizado.");
-      router.replace("/home");
+      router.replace(response.user.role === "ADMIN" ? "/admin" : "/home");
     } catch (error) {
       const message =
         error instanceof ApiError

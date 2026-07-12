@@ -65,6 +65,7 @@ export class RewardsController {
   }
 
   @Get('rewards')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Listar catálogo da lojinha' })
   @ApiOkResponse({ type: RewardResponseDto, isArray: true })
   @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
@@ -75,6 +76,7 @@ export class RewardsController {
   }
 
   @Get('rewards/:id')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Buscar recompensa por id' })
   @ApiOkResponse({ type: RewardResponseDto })
   @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
@@ -111,6 +113,7 @@ export class RewardsController {
   }
 
   @Post('rewards/:id/redeem')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Resgatar recompensa da lojinha' })
   @ApiHeader({
     name: 'X-CSRF-Token',
@@ -118,6 +121,10 @@ export class RewardsController {
   })
   @ApiCreatedResponse({ type: RewardRedemptionResponseDto })
   @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Resgate permitido apenas para participantes.',
+    type: HttpErrorResponseDto,
+  })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   async redeem(

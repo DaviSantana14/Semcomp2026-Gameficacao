@@ -8,14 +8,15 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has("access_token");
   const { pathname } = request.nextUrl;
 
-  if ((pathname === "/login" || pathname === "/cadastro") && hasSession) {
+  if (pathname === "/cadastro" && hasSession) {
     return NextResponse.redirect(new URL("/home", request.url));
   }
 
   if (
     (pathname.startsWith("/home") ||
       pathname.startsWith("/admin") ||
-      pathname.startsWith("/ranking")) &&
+      pathname.startsWith("/ranking") ||
+      pathname.startsWith("/lojinha")) &&
     !hasSession
   ) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -31,5 +32,6 @@ export const config = {
     "/home/:path*",
     "/admin/:path*",
     "/ranking/:path*",
+    "/lojinha/:path*",
   ],
 };

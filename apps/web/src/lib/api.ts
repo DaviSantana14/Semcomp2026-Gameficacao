@@ -50,8 +50,71 @@ export type Action = {
   code: string | null;
   points: number;
   isActive: boolean;
+  isCodeActive: boolean;
   createdAt: string;
 };
+
+export type AdminAction = Action & {
+  claimCodes: { total: number; used: number; available: number };
+  redemptionsCount: number;
+};
+export type AdminClaimCodeStatus =
+  | "AVAILABLE"
+  | "DISABLED"
+  | "BLOCKED_BY_ACTION"
+  | "USED";
+export type AdminClaimCode = {
+  id: string;
+  code: string;
+  status: AdminClaimCodeStatus;
+  isActive: boolean;
+  isUsed: boolean;
+  createdAt: string;
+  usedAt: string | null;
+  action: { id: string; name: string };
+  usedBy: { id: string; name: string; email: string } | null;
+};
+export type AdminReusableCode = {
+  id: string;
+  name: string;
+  type: ActionType;
+  code: string;
+  points: number;
+  status: "ACTIVE" | "DISABLED" | "BLOCKED_BY_ACTION";
+  isCodeActive: boolean;
+  totalUses: number;
+  lastUsedAt: string | null;
+};
+export type ReusableCodeRedemption = {
+  id: string;
+  points: number;
+  createdAt: string;
+  participant: { id: string; name: string; email: string };
+};
+export type AdminActionsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: "active" | "inactive";
+  type?: ActionType;
+};
+export type AdminClaimCodesFilters = {
+  page: number;
+  limit: number;
+  actionId?: string;
+  search?: string;
+  status?: "all" | "available" | "disabled" | "blocked" | "used";
+};
+export type AdminReusableCodesFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: "all" | "active" | "disabled" | "blocked";
+  actionId?: string;
+};
+export type UpdateActionPayload = Partial<
+  Pick<Action, "name" | "type" | "points" | "isActive" | "isCodeActive">
+> & { description?: string | null; code?: string | null };
 
 export type CreateActionPayload = {
   name: string;
@@ -130,11 +193,153 @@ export type CreateRewardPayload = {
   description?: string;
   costInPoints: number;
   stock: number;
-  isActive?: boolean;
+  isActive: boolean;
   imageUrl?: string;
 };
 
-export type UpdateRewardPayload = Partial<CreateRewardPayload>;
+export type UpdateRewardPayload = Partial<
+  Omit<CreateRewardPayload, "description" | "imageUrl">
+> & { description?: string | null; imageUrl?: string | null };
+export type UpdateRewardDetailsPayload = Omit<UpdateRewardPayload, "isActive">;
+
+export type AdminReward = Reward & {
+  redemptionCounts: Record<RedemptionStatus, number>;
+};
+
+export type AdminRedemption = RewardRedemption;
+
+export type AdminRewardsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: "all" | "active" | "inactive" | "out_of_stock";
+};
+
+export type AdminRedemptionsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  rewardId?: string;
+  status?: "all" | "pending" | "delivered" | "cancelled";
+};
+
+export type PaginatedResponse<T> = {
+  items: T[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type AdminDashboard = {
+  participants: { total: number; active: number; inactive: number };
+  activity: { redemptions: number; pointsIssued: number };
+  codes: {
+    uniqueTotal: number;
+    uniqueAvailable: number;
+    uniqueUsed: number;
+    reusableTotal: number;
+    reusableActive: number;
+  };
+  shop: {
+    rewardsTotal: number;
+    rewardsActive: number;
+    outOfStock: number;
+    pendingRedemptions: number;
+  };
+  recentPendingRedemptions: Array<{
+    id: string;
+    pointsSpent: number;
+    status: RedemptionStatus;
+    createdAt: string;
+    user: { id: string; name: string };
+    reward: { id: string; name: string };
+  }>;
+};
+
+export type AdminParticipant = {
+  id: string;
+  name: string;
+  cpf: string;
+  email: string;
+  points: number;
+  xp: number;
+  level: number;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  actionRedemptionsCount: number;
+  pendingRewardRedemptionsCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminParticipantDetail = AdminParticipant & {
+  counts: {
+    actionRedemptions: number;
+    claimCodes: number;
+    movements: number;
+    rewards: { pending: number; delivered: number; cancelled: number };
+  };
+};
+
+export type AdminParticipantPointEvent = {
+  id: string;
+  points: number;
+  xpDelta: number;
+  kind: "CREDIT" | "DEBIT";
+  source:
+    | "ACTION_REDEEM"
+    | "ADMIN_GRANT"
+    | "ADMIN_ADJUST"
+    | "REWARD_REDEMPTION";
+  redemptionMethod:
+    | "DIRECT"
+    | "REUSABLE_CODE"
+    | "CLAIM_CODE"
+    | "LEGACY_UNKNOWN"
+    | null;
+  description: string | null;
+  origin: "UNIQUE_CODE" | "REUSABLE_CODE" | "DIRECT_ACTION" | "REWARD" | "ADMIN";
+  action: { id: string; name: string } | null;
+  claimCode: { id: string; code: string } | null;
+  createdAt: string;
+};
+
+export type AdminParticipantRewardRedemption = {
+  id: string;
+  pointsSpent: number;
+  status: RedemptionStatus;
+  reward: { id: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminParticipantsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: "active" | "inactive";
+};
+
+export type AdminPointEventsFilters = {
+  page: number;
+  limit: number;
+  source?:
+    | "all"
+    | "action_redeem"
+    | "admin_grant"
+    | "admin_adjust"
+    | "reward_redemption";
+  kind?: "all" | "credit" | "debit";
+};
+
+export type AdminRewardRedemptionsFilters = {
+  page: number;
+  limit: number;
+  status?: "all" | "pending" | "delivered" | "cancelled";
+};
 
 export class ApiError extends Error {
   constructor(
@@ -189,7 +394,11 @@ export async function apiFetch<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  if (!options.skipCsrf && !["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken) {
+  if (
+    !options.skipCsrf &&
+    !["GET", "HEAD", "OPTIONS"].includes(method) &&
+    csrfToken
+  ) {
     headers.set("X-CSRF-Token", csrfToken);
   }
 
@@ -332,4 +541,115 @@ export async function fetchRanking(limit = 10, period: RankingPeriod = "all") {
   });
 
   return apiFetch<RankingResponse>(`/ranking?${params.toString()}`);
+}
+
+function withQuery(
+  path: string,
+  values: Record<string, string | number | undefined>,
+) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+export function fetchAdminDashboard() {
+  return apiFetch<AdminDashboard>("/admin/dashboard");
+}
+
+export function fetchAdminRewards(
+  filters: AdminRewardsFilters,
+  signal?: AbortSignal,
+) {
+  return apiFetch<PaginatedResponse<AdminReward>>(
+    withQuery("/admin/rewards", filters),
+    { signal },
+  );
+}
+
+export function fetchAdminRedemptions(filters: AdminRedemptionsFilters) {
+  return apiFetch<PaginatedResponse<AdminRedemption>>(
+    withQuery("/admin/redemptions", filters),
+  );
+}
+
+export function fetchAdminParticipants(filters: AdminParticipantsFilters) {
+  return apiFetch<PaginatedResponse<AdminParticipant>>(
+    withQuery("/admin/participants", filters),
+  );
+}
+
+export function fetchAdminParticipant(id: string) {
+  return apiFetch<AdminParticipantDetail>(`/admin/participants/${id}`);
+}
+
+export function fetchAdminParticipantPointEvents(
+  id: string,
+  filters: AdminPointEventsFilters,
+) {
+  return apiFetch<PaginatedResponse<AdminParticipantPointEvent>>(
+    withQuery(`/admin/participants/${id}/point-events`, filters),
+  );
+}
+
+export function fetchAdminParticipantRewardRedemptions(
+  id: string,
+  filters: AdminRewardRedemptionsFilters,
+) {
+  return apiFetch<PaginatedResponse<AdminParticipantRewardRedemption>>(
+    withQuery(`/admin/participants/${id}/reward-redemptions`, {
+      ...filters,
+      status: filters.status === "all" ? undefined : filters.status,
+    }),
+  );
+}
+
+export function updateParticipantStatus(
+  id: string,
+  payload: { isActive: boolean },
+) {
+  return apiFetch<AdminParticipantDetail>(`/admin/participants/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchAdminActions(filters: AdminActionsFilters) {
+  return apiFetch<PaginatedResponse<AdminAction>>(
+    withQuery("/admin/actions", filters),
+  );
+}
+export function updateAction(id: string, payload: UpdateActionPayload) {
+  return apiFetch<Action>(`/admin/actions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchAdminClaimCodes(filters: AdminClaimCodesFilters) {
+  return apiFetch<PaginatedResponse<AdminClaimCode>>(
+    withQuery("/admin/claim-codes", filters),
+  );
+}
+export function updateClaimCodeStatus(id: string, isActive: boolean) {
+  return apiFetch<AdminClaimCode>(`/admin/claim-codes/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
+  });
+}
+export function fetchAdminReusableCodes(filters: AdminReusableCodesFilters) {
+  return apiFetch<PaginatedResponse<AdminReusableCode>>(
+    withQuery("/admin/reusable-codes", filters),
+  );
+}
+export function fetchReusableCodeRedemptions(
+  actionId: string,
+  filters: { page: number; limit: number },
+) {
+  return apiFetch<PaginatedResponse<ReusableCodeRedemption>>(
+    withQuery(`/admin/reusable-codes/${actionId}/redemptions`, filters),
+  );
 }
