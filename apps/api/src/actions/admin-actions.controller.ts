@@ -24,7 +24,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { ActionsService } from './actions.service';
-import { AdminActionResponseDto } from './dto/admin-action-response.dto';
+import { ActionResponseDto } from './dto/action-response.dto';
 import { AdminActionsQueryDto } from './dto/admin-actions-query.dto';
 import {
   AdminActionsPageResponseDto,
@@ -55,7 +55,7 @@ export class AdminActionsController {
   }
 
   @Patch('actions/:id')
-  @ApiOkResponse({ type: AdminActionResponseDto })
+  @ApiOkResponse({ type: ActionResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   @ApiConflictResponse({ type: HttpErrorResponseDto })

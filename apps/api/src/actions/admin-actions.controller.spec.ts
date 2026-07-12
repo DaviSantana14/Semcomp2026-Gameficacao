@@ -1,10 +1,12 @@
 import { UserRole } from '@prisma/client';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { DECORATORS } from '@nestjs/swagger/dist/constants';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CsrfGuard } from '../auth/csrf.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { AdminActionsController } from './admin-actions.controller';
+import { ActionResponseDto } from './dto/action-response.dto';
 
 describe('AdminActionsController', () => {
   const service = {
@@ -33,6 +35,19 @@ describe('AdminActionsController', () => {
     await controller.update('action-1', dto);
     expect(service.findAdminActions).toHaveBeenCalledWith(query);
     expect(service.update).toHaveBeenCalledWith('action-1', dto);
+  });
+
+  it('documents the partial update response with the returned action shape', () => {
+    const updateHandler = Object.getOwnPropertyDescriptor(
+      AdminActionsController.prototype,
+      'update',
+    )?.value as object;
+    const responses = Reflect.getMetadata(
+      DECORATORS.API_RESPONSE,
+      updateHandler,
+    ) as Record<number, { type?: unknown }>;
+
+    expect(responses[200].type).toBe(ActionResponseDto);
   });
 
   it('delegates reusable history listing and detail', async () => {
