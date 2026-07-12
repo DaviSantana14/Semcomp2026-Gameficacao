@@ -101,6 +101,82 @@ describe('RewardsService', () => {
         });
       },
     );
+
+    it('searches and paginates the full admin catalog with redemption counts', async () => {
+      const { service, prisma } = createService();
+      const inactiveReward = {
+        ...activeReward,
+        id: 'reward-2',
+        name: 'Caneca Semcomp',
+        stock: 0,
+        isActive: false,
+      };
+      prisma.reward.count.mockResolvedValue(1);
+      prisma.reward.findMany.mockResolvedValue([inactiveReward]);
+      prisma.rewardRedemption.groupBy.mockResolvedValue([
+        {
+          rewardId: 'reward-2',
+          status: RedemptionStatus.PENDING,
+          _count: { _all: 2 },
+        },
+        {
+          rewardId: 'reward-2',
+          status: RedemptionStatus.CANCELLED,
+          _count: { _all: 1 },
+        },
+      ]);
+
+      await expect(
+        service.findAdminRewards({
+          page: 2,
+          limit: 5,
+          status: 'all',
+          search: ' caneca ',
+        } as never),
+      ).resolves.toEqual({
+        items: [
+          {
+            ...inactiveReward,
+            redemptionCounts: {
+              PENDING: 2,
+              DELIVERED: 0,
+              CANCELLED: 1,
+            },
+          },
+        ],
+        meta: { page: 2, limit: 5, total: 1, totalPages: 1 },
+      });
+
+      const where = {
+        OR: [
+          { name: { contains: 'caneca', mode: 'insensitive' } },
+          { description: { contains: 'caneca', mode: 'insensitive' } },
+        ],
+      };
+      expect(prisma.reward.count).toHaveBeenCalledWith({ where });
+      expect(prisma.reward.findMany).toHaveBeenCalledWith({
+        where,
+        skip: 5,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          costInPoints: true,
+          stock: true,
+          isActive: true,
+          imageUrl: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      expect(prisma.rewardRedemption.groupBy).toHaveBeenCalledWith({
+        by: ['rewardId', 'status'],
+        where: { rewardId: { in: ['reward-2'] } },
+        _count: { _all: true },
+      });
+    });
   });
 
   describe('findRedemptions', () => {
