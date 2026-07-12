@@ -7,6 +7,7 @@ import {
 import { PointEventKind, PointEventSource, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateActionDto } from './dto/create-action.dto';
+import { isClaimCode, normalizeEventCode } from '../common/event-code';
 
 const actionSummarySelect = {
   id: true,
@@ -31,13 +32,21 @@ export class ActionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createActionDto: CreateActionDto) {
+    const normalizedCode = normalizeEventCode(createActionDto.code);
+
+    if (isClaimCode(normalizedCode)) {
+      throw new BadRequestException(
+        'Este formato é reservado para códigos de uso único.',
+      );
+    }
+
     try {
       return await this.prisma.action.create({
         data: {
           name: createActionDto.name,
           description: createActionDto.description,
           type: createActionDto.type,
-          code: normalizeActionCode(createActionDto.code),
+          code: normalizedCode,
           points: createActionDto.points,
           isActive: createActionDto.isActive,
         },
@@ -72,10 +81,14 @@ export class ActionsService {
   }
 
   async redeemByCode(code: string, userId: string) {
-    const normalizedCode = normalizeActionCode(code);
+    const normalizedCode = normalizeEventCode(code);
 
     if (!normalizedCode) {
       throw new NotFoundException('Atividade pontuável não encontrada.');
+    }
+
+    if (isClaimCode(normalizedCode)) {
+      return this.redeemClaimCode(normalizedCode, userId);
     }
 
     const action = await this.prisma.action.findUnique({
@@ -102,43 +115,7 @@ export class ActionsService {
           throw new NotFoundException('Atividade pontuável não encontrada.');
         }
 
-        if (!action.isActive) {
-          throw new BadRequestException(
-            'Esta atividade está inativa e não pode ser resgatada.',
-          );
-        }
-
-        const redeemedAt = new Date();
-
-        await tx.pointEvent.create({
-          data: {
-            userId,
-            actionId,
-            points: action.points,
-            kind: PointEventKind.CREDIT,
-            source: PointEventSource.ACTION_REDEEM,
-            description: `Resgate da atividade: ${action.name}`,
-            createdAt: redeemedAt,
-          },
-        });
-
-        const updatedUser = await tx.user.update({
-          where: { id: userId },
-          data: {
-            points: { increment: action.points },
-            xp: { increment: action.points },
-          },
-          select: userProgressSelect,
-        });
-
-        return {
-          action,
-          awardedPoints: action.points,
-          currentPoints: updatedUser.points,
-          currentXp: updatedUser.xp,
-          currentLevel: updatedUser.level,
-          redeemedAt,
-        };
+        return this.grantAction(tx, action, userId);
       });
     } catch (error) {
       if (
@@ -151,14 +128,94 @@ export class ActionsService {
       throw error;
     }
   }
-}
 
-function normalizeActionCode(code: string | null | undefined) {
-  if (code == null) {
-    return undefined;
+  private async redeemClaimCode(code: string, userId: string) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const claimCode = await tx.claimCode.findUnique({
+          where: { code },
+          include: { action: { select: actionSummarySelect } },
+        });
+
+        if (!claimCode) {
+          throw new NotFoundException('Atividade pontuável não encontrada.');
+        }
+
+        if (claimCode.isUsed) {
+          throw new ConflictException('Este código já foi utilizado.');
+        }
+
+        if (!claimCode.action.isActive) {
+          throw new BadRequestException(
+            'Esta atividade está inativa e não pode ser resgatada.',
+          );
+        }
+
+        const usedAt = new Date();
+        const consumed = await tx.claimCode.updateMany({
+          where: { id: claimCode.id, isUsed: false },
+          data: { isUsed: true, usedById: userId, usedAt },
+        });
+
+        if (consumed.count !== 1) {
+          throw new ConflictException('Este código já foi utilizado.');
+        }
+
+        return this.grantAction(tx, claimCode.action, userId);
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Você já resgatou esta atividade.');
+      }
+
+      throw error;
+    }
   }
 
-  const normalized = code.trim().toUpperCase();
+  private async grantAction(
+    tx: Prisma.TransactionClient,
+    action: Prisma.ActionGetPayload<{ select: typeof actionSummarySelect }>,
+    userId: string,
+  ) {
+    if (!action.isActive) {
+      throw new BadRequestException(
+        'Esta atividade está inativa e não pode ser resgatada.',
+      );
+    }
 
-  return normalized.length > 0 ? normalized : undefined;
+    const redeemedAt = new Date();
+
+    await tx.pointEvent.create({
+      data: {
+        userId,
+        actionId: action.id,
+        points: action.points,
+        kind: PointEventKind.CREDIT,
+        source: PointEventSource.ACTION_REDEEM,
+        description: `Resgate da atividade: ${action.name}`,
+        createdAt: redeemedAt,
+      },
+    });
+
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: {
+        points: { increment: action.points },
+        xp: { increment: action.points },
+      },
+      select: userProgressSelect,
+    });
+
+    return {
+      action,
+      awardedPoints: action.points,
+      currentPoints: updatedUser.points,
+      currentXp: updatedUser.xp,
+      currentLevel: updatedUser.level,
+      redeemedAt,
+    };
+  }
 }

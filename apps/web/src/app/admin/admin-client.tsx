@@ -32,6 +32,7 @@ import {
   fetchCsrfToken,
   getCsrfToken,
 } from "@/lib/api";
+import { ClaimCodeGenerator } from "./claim-code-generator";
 
 const actionTypes: ActionType[] = [
   "CHECKIN",
@@ -190,6 +191,7 @@ export function AdminClient() {
       });
 
       toast.success(`Atividade ${action.name} criada.`);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "actions"] });
       reset({
         name: "",
         description: "",
@@ -382,6 +384,8 @@ export function AdminClient() {
             </form>
           </CardContent>
         </Card>
+
+        <ClaimCodeGenerator />
 
         <Card className="border-accent/20 bg-card/90">
           <CardHeader>

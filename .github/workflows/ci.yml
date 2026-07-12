@@ -7,6 +7,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: semcomp_ci
+          POSTGRES_USER: semcomp_ci
+          POSTGRES_PASSWORD: semcomp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U semcomp_ci -d semcomp_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DB_HOST: localhost
       DB_PORT: 5432
@@ -14,6 +28,8 @@ jobs:
       DB_USER: semcomp_ci
       DB_PASSWORD: semcomp_ci
       DB_SCHEMA: public
+      JWT_SECRET: semcomp-ci-not-a-real-secret
+      FRONTEND_URL: http://localhost:3000
 
     steps:
       - name: Checkout repository
@@ -37,11 +53,20 @@ jobs:
       - name: Generate Prisma client
         run: npm --workspace api run prisma:generate
 
+      - name: Apply database migrations
+        run: npm --workspace api exec prisma migrate deploy
+
       - name: Lint API
         run: npm --workspace api run lint:check
 
       - name: Lint web app
         run: npm --workspace web run lint
+
+      - name: Test API
+        run: npm --workspace api test
+
+      - name: Test API end-to-end
+        run: npm --workspace api run test:e2e
 
       - name: Build API
         run: npm --workspace api run build

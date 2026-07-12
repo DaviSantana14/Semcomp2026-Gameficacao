@@ -22,6 +22,17 @@ const activeAction = {
   createdAt: new Date('2026-05-17T12:00:00.000Z'),
 };
 
+const actionSummarySelect = {
+  id: true,
+  name: true,
+  description: true,
+  type: true,
+  code: true,
+  points: true,
+  isActive: true,
+  createdAt: true,
+};
+
 type PointEventCreateArgs = {
   data: {
     userId: string;
@@ -44,6 +55,10 @@ function createService() {
     action: {
       findUnique: jest.fn(),
     },
+    claimCode: {
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
     pointEvent: {
       create: jest.fn(),
     },
@@ -54,6 +69,10 @@ function createService() {
 
   const prisma = {
     action,
+    claimCode: {
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
     $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
       callback(tx),
     ),
@@ -139,6 +158,26 @@ describe('ActionsService', () => {
           }) as object,
         }),
       );
+    });
+
+    it('rejects the namespace reserved for single-use codes', async () => {
+      const { service, prisma } = createService();
+
+      await expect(
+        service.create({
+          name: 'Check-in Dia 1',
+          description: undefined,
+          type: ActionType.CHECKIN,
+          points: 10,
+          code: ' abcd-efgh ',
+          isActive: true,
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Este formato é reservado para códigos de uso único.',
+        ),
+      );
+      expect(prisma.action.create).not.toHaveBeenCalled();
     });
 
     it('maps duplicate action code constraint errors to ConflictException', async () => {
@@ -302,6 +341,145 @@ describe('ActionsService', () => {
         currentPoints: 110,
         currentXp: 210,
       });
+    });
+
+    it('resolves claim-code-shaped values exclusively through ClaimCode', async () => {
+      const { service, prisma, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.redeemByCode(' k7xm-9n2p ', 'user-1'),
+      ).rejects.toThrow(
+        new NotFoundException('Atividade pontuável não encontrada.'),
+      );
+
+      expect(tx.claimCode.findUnique).toHaveBeenCalledWith({
+        where: { code: 'K7XM-9N2P' },
+        include: { action: { select: actionSummarySelect } },
+      });
+      expect(prisma.action.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('resolves reusable values exclusively through Action.code', async () => {
+      const { service, prisma, tx } = createService();
+      prisma.action.findUnique.mockResolvedValue(null);
+
+      await expect(service.redeemByCode(' dia1 ', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+
+      expect(prisma.action.findUnique).toHaveBeenCalledWith({
+        where: { code: 'DIA1' },
+        select: { id: true },
+      });
+      expect(tx.claimCode.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('rejects an already used claim code', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: true,
+        action: activeAction,
+      });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new ConflictException('Este código já foi utilizado.'),
+      );
+      expect(tx.claimCode.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects an inactive action without consuming its claim code', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: false,
+        action: { ...activeAction, isActive: false },
+      });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(tx.claimCode.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('maps a lost claim-code compare-and-set to the used-code conflict', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: false,
+        action: activeAction,
+      });
+      tx.claimCode.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new ConflictException('Este código já foi utilizado.'),
+      );
+      expect(tx.claimCode.updateMany).toHaveBeenCalledWith({
+        where: { id: 'claim-1', isUsed: false },
+        data: {
+          isUsed: true,
+          usedById: 'user-1',
+          usedAt: expect.any(Date) as Date,
+        },
+      });
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('atomically consumes a claim code and grants its action', async () => {
+      const { service, prisma, tx } = createService();
+      const callOrder: string[] = [];
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: false,
+        action: activeAction,
+      });
+      tx.claimCode.updateMany.mockImplementation(() => {
+        callOrder.push('claimCode.updateMany');
+        return { count: 1 };
+      });
+      tx.pointEvent.create.mockImplementation(() => {
+        callOrder.push('pointEvent.create');
+      });
+      tx.user.update.mockImplementation(() => {
+        callOrder.push('user.update');
+        return { id: 'user-1', points: 110, xp: 210, level: 2 };
+      });
+
+      const result = await service.redeemByCode('K7XM-9N2P', 'user-1');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual([
+        'claimCode.updateMany',
+        'pointEvent.create',
+        'user.update',
+      ]);
+      expect(result).toMatchObject({
+        action: activeAction,
+        awardedPoints: 10,
+        currentPoints: 110,
+        currentXp: 210,
+        currentLevel: 2,
+      });
+    });
+
+    it('maps PointEvent P2002 separately and performs no writes outside the transaction', async () => {
+      const { service, prisma, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: false,
+        action: activeAction,
+      });
+      tx.claimCode.updateMany.mockResolvedValue({ count: 1 });
+      tx.pointEvent.create.mockRejectedValue(createUniqueConstraintError());
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new ConflictException('Você já resgatou esta atividade.'),
+      );
+
+      expect(tx.claimCode.updateMany).toHaveBeenCalledTimes(1);
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(prisma.claimCode.updateMany).not.toHaveBeenCalled();
     });
   });
 });

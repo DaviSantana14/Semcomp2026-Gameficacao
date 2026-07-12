@@ -78,7 +78,11 @@ export class ActionsController {
   }
 
   @Post('redeem-code')
-  @ApiOperation({ summary: 'Resgatar uma atividade por código reutilizável' })
+  @ApiOperation({
+    summary: 'Resgatar uma atividade por código reutilizável ou individual',
+    description:
+      'Aceita códigos reutilizáveis de atividades e códigos individuais de uso único.',
+  })
   @ApiHeader({
     name: 'X-CSRF-Token',
     description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
@@ -95,7 +99,7 @@ export class ActionsController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'Código inválido ou atividade inativa.',
+    description: 'Atividade inativa.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 400,
@@ -104,12 +108,26 @@ export class ActionsController {
     },
   })
   @ApiConflictResponse({
-    description: 'Atividade já resgatada pelo usuário.',
+    description:
+      'Código individual já utilizado ou atividade já resgatada pelo usuário.',
     type: HttpErrorResponseDto,
-    example: {
-      statusCode: 409,
-      message: 'Você já resgatou esta atividade.',
-      error: 'Conflict',
+    examples: {
+      claimCodeUsed: {
+        summary: 'Código individual já utilizado',
+        value: {
+          statusCode: 409,
+          message: 'Este código já foi utilizado.',
+          error: 'Conflict',
+        },
+      },
+      actionAlreadyRedeemed: {
+        summary: 'Atividade já resgatada pelo usuário',
+        value: {
+          statusCode: 409,
+          message: 'Você já resgatou esta atividade.',
+          error: 'Conflict',
+        },
+      },
     },
   })
   @ApiNotFoundResponse({

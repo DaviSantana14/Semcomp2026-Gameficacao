@@ -10,6 +10,10 @@ apps/*/coverage/
 apps/web/.next/
 apps/web/out/
 
+# local agent tooling
+.playwright-cli/
+.superpowers/
+
 # env files
 .env
 .env.*

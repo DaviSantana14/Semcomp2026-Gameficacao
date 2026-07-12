@@ -3,6 +3,7 @@ import { ActionsModule } from './actions/actions.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { ClaimCodesModule } from './claim-codes/claim-codes.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RankingModule } from './ranking/ranking.module';
 import { RewardsModule } from './rewards/rewards.module';
@@ -14,6 +15,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     ActionsModule,
+    ClaimCodesModule,
     RankingModule,
     RewardsModule,
   ],
