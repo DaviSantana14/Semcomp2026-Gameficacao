@@ -3,7 +3,10 @@ import { PointEventSource, Prisma, UserRole } from '@prisma/client';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
-import { AdminParticipantRedemptionsQueryDto } from './dto/admin-participant-redemptions-query.dto';
+import {
+  AdminParticipantRedemptionsQueryDto,
+  AdminParticipantRedemptionStatusFilter,
+} from './dto/admin-participant-redemptions-query.dto';
 import {
   AdminParticipantsQueryDto,
   ParticipantStatusFilter,
@@ -170,7 +173,18 @@ export class AdminParticipantsService {
     query: AdminParticipantRedemptionsQueryDto,
   ) {
     await this.assertParticipant(id);
-    const where = { userId: id, ...(query.status && { status: query.status }) };
+    const status =
+      query.status &&
+      query.status !== AdminParticipantRedemptionStatusFilter.ALL
+        ? (
+            {
+              pending: 'PENDING',
+              delivered: 'DELIVERED',
+              cancelled: 'CANCELLED',
+            } as const
+          )[query.status]
+        : undefined;
+    const where = { userId: id, ...(status && { status }) };
     const [total, rows] = await Promise.all([
       this.prisma.rewardRedemption.count({ where }),
       this.prisma.rewardRedemption.findMany({

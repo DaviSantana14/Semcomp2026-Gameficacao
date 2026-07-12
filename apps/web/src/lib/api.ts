@@ -338,7 +338,7 @@ export type AdminPointEventsFilters = {
 export type AdminRewardRedemptionsFilters = {
   page: number;
   limit: number;
-  status?: RedemptionStatus;
+  status?: "all" | "pending" | "delivered" | "cancelled";
 };
 
 export class ApiError extends Error {
@@ -601,7 +601,10 @@ export function fetchAdminParticipantRewardRedemptions(
   filters: AdminRewardRedemptionsFilters,
 ) {
   return apiFetch<PaginatedResponse<AdminParticipantRewardRedemption>>(
-    withQuery(`/admin/participants/${id}/reward-redemptions`, filters),
+    withQuery(`/admin/participants/${id}/reward-redemptions`, {
+      ...filters,
+      status: filters.status === "all" ? undefined : filters.status,
+    }),
   );
 }
 

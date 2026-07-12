@@ -139,6 +139,21 @@ describe('Player flow authorization matrix (e2e)', () => {
     await makeRequest().expect(403);
   });
 
+  it.each([
+    ['reward catalog', () => '/rewards'],
+    ['reward detail', () => `/rewards/${rewardId}`],
+  ])('restricts %s to participants', async (_name, makePath) => {
+    const path = makePath();
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Cookie', adminSession.cookie)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Cookie', participantSession.cookie)
+      .expect(200);
+  });
+
   it('returns 403 when a participant attempts an admin route', async () => {
     await request(app.getHttpServer())
       .post('/actions')

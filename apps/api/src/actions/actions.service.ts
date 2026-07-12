@@ -224,8 +224,9 @@ export class ActionsService {
     if (query.status === 'active')
       Object.assign(where, { isActive: true, isCodeActive: true });
     if (query.status === 'disabled')
-      Object.assign(where, { isActive: true, isCodeActive: false });
-    if (query.status === 'blocked') where.isActive = false;
+      Object.assign(where, { isCodeActive: false });
+    if (query.status === 'blocked')
+      Object.assign(where, { isActive: false, isCodeActive: true });
     if (search)
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -264,11 +265,11 @@ export class ActionsService {
           type: row.type,
           code: row.code!,
           points: row.points,
-          status: !row.isActive
-            ? ReusableCodeStatus.BLOCKED_BY_ACTION
-            : row.isCodeActive
+          status: !row.isCodeActive
+            ? ReusableCodeStatus.DISABLED
+            : row.isActive
               ? ReusableCodeStatus.ACTIVE
-              : ReusableCodeStatus.DISABLED,
+              : ReusableCodeStatus.BLOCKED_BY_ACTION,
           isCodeActive: row.isCodeActive,
           totalUses: use?._count._all ?? 0,
           lastUsedAt: use?._max.createdAt?.toISOString() ?? null,

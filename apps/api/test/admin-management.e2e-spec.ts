@@ -515,7 +515,7 @@ describe('Admin management acceptance (e2e)', () => {
       adminSession,
     ).expect(200);
     const redemptionPage = await get(
-      `/admin/participants/${secondParticipant.id}/reward-redemptions?status=PENDING&page=1&limit=1`,
+      `/admin/participants/${secondParticipant.id}/reward-redemptions?status=pending&page=1&limit=1`,
       adminSession,
     ).expect(200);
     expect((eventPage1.body as Page<{ id: string }>).meta).toEqual({
@@ -625,7 +625,7 @@ describe('Admin management acceptance (e2e)', () => {
     });
 
     const redemptions = await get(
-      `/admin/participants/${secondParticipant.id}/reward-redemptions?status=PENDING&page=1&limit=1`,
+      `/admin/participants/${secondParticipant.id}/reward-redemptions?status=pending&page=1&limit=1`,
       adminSession,
     ).expect(200);
     expect(redemptions.body).toMatchObject({

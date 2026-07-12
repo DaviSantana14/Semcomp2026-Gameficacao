@@ -65,6 +65,7 @@ export class RewardsController {
   }
 
   @Get('rewards')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Listar catálogo da lojinha' })
   @ApiOkResponse({ type: RewardResponseDto, isArray: true })
   @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
@@ -75,6 +76,7 @@ export class RewardsController {
   }
 
   @Get('rewards/:id')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Buscar recompensa por id' })
   @ApiOkResponse({ type: RewardResponseDto })
   @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })

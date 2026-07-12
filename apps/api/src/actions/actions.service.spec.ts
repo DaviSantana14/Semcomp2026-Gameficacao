@@ -444,6 +444,7 @@ describe('ActionsService', () => {
       [{ isActive: true, isCodeActive: true }, 'ACTIVE'],
       [{ isActive: true, isCodeActive: false }, 'DISABLED'],
       [{ isActive: false, isCodeActive: true }, 'BLOCKED_BY_ACTION'],
+      [{ isActive: false, isCodeActive: false }, 'DISABLED'],
     ] as const)('maps reusable-code state %o to %s', async (state, status) => {
       const { service, prisma } = createService();
       prisma.action.count.mockResolvedValue(1);
@@ -457,6 +458,26 @@ describe('ActionsService', () => {
       expect(result.items[0]?.status).toBe(status);
       expect(result.items[0]?.isCodeActive).toBe(state.isCodeActive);
     });
+
+    it.each([
+      ['active', { code: { not: null }, isActive: true, isCodeActive: true }],
+      ['disabled', { code: { not: null }, isCodeActive: false }],
+      ['blocked', { code: { not: null }, isActive: false, isCodeActive: true }],
+    ] as const)(
+      'uses exact %s reusable-code filter semantics',
+      async (status, where) => {
+        const { service, prisma } = createService();
+        prisma.action.count.mockResolvedValue(0);
+        prisma.action.findMany.mockResolvedValue([]);
+
+        await service.findReusableCodes({ page: 1, limit: 20, status });
+
+        expect(prisma.action.count).toHaveBeenCalledWith({ where });
+        expect(prisma.action.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where }),
+        );
+      },
+    );
 
     it('returns paginated reusable-code redemptions with participant data', async () => {
       const { service, prisma } = createService();

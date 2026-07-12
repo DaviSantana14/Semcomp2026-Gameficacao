@@ -37,11 +37,12 @@ export function ParticipantRewardHistory({
   participantId: string;
 }) {
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<"all" | RedemptionStatus>("all");
+  const [status, setStatus] =
+    useState<NonNullable<AdminRewardRedemptionsFilters["status"]>>("all");
   const filters: AdminRewardRedemptionsFilters = {
     page,
     limit: LIMIT,
-    status: status === "all" ? undefined : status,
+    status,
   };
   const query = useQuery({
     queryKey: [
@@ -78,9 +79,9 @@ export function ParticipantRewardHistory({
             value={status}
           >
             <option value="all">Todos</option>
-            <option value="PENDING">Pendentes</option>
-            <option value="DELIVERED">Entregues</option>
-            <option value="CANCELLED">Cancelados</option>
+            <option value="pending">Pendentes</option>
+            <option value="delivered">Entregues</option>
+            <option value="cancelled">Cancelados</option>
           </select>
         </div>
       </CardHeader>

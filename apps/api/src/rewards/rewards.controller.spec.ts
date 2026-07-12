@@ -3,6 +3,20 @@ import { ROLES_KEY } from '../auth/roles.decorator';
 import { RewardsController } from './rewards.controller';
 
 describe('RewardsController player authorization', () => {
+  it.each(['findAll', 'findById'] as const)(
+    'restricts %s to participants',
+    (methodName) => {
+      const method = Object.getOwnPropertyDescriptor(
+        RewardsController.prototype,
+        methodName,
+      )?.value as object;
+
+      expect(Reflect.getMetadata(ROLES_KEY, method)).toEqual([
+        UserRole.PARTICIPANT,
+      ]);
+    },
+  );
+
   it('restricts reward redemption to participants', () => {
     const redeemMethod = Object.getOwnPropertyDescriptor(
       RewardsController.prototype,

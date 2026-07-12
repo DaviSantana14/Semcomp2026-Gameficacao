@@ -363,13 +363,29 @@ describe(AdminParticipantsService.name, () => {
     await service.findRewardRedemptions('p1', {
       page: 1,
       limit: 20,
-      status: RedemptionStatus.PENDING,
+      status: 'pending',
     });
     expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'p1', status: RedemptionStatus.PENDING },
       }),
     );
+  });
+
+  it('omits the Prisma reward-redemption status filter for all', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
+    prisma.rewardRedemption.count.mockResolvedValue(0);
+    prisma.rewardRedemption.findMany.mockResolvedValue([]);
+
+    await service.findRewardRedemptions('p1', {
+      page: 1,
+      limit: 20,
+      status: 'all',
+    });
+
+    expect(prisma.rewardRedemption.count).toHaveBeenCalledWith({
+      where: { userId: 'p1' },
+    });
   });
 
   it.each(['admin', 'missing'])(
