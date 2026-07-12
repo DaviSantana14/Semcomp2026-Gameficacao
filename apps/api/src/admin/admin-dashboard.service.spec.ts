@@ -56,6 +56,7 @@ describe('shared pagination', () => {
 describe(AdminDashboardService.name, () => {
   const prisma = {
     user: { count: jest.fn() },
+    action: { count: jest.fn() },
     pointEvent: { aggregate: jest.fn() },
     claimCode: { count: jest.fn() },
     reward: { count: jest.fn() },
@@ -75,9 +76,19 @@ describe(AdminDashboardService.name, () => {
   });
 
   it('returns participant metrics, action points, code split and five recent requests', async () => {
-    prisma.user.count.mockResolvedValueOnce(12).mockResolvedValueOnce(9);
-    prisma.pointEvent.aggregate.mockResolvedValue({ _sum: { points: 340 } });
-    prisma.claimCode.count.mockResolvedValueOnce(7).mockResolvedValueOnce(13);
+    prisma.user.count
+      .mockResolvedValueOnce(12)
+      .mockResolvedValueOnce(9)
+      .mockResolvedValueOnce(3);
+    prisma.pointEvent.aggregate.mockResolvedValue({
+      _count: { _all: 11 },
+      _sum: { points: 340 },
+    });
+    prisma.claimCode.count
+      .mockResolvedValueOnce(20)
+      .mockResolvedValueOnce(7)
+      .mockResolvedValueOnce(13);
+    prisma.action.count.mockResolvedValueOnce(4).mockResolvedValueOnce(3);
     prisma.reward.count
       .mockResolvedValueOnce(8)
       .mockResolvedValueOnce(6)
@@ -94,9 +105,15 @@ describe(AdminDashboardService.name, () => {
       },
     ]);
     await expect(service.getOverview()).resolves.toMatchObject({
-      participants: { total: 12, active: 9 },
-      pointsAwarded: 340,
-      claimCodes: { used: 7, available: 13 },
+      participants: { total: 12, active: 9, inactive: 3 },
+      activity: { redemptions: 11, pointsIssued: 340 },
+      codes: {
+        uniqueTotal: 20,
+        uniqueUsed: 7,
+        uniqueAvailable: 13,
+        reusableTotal: 4,
+        reusableActive: 3,
+      },
       shop: {
         rewardsTotal: 8,
         rewardsActive: 6,
@@ -115,7 +132,10 @@ describe(AdminDashboardService.name, () => {
     });
     expect(prisma.pointEvent.aggregate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { source: PointEventSource.ACTION_REDEEM },
+        where: {
+          source: PointEventSource.ACTION_REDEEM,
+          user: { role: UserRole.PARTICIPANT },
+        },
       }),
     );
     expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith({
@@ -131,18 +151,16 @@ describe(AdminDashboardService.name, () => {
         reward: { select: { id: true, name: true } },
       },
     });
-    expect(prisma.claimCode.count).toHaveBeenNthCalledWith(1, {
-      where: { isUsed: true },
-    });
+    expect(prisma.claimCode.count).toHaveBeenNthCalledWith(1);
     expect(prisma.claimCode.count).toHaveBeenNthCalledWith(2, {
-      where: { isUsed: false, isActive: true },
+      where: { isUsed: true },
     });
     expect(prisma.reward.count).toHaveBeenNthCalledWith(1);
     expect(prisma.reward.count).toHaveBeenNthCalledWith(2, {
       where: { isActive: true },
     });
     expect(prisma.reward.count).toHaveBeenNthCalledWith(3, {
-      where: { stock: 0 },
+      where: { stock: 0, isActive: true },
     });
     expect(prisma.rewardRedemption.count).toHaveBeenCalledWith({
       where: { status: RedemptionStatus.PENDING },

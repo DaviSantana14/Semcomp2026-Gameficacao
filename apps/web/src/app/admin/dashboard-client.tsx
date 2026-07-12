@@ -44,10 +44,7 @@ export function DashboardClient() {
     return <EmptyDashboard />;
   }
 
-  const inactive = Math.max(
-    0,
-    data.participants.total - data.participants.active,
-  );
+  const inactive = data.participants.inactive;
   const metrics = [
     {
       label: "Participantes",
@@ -63,14 +60,14 @@ export function DashboardClient() {
     },
     {
       label: "Pontos concedidos",
-      value: number.format(data.pointsAwarded),
-      note: "por atividades",
+      value: number.format(data.activity.pointsIssued),
+      note: `${number.format(data.activity.redemptions)} resgates de atividades`,
       icon: Zap,
     },
     {
       label: "Códigos",
-      value: number.format(data.claimCodes.available),
-      note: `${number.format(data.claimCodes.used)} utilizados`,
+      value: number.format(data.codes.uniqueAvailable),
+      note: `${number.format(data.codes.uniqueUsed)} únicos utilizados · ${number.format(data.codes.reusableActive)} reutilizáveis ativos`,
       icon: KeyRound,
     },
     {
@@ -201,7 +198,7 @@ export function DashboardClient() {
               href="/admin/codigos"
               icon={KeyRound}
               label="Códigos"
-              detail={`${data.claimCodes.available} disponíveis`}
+              detail={`${data.codes.uniqueAvailable} únicos disponíveis`}
             />
             <Shortcut
               href="/admin/lojinha"

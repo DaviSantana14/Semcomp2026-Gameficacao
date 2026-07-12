@@ -19,22 +19,18 @@ const participantSelect = {
   xp: true,
   level: true,
   isActive: true,
+  lastLoginAt: true,
   createdAt: true,
   updatedAt: true,
-  _count: { select: { pointEvents: true, rewardRedemptions: true } },
+  _count: {
+    select: {
+      pointEvents: { where: { source: PointEventSource.ACTION_REDEEM } },
+      rewardRedemptions: { where: { status: 'PENDING' } },
+    },
+  },
 } as const;
 
-const participantDetailSelect = {
-  ...participantSelect,
-  lastLoginAt: true,
-} as const;
-
-const pointEventSourceLabels: Record<PointEventSource, string> = {
-  ACTION_REDEEM: 'Atividade',
-  ADMIN_GRANT: 'Concessão administrativa',
-  ADMIN_ADJUST: 'Ajuste administrativo',
-  REWARD_REDEMPTION: 'Lojinha',
-};
+const participantDetailSelect = participantSelect;
 
 @Injectable()
 export class AdminParticipantsService {
@@ -81,9 +77,33 @@ export class AdminParticipantsService {
     });
     if (!participant)
       throw new NotFoundException('Participante não encontrado.');
+    const [actionRedemptions, claimCodes, movements, rewards] =
+      await Promise.all([
+        this.prisma.pointEvent.count({
+          where: { userId: id, source: PointEventSource.ACTION_REDEEM },
+        }),
+        this.prisma.claimCode.count({ where: { usedById: id, isUsed: true } }),
+        this.prisma.pointEvent.count({ where: { userId: id } }),
+        this.prisma.rewardRedemption.groupBy({
+          by: ['status'],
+          where: { userId: id },
+          _count: { _all: true },
+        }),
+      ]);
     return {
       ...mapParticipant(participant),
       lastLoginAt: participant.lastLoginAt?.toISOString() ?? null,
+      counts: {
+        actionRedemptions,
+        claimCodes,
+        movements,
+        rewards: Object.fromEntries(
+          ['PENDING', 'DELIVERED', 'CANCELLED'].map((status) => [
+            status.toLowerCase(),
+            rewards.find((row) => row.status === status)?._count._all ?? 0,
+          ]),
+        ),
+      },
     };
   }
 
@@ -91,8 +111,14 @@ export class AdminParticipantsService {
     await this.assertParticipant(id);
     const where = {
       userId: id,
-      ...(query.source && { source: query.source }),
-      ...(query.kind && { kind: query.kind }),
+      ...(query.source &&
+        query.source !== 'all' && {
+          source: query.source.toUpperCase() as PointEventSource,
+        }),
+      ...(query.kind &&
+        query.kind !== 'all' && {
+          kind: query.kind.toUpperCase() as import('@prisma/client').PointEventKind,
+        }),
     };
     const [total, rows] = await Promise.all([
       this.prisma.pointEvent.count({ where }),
@@ -117,11 +143,20 @@ export class AdminParticipantsService {
     return paginate(
       rows.map((row) => ({
         ...row,
-        xpDelta: row.source === 'ACTION_REDEEM' ? row.points : 0,
+        xpDelta:
+          row.source === 'ACTION_REDEEM' && row.kind === 'CREDIT'
+            ? row.points
+            : 0,
         origin:
-          firstNonBlank(row.action?.name, row.description) ??
-          pointEventSourceLabels[row.source],
-        action: undefined,
+          row.source === 'REWARD_REDEMPTION'
+            ? 'REWARD'
+            : row.source !== 'ACTION_REDEEM'
+              ? 'ADMIN'
+              : row.redemptionMethod === 'CLAIM_CODE'
+                ? 'UNIQUE_CODE'
+                : row.redemptionMethod === 'REUSABLE_CODE'
+                  ? 'REUSABLE_CODE'
+                  : 'DIRECT_ACTION',
         createdAt: row.createdAt.toISOString(),
       })),
       total,
@@ -175,14 +210,6 @@ export class AdminParticipantsService {
   }
 }
 
-function firstNonBlank(...values: Array<string | null | undefined>) {
-  for (const value of values) {
-    const trimmed = value?.trim();
-    if (trimmed) return trimmed;
-  }
-  return undefined;
-}
-
 function mapParticipant<
   T extends {
     createdAt: Date;
@@ -193,8 +220,12 @@ function mapParticipant<
   const { _count, ...participant } = row;
   return {
     ...participant,
-    pointEventsCount: _count.pointEvents,
-    rewardRedemptionsCount: _count.rewardRedemptions,
+    actionRedemptionsCount: _count.pointEvents,
+    pendingRewardRedemptionsCount: _count.rewardRedemptions,
+    lastLoginAt:
+      'lastLoginAt' in row && row.lastLoginAt instanceof Date
+        ? row.lastLoginAt.toISOString()
+        : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

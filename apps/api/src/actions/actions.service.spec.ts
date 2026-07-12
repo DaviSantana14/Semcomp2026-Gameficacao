@@ -379,7 +379,10 @@ describe('ActionsService', () => {
       );
       expect(result).toEqual({
         items: [
-          expect.objectContaining({ claimCodesCount: 3, redemptionsCount: 2 }),
+          expect.objectContaining({
+            claimCodes: { total: 3, used: 0, available: 0 },
+            redemptionsCount: 2,
+          }),
         ],
         meta: { page: 2, limit: 10, total: 1, totalPages: 1 },
       });

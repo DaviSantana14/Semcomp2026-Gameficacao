@@ -8,7 +8,7 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has("access_token");
   const { pathname } = request.nextUrl;
 
-  if ((pathname === "/login" || pathname === "/cadastro") && hasSession) {
+  if (pathname === "/cadastro" && hasSession) {
     return NextResponse.redirect(new URL("/home", request.url));
   }
 

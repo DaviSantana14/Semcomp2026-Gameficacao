@@ -34,17 +34,15 @@ export function ParticipantPointEvents({
   participantId: string;
 }) {
   const [page, setPage] = useState(1);
-  const [kind, setKind] = useState<"all" | AdminParticipantPointEvent["kind"]>(
-    "all",
-  );
-  const [source, setSource] = useState<
-    "all" | AdminParticipantPointEvent["source"]
-  >("all");
+  const [kind, setKind] =
+    useState<NonNullable<AdminPointEventsFilters["kind"]>>("all");
+  const [source, setSource] =
+    useState<NonNullable<AdminPointEventsFilters["source"]>>("all");
   const filters: AdminPointEventsFilters = {
     page,
     limit: LIMIT,
-    kind: kind === "all" ? undefined : kind,
-    source: source === "all" ? undefined : source,
+    kind,
+    source,
   };
   const query = useQuery({
     queryKey: ["admin", "participant", participantId, "point-events", filters],
@@ -72,8 +70,8 @@ export function ParticipantPointEvents({
             value={kind}
           >
             <option value="all">Todos</option>
-            <option value="CREDIT">Créditos</option>
-            <option value="DEBIT">Débitos</option>
+            <option value="credit">Créditos</option>
+            <option value="debit">Débitos</option>
           </Filter>
           <Filter
             label="Origem"
@@ -84,11 +82,10 @@ export function ParticipantPointEvents({
             value={source}
           >
             <option value="all">Todas</option>
-            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
+            <option value="action_redeem">Atividade</option>
+            <option value="admin_grant">Concessão administrativa</option>
+            <option value="admin_adjust">Ajuste administrativo</option>
+            <option value="reward_redemption">Lojinha</option>
           </Filter>
         </div>
       </CardHeader>
@@ -142,10 +139,10 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
             {SOURCE_LABELS[event.source]}
           </span>
         </div>
-        <p className="mt-2 break-words font-bold">{event.origin}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {detail}
+        <p className="mt-2 break-words font-bold">
+          {event.action?.name ?? SOURCE_LABELS[event.source]}
         </p>
+        <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
         <time
           className="mt-2 block font-mono text-xs text-muted-foreground"
           dateTime={event.createdAt}
@@ -170,7 +167,7 @@ function formatRedemptionMethod(event: AdminParticipantPointEvent) {
       ? `Código único · ${event.claimCode.code}`
       : "Código único";
   if (event.redemptionMethod === "REUSABLE_CODE")
-    return `Código reutilizável · ${event.origin}`;
+    return "Código reutilizável";
   if (event.redemptionMethod === "DIRECT") return "Registro direto";
   return null;
 }

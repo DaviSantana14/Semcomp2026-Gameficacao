@@ -154,6 +154,7 @@ export class ClaimCodesService {
       id: row.id,
       code: row.code,
       isActive: row.isActive,
+      isUsed: row.isUsed,
       usedBy: row.usedBy,
       createdAt:
         row.createdAt instanceof Date

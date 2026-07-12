@@ -22,9 +22,15 @@ type Page<T> = {
 };
 type LoginBody = { csrfToken: string };
 type Dashboard = {
-  participants: { total: number; active: number };
-  pointsAwarded: number;
-  claimCodes: { used: number; available: number };
+  participants: { total: number; active: number; inactive: number };
+  activity: { redemptions: number; pointsIssued: number };
+  codes: {
+    uniqueTotal: number;
+    uniqueAvailable: number;
+    uniqueUsed: number;
+    reusableTotal: number;
+    reusableActive: number;
+  };
   shop: {
     rewardsTotal: number;
     rewardsActive: number;
@@ -477,8 +483,12 @@ describe('Admin management acceptance (e2e)', () => {
       points: number;
       xp: number;
       level: number;
-      pointEventsCount: number;
-      rewardRedemptionsCount: number;
+      counts: {
+        actionRedemptions: number;
+        claimCodes: number;
+        movements: number;
+        rewards: Record<string, number>;
+      };
       lastLoginAt: string | null;
     };
     expect(participantDetail).toMatchObject({
@@ -489,18 +499,19 @@ describe('Admin management acceptance (e2e)', () => {
       points: 500,
       xp: 60,
       level: 1,
-      pointEventsCount: 2,
-      rewardRedemptionsCount: 3,
+      // Jest asymmetric matchers are intentionally untyped in expected objects.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      counts: expect.objectContaining({ movements: 2, actionRedemptions: 2 }),
     });
     expect(participantDetail.name).toBe(`Task 11 Beta ${fixtureSuffix}`);
     expect(typeof participantDetail.lastLoginAt).toBe('string');
 
     const eventPage1 = await get(
-      `/admin/participants/${secondParticipant.id}/point-events?source=ACTION_REDEEM&page=1&limit=1`,
+      `/admin/participants/${secondParticipant.id}/point-events?source=action_redeem&page=1&limit=1`,
       adminSession,
     ).expect(200);
     const eventPage2 = await get(
-      `/admin/participants/${secondParticipant.id}/point-events?source=ACTION_REDEEM&page=2&limit=1`,
+      `/admin/participants/${secondParticipant.id}/point-events?source=action_redeem&page=2&limit=1`,
       adminSession,
     ).expect(200);
     const redemptionPage = await get(
@@ -562,7 +573,7 @@ describe('Admin management acceptance (e2e)', () => {
     await post(`/actions/${directActionId}/redeem`, firstSession).expect(201);
 
     const eventsResponse = await get(
-      `/admin/participants/${firstParticipant.id}/point-events?source=ACTION_REDEEM&page=1&limit=2`,
+      `/admin/participants/${firstParticipant.id}/point-events?source=action_redeem&page=1&limit=2`,
       adminSession,
     ).expect(200);
     const firstPage = eventsResponse.body as Page<{
@@ -574,7 +585,7 @@ describe('Admin management acceptance (e2e)', () => {
     expect(firstPage.meta).toMatchObject({ page: 1, limit: 2, total: 3 });
 
     const allEvents = await get(
-      `/admin/participants/${firstParticipant.id}/point-events?source=ACTION_REDEEM&page=1&limit=10`,
+      `/admin/participants/${firstParticipant.id}/point-events?source=action_redeem&page=1&limit=10`,
       adminSession,
     ).expect(200);
     const events = (
@@ -599,18 +610,18 @@ describe('Admin management acceptance (e2e)', () => {
     );
     expect(claimEvent).toMatchObject({
       xpDelta: 11,
-      origin: `Task 11 claim ${fixtureSuffix}`,
+      origin: 'UNIQUE_CODE',
     });
     expect(claimEvent?.claimCode?.id).toBe(availableClaimCodeId);
     expect(reusableEvent).toMatchObject({
       claimCode: null,
       xpDelta: 13,
-      origin: `Task 11 reusable ${fixtureSuffix}`,
+      origin: 'REUSABLE_CODE',
     });
     expect(directEvent).toMatchObject({
       claimCode: null,
       xpDelta: 17,
-      origin: `Task 11 direct ${fixtureSuffix}`,
+      origin: 'DIRECT_ACTION',
     });
 
     const redemptions = await get(
@@ -992,9 +1003,13 @@ describe('Admin management acceptance (e2e)', () => {
       const [
         total,
         active,
+        inactive,
         points,
+        uniqueTotal,
         used,
         available,
+        reusableTotal,
+        reusableActive,
         rewardsTotal,
         rewardsActive,
         outOfStock,
@@ -1004,31 +1019,53 @@ describe('Admin management acceptance (e2e)', () => {
         prisma.user.count({
           where: { role: UserRole.PARTICIPANT, isActive: true },
         }),
+        prisma.user.count({
+          where: { role: UserRole.PARTICIPANT, isActive: false },
+        }),
         prisma.pointEvent.aggregate({
-          where: { source: PointEventSource.ACTION_REDEEM },
+          where: {
+            source: PointEventSource.ACTION_REDEEM,
+            user: { role: UserRole.PARTICIPANT },
+          },
+          _count: { _all: true },
           _sum: { points: true },
         }),
+        prisma.claimCode.count(),
         prisma.claimCode.count({ where: { isUsed: true } }),
-        prisma.claimCode.count({ where: { isUsed: false, isActive: true } }),
+        prisma.claimCode.count({
+          where: { isUsed: false, isActive: true, action: { isActive: true } },
+        }),
+        prisma.action.count({ where: { code: { not: null } } }),
+        prisma.action.count({
+          where: { code: { not: null }, isActive: true, isCodeActive: true },
+        }),
         prisma.reward.count(),
         prisma.reward.count({ where: { isActive: true } }),
-        prisma.reward.count({ where: { stock: 0 } }),
+        prisma.reward.count({ where: { stock: 0, isActive: true } }),
         prisma.rewardRedemption.count({
           where: { status: RedemptionStatus.PENDING },
         }),
       ]);
       const expected: Dashboard = {
-        participants: { total, active },
-        pointsAwarded: points._sum.points ?? 0,
-        claimCodes: { used, available },
+        participants: { total, active, inactive },
+        activity: {
+          redemptions: points._count._all,
+          pointsIssued: points._sum.points ?? 0,
+        },
+        codes: {
+          uniqueTotal,
+          uniqueAvailable: available,
+          uniqueUsed: used,
+          reusableTotal,
+          reusableActive,
+        },
         shop: { rewardsTotal, rewardsActive, outOfStock, pendingRedemptions },
       };
       if (
         JSON.stringify(actual.participants) ===
           JSON.stringify(expected.participants) &&
-        actual.pointsAwarded === expected.pointsAwarded &&
-        JSON.stringify(actual.claimCodes) ===
-          JSON.stringify(expected.claimCodes) &&
+        JSON.stringify(actual.activity) === JSON.stringify(expected.activity) &&
+        JSON.stringify(actual.codes) === JSON.stringify(expected.codes) &&
         JSON.stringify(actual.shop) === JSON.stringify(expected.shop)
       ) {
         expect(actual).toMatchObject(expected);

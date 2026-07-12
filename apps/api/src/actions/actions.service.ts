@@ -172,7 +172,7 @@ export class ActionsService {
     const [claimCounts, redemptionCounts] = ids.length
       ? await Promise.all([
           this.prisma.claimCode.groupBy({
-            by: ['actionId'],
+            by: ['actionId', 'isUsed', 'isActive'],
             where: { actionId: { in: ids } },
             _count: { _all: true },
           }),
@@ -183,16 +183,30 @@ export class ActionsService {
           }),
         ])
       : [[], []];
-    const claimMap = new Map(
-      claimCounts.map((row) => [row.actionId, row._count._all]),
-    );
     const redemptionMap = new Map(
       redemptionCounts.map((row) => [row.actionId, row._count._all]),
     );
     return paginate(
       rows.map((row) => ({
         ...row,
-        claimCodesCount: claimMap.get(row.id) ?? 0,
+        claimCodes: {
+          total: claimCounts
+            .filter((count) => count.actionId === row.id)
+            .reduce((sum, count) => sum + count._count._all, 0),
+          used: claimCounts
+            .filter((count) => count.actionId === row.id && count.isUsed)
+            .reduce((sum, count) => sum + count._count._all, 0),
+          available: row.isActive
+            ? claimCounts
+                .filter(
+                  (count) =>
+                    count.actionId === row.id &&
+                    !count.isUsed &&
+                    count.isActive,
+                )
+                .reduce((sum, count) => sum + count._count._all, 0)
+            : 0,
+        },
         redemptionsCount: redemptionMap.get(row.id) ?? 0,
       })),
       total,
@@ -206,6 +220,12 @@ export class ActionsService {
     const where: Prisma.ActionWhereInput = {
       code: { not: null },
     };
+    if (query.actionId) where.id = query.actionId;
+    if (query.status === 'active')
+      Object.assign(where, { isActive: true, isCodeActive: true });
+    if (query.status === 'disabled')
+      Object.assign(where, { isActive: true, isCodeActive: false });
+    if (query.status === 'blocked') where.isActive = false;
     if (search)
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -286,7 +306,7 @@ export class ActionsService {
           id: true,
           points: true,
           createdAt: true,
-          user: { select: { id: true, name: true, email: true, cpf: true } },
+          user: { select: { id: true, name: true, email: true } },
         },
       }),
     ]);

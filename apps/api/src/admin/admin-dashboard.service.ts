@@ -10,9 +10,13 @@ export class AdminDashboardService {
     const [
       total,
       active,
+      inactive,
       points,
+      uniqueTotal,
       used,
       available,
+      reusableTotal,
+      reusableActive,
       rewardsTotal,
       rewardsActive,
       outOfStock,
@@ -23,17 +27,33 @@ export class AdminDashboardService {
       this.prisma.user.count({
         where: { role: UserRole.PARTICIPANT, isActive: true },
       }),
+      this.prisma.user.count({
+        where: { role: UserRole.PARTICIPANT, isActive: false },
+      }),
       this.prisma.pointEvent.aggregate({
-        where: { source: PointEventSource.ACTION_REDEEM },
+        where: {
+          source: PointEventSource.ACTION_REDEEM,
+          user: { role: UserRole.PARTICIPANT },
+        },
+        _count: { _all: true },
         _sum: { points: true },
       }),
+      this.prisma.claimCode.count(),
       this.prisma.claimCode.count({ where: { isUsed: true } }),
       this.prisma.claimCode.count({
-        where: { isUsed: false, isActive: true },
+        where: {
+          isUsed: false,
+          isActive: true,
+          action: { isActive: true },
+        },
+      }),
+      this.prisma.action.count({ where: { code: { not: null } } }),
+      this.prisma.action.count({
+        where: { code: { not: null }, isActive: true, isCodeActive: true },
       }),
       this.prisma.reward.count(),
       this.prisma.reward.count({ where: { isActive: true } }),
-      this.prisma.reward.count({ where: { stock: 0 } }),
+      this.prisma.reward.count({ where: { stock: 0, isActive: true } }),
       this.prisma.rewardRedemption.count({
         where: { status: RedemptionStatus.PENDING },
       }),
@@ -52,9 +72,18 @@ export class AdminDashboardService {
       }),
     ]);
     return {
-      participants: { total, active },
-      pointsAwarded: points._sum.points ?? 0,
-      claimCodes: { used, available },
+      participants: { total, active, inactive },
+      activity: {
+        redemptions: points._count._all,
+        pointsIssued: points._sum.points ?? 0,
+      },
+      codes: {
+        uniqueTotal,
+        uniqueAvailable: available,
+        uniqueUsed: used,
+        reusableTotal,
+        reusableActive,
+      },
       shop: {
         rewardsTotal,
         rewardsActive,

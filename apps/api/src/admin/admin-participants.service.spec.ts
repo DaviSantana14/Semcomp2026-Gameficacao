@@ -18,11 +18,19 @@ describe(AdminParticipantsService.name, () => {
       updateMany: jest.fn(),
     },
     pointEvent: { count: jest.fn(), findMany: jest.fn() },
-    rewardRedemption: { count: jest.fn(), findMany: jest.fn() },
+    claimCode: { count: jest.fn() },
+    rewardRedemption: {
+      count: jest.fn(),
+      findMany: jest.fn(),
+      groupBy: jest.fn(),
+    },
   };
   let service: AdminParticipantsService;
   beforeEach(async () => {
     jest.clearAllMocks();
+    prisma.pointEvent.count.mockResolvedValue(0);
+    prisma.claimCode.count.mockResolvedValue(0);
+    prisma.rewardRedemption.groupBy.mockResolvedValue([]);
     const module = await Test.createTestingModule({
       providers: [
         AdminParticipantsService,
@@ -111,13 +119,13 @@ describe(AdminParticipantsService.name, () => {
     expect(result.items).toEqual([
       expect.objectContaining({
         id: 'p1',
-        pointEventsCount: 3,
-        rewardRedemptionsCount: 1,
+        actionRedemptionsCount: 3,
+        pendingRewardRedemptionsCount: 1,
       }),
       expect.objectContaining({
         id: 'p2',
-        pointEventsCount: 7,
-        rewardRedemptionsCount: 4,
+        actionRedemptionsCount: 7,
+        pendingRewardRedemptionsCount: 4,
       }),
     ]);
     expect(prisma.user.findMany).toHaveBeenCalledWith(
@@ -133,7 +141,15 @@ describe(AdminParticipantsService.name, () => {
           isActive: true,
           createdAt: true,
           updatedAt: true,
-          _count: { select: { pointEvents: true, rewardRedemptions: true } },
+          lastLoginAt: true,
+          _count: {
+            select: {
+              pointEvents: {
+                where: { source: PointEventSource.ACTION_REDEEM },
+              },
+              rewardRedemptions: { where: { status: 'PENDING' } },
+            },
+          },
         },
       }),
     );
@@ -182,8 +198,8 @@ describe(AdminParticipantsService.name, () => {
     ).resolves.toMatchObject({
       id: 'p1',
       isActive: false,
-      pointEventsCount: 2,
-      rewardRedemptionsCount: 1,
+      actionRedemptionsCount: 2,
+      pendingRewardRedemptionsCount: 1,
     });
     expect(prisma.user.updateMany).toHaveBeenCalledWith({
       where: { id: 'p1', role: UserRole.PARTICIPANT },
@@ -206,11 +222,19 @@ describe(AdminParticipantsService.name, () => {
       updatedAt: new Date(),
       _count: { pointEvents: 2, rewardRedemptions: 1 },
     });
+    prisma.pointEvent.count.mockResolvedValue(2);
+    prisma.claimCode.count.mockResolvedValue(1);
+    prisma.rewardRedemption.groupBy.mockResolvedValue([]);
     await expect(service.findOne('p1')).resolves.toMatchObject({
       id: 'p1',
       lastLoginAt: null,
-      pointEventsCount: 2,
-      rewardRedemptionsCount: 1,
+      // Jest asymmetric matchers are intentionally untyped in expected objects.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      counts: expect.objectContaining({
+        actionRedemptions: 2,
+        claimCodes: 1,
+        movements: 2,
+      }),
     });
     expect(prisma.user.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -245,12 +269,12 @@ describe(AdminParticipantsService.name, () => {
     const result = await service.findPointEvents('p1', {
       page: 1,
       limit: 20,
-      source: PointEventSource.ACTION_REDEEM,
-      kind: PointEventKind.CREDIT,
+      source: 'action_redeem',
+      kind: 'credit',
     });
     expect(result.items[0]).toMatchObject({
       xpDelta: 30,
-      origin: 'Check-in',
+      origin: 'UNIQUE_CODE',
       claimCode: { id: 'claim-1', code: 'ABC123' },
     });
     expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
@@ -269,7 +293,7 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
-  it('ignores empty and whitespace-only event labels', async () => {
+  it('returns stable origin enums independently of legacy labels', async () => {
     const createdAt = new Date('2026-07-12T12:00:00.000Z');
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
     prisma.pointEvent.count.mockResolvedValue(2);
@@ -306,11 +330,11 @@ describe(AdminParticipantsService.name, () => {
     expect(result.items).toEqual([
       expect.objectContaining({
         id: 'e-empty',
-        origin: 'Descrição preservada',
+        origin: 'DIRECT_ACTION',
       }),
       expect.objectContaining({
         id: 'e-whitespace',
-        origin: 'Concessão administrativa',
+        origin: 'ADMIN',
       }),
     ]);
   });

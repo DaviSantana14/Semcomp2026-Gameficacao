@@ -332,7 +332,9 @@ export function ActionsClient() {
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {labels[a.type]} · {a.points} PTS · {a.redemptionsCount}{" "}
-                  resgates · {a.claimCodesCount} códigos únicos
+                  resgates · {a.claimCodes.total} códigos únicos (
+                  {a.claimCodes.used} usados, {a.claimCodes.available}{" "}
+                  disponíveis)
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

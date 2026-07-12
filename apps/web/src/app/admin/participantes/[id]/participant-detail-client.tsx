@@ -122,12 +122,12 @@ export function ParticipantDetailClient({ id }: { id: string }) {
           <Info
             icon={ReceiptText}
             label="Movimentações"
-            value={number.format(participant.pointEventsCount)}
+            value={number.format(participant.counts.movements)}
           />
           <Info
             icon={ShoppingBag}
             label="Pedidos na lojinha"
-            value={number.format(participant.rewardRedemptionsCount)}
+            value={number.format(participant.counts.rewards.pending)}
           />
         </div>
       </section>

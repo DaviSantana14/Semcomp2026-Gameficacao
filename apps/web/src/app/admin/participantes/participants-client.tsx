@@ -264,15 +264,20 @@ function ParticipantRow({
           {participant.email}
         </p>
         <p className="mt-1 font-mono text-xs text-muted-foreground">
-          <span className="sm:hidden">CPF {maskCpf(participant.cpf)}</span>
-          <span className="hidden sm:inline">CPF {participant.cpf}</span> ·
-          cadastro {date.format(new Date(participant.createdAt))}
+          <span>CPF {maskCpf(participant.cpf)}</span> · cadastro{" "}
+          {date.format(new Date(participant.createdAt))}
         </p>
       </div>
       <dl className="grid grid-cols-3 gap-2">
         <Counter label="PTS" value={participant.points} />
-        <Counter label="Eventos" value={participant.pointEventsCount} />
-        <Counter label="Pedidos" value={participant.rewardRedemptionsCount} />
+        <Counter
+          label="Actions resgatadas"
+          value={participant.actionRedemptionsCount}
+        />
+        <Counter
+          label="Rewards pendentes"
+          value={participant.pendingRewardRedemptionsCount}
+        />
       </dl>
       <div className="grid grid-cols-2 gap-2 lg:flex">
         <Link

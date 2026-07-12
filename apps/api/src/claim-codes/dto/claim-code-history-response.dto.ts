@@ -24,6 +24,7 @@ export class ClaimCodeHistoryResponseDto {
   @ApiProperty() code!: string;
   @ApiProperty({ enum: ClaimCodeStatus }) status!: ClaimCodeStatus;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty() isUsed!: boolean;
   @ApiProperty() createdAt!: string;
   @ApiProperty({ nullable: true, type: String }) usedAt!: string | null;
   @ApiProperty({ type: ClaimCodeActionDto }) action!: ClaimCodeActionDto;

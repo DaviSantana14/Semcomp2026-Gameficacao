@@ -55,7 +55,7 @@ export type Action = {
 };
 
 export type AdminAction = Action & {
-  claimCodesCount: number;
+  claimCodes: { total: number; used: number; available: number };
   redemptionsCount: number;
 };
 export type AdminClaimCodeStatus =
@@ -68,6 +68,7 @@ export type AdminClaimCode = {
   code: string;
   status: AdminClaimCodeStatus;
   isActive: boolean;
+  isUsed: boolean;
   createdAt: string;
   usedAt: string | null;
   action: { id: string; name: string };
@@ -88,7 +89,7 @@ export type ReusableCodeRedemption = {
   id: string;
   points: number;
   createdAt: string;
-  participant: { id: string; name: string; email: string; cpf: string };
+  participant: { id: string; name: string; email: string };
 };
 export type AdminActionsFilters = {
   page: number;
@@ -108,6 +109,8 @@ export type AdminReusableCodesFilters = {
   page: number;
   limit: number;
   search?: string;
+  status?: "all" | "active" | "disabled" | "blocked";
+  actionId?: string;
 };
 export type UpdateActionPayload = Partial<
   Pick<Action, "name" | "type" | "points" | "isActive" | "isCodeActive">
@@ -231,9 +234,15 @@ export type PaginatedResponse<T> = {
 };
 
 export type AdminDashboard = {
-  participants: { total: number; active: number };
-  pointsAwarded: number;
-  claimCodes: { used: number; available: number };
+  participants: { total: number; active: number; inactive: number };
+  activity: { redemptions: number; pointsIssued: number };
+  codes: {
+    uniqueTotal: number;
+    uniqueAvailable: number;
+    uniqueUsed: number;
+    reusableTotal: number;
+    reusableActive: number;
+  };
   shop: {
     rewardsTotal: number;
     rewardsActive: number;
@@ -259,14 +268,20 @@ export type AdminParticipant = {
   xp: number;
   level: number;
   isActive: boolean;
-  pointEventsCount: number;
-  rewardRedemptionsCount: number;
+  lastLoginAt: string | null;
+  actionRedemptionsCount: number;
+  pendingRewardRedemptionsCount: number;
   createdAt: string;
   updatedAt: string;
 };
 
 export type AdminParticipantDetail = AdminParticipant & {
-  lastLoginAt: string | null;
+  counts: {
+    actionRedemptions: number;
+    claimCodes: number;
+    movements: number;
+    rewards: { pending: number; delivered: number; cancelled: number };
+  };
 };
 
 export type AdminParticipantPointEvent = {
@@ -286,7 +301,8 @@ export type AdminParticipantPointEvent = {
     | "LEGACY_UNKNOWN"
     | null;
   description: string | null;
-  origin: string;
+  origin: "UNIQUE_CODE" | "REUSABLE_CODE" | "DIRECT_ACTION" | "REWARD" | "ADMIN";
+  action: { id: string; name: string } | null;
   claimCode: { id: string; code: string } | null;
   createdAt: string;
 };
@@ -310,8 +326,13 @@ export type AdminParticipantsFilters = {
 export type AdminPointEventsFilters = {
   page: number;
   limit: number;
-  source?: AdminParticipantPointEvent["source"];
-  kind?: AdminParticipantPointEvent["kind"];
+  source?:
+    | "all"
+    | "action_redeem"
+    | "admin_grant"
+    | "admin_adjust"
+    | "reward_redemption";
+  kind?: "all" | "credit" | "debit";
 };
 
 export type AdminRewardRedemptionsFilters = {
