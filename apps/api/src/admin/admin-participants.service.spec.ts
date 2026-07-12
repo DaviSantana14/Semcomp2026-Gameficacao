@@ -269,6 +269,52 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
+  it('ignores empty and whitespace-only event labels', async () => {
+    const createdAt = new Date('2026-07-12T12:00:00.000Z');
+    prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
+    prisma.pointEvent.count.mockResolvedValue(2);
+    prisma.pointEvent.findMany.mockResolvedValue([
+      {
+        id: 'e-empty',
+        points: 10,
+        kind: PointEventKind.CREDIT,
+        source: PointEventSource.ACTION_REDEEM,
+        redemptionMethod: null,
+        description: '  Descrição preservada  ',
+        createdAt,
+        action: { id: 'a1', name: '' },
+        claimCode: null,
+      },
+      {
+        id: 'e-whitespace',
+        points: 5,
+        kind: PointEventKind.CREDIT,
+        source: PointEventSource.ADMIN_GRANT,
+        redemptionMethod: null,
+        description: '   ',
+        createdAt,
+        action: { id: 'a2', name: ' \t ' },
+        claimCode: null,
+      },
+    ]);
+
+    const result = await service.findPointEvents('p1', {
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'e-empty',
+        origin: 'Descrição preservada',
+      }),
+      expect.objectContaining({
+        id: 'e-whitespace',
+        origin: 'Concessão administrativa',
+      }),
+    ]);
+  });
+
   it.each(['admin', 'missing'])(
     'rejects %s id before querying point events',
     async (id) => {

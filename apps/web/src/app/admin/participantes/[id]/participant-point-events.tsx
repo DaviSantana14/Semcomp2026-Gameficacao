@@ -127,6 +127,8 @@ export function ParticipantPointEvents({
 function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
   const credit = event.kind === "CREDIT";
   const method = formatRedemptionMethod(event);
+  const detail =
+    (method ?? event.description?.trim()) || "Sem detalhe adicional";
   return (
     <article className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
@@ -142,7 +144,7 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
         </div>
         <p className="mt-2 break-words font-bold">{event.origin}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {method ?? event.description ?? "Sem detalhe adicional"}
+          {detail}
         </p>
         <time
           className="mt-2 block font-mono text-xs text-muted-foreground"

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { PointEventSource, Prisma, UserRole } from '@prisma/client';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
@@ -28,6 +28,13 @@ const participantDetailSelect = {
   ...participantSelect,
   lastLoginAt: true,
 } as const;
+
+const pointEventSourceLabels: Record<PointEventSource, string> = {
+  ACTION_REDEEM: 'Atividade',
+  ADMIN_GRANT: 'Concessão administrativa',
+  ADMIN_ADJUST: 'Ajuste administrativo',
+  REWARD_REDEMPTION: 'Lojinha',
+};
 
 @Injectable()
 export class AdminParticipantsService {
@@ -111,7 +118,9 @@ export class AdminParticipantsService {
       rows.map((row) => ({
         ...row,
         xpDelta: row.source === 'ACTION_REDEEM' ? row.points : 0,
-        origin: row.action?.name ?? row.description ?? row.source,
+        origin:
+          firstNonBlank(row.action?.name, row.description) ??
+          pointEventSourceLabels[row.source],
         action: undefined,
         createdAt: row.createdAt.toISOString(),
       })),
@@ -164,6 +173,14 @@ export class AdminParticipantsService {
     if (!participant)
       throw new NotFoundException('Participante não encontrado.');
   }
+}
+
+function firstNonBlank(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
 }
 
 function mapParticipant<
