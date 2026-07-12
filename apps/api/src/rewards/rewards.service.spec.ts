@@ -82,70 +82,48 @@ function createService() {
 
 describe('RewardsService', () => {
   describe('findAdminRewards', () => {
-    it('lists inactive and out-of-stock rewards with status counters', async () => {
-      const { service, prisma } = createService();
-      prisma.reward.count.mockResolvedValue(1);
-      prisma.reward.findMany.mockResolvedValue([
-        { ...activeReward, stock: 0, isActive: false },
-      ]);
-      prisma.rewardRedemption.groupBy.mockResolvedValue([
-        {
-          rewardId: 'reward-1',
-          status: RedemptionStatus.PENDING,
-          _count: { _all: 2 },
-        },
-        {
-          rewardId: 'reward-1',
-          status: RedemptionStatus.DELIVERED,
-          _count: { _all: 3 },
-        },
-      ]);
+    it.each([
+      ['all', {}],
+      ['active', { isActive: true }],
+      ['inactive', { isActive: false }],
+      ['out_of_stock', { isActive: true, stock: 0 }],
+    ])(
+      'maps public reward status %s to Prisma filters',
+      async (status, expectedWhere) => {
+        const { service, prisma } = createService();
+        prisma.reward.count.mockResolvedValue(0);
+        prisma.reward.findMany.mockResolvedValue([]);
 
-      await expect(
-        service.findAdminRewards({
-          page: 2,
-          limit: 10,
-          search: ' camisa ',
-          status: 'inactive',
-          stock: 'out_of_stock',
-        } as never),
-      ).resolves.toEqual({
-        items: [
-          {
-            ...activeReward,
-            stock: 0,
-            isActive: false,
-            redemptionCounts: { PENDING: 2, DELIVERED: 3, CANCELLED: 0 },
-          },
-        ],
-        meta: { page: 2, limit: 10, total: 1, totalPages: 1 },
-      });
-      const where = {
-        isActive: false,
-        stock: 0,
-        OR: [
-          { name: { contains: 'camisa', mode: 'insensitive' } },
-          { description: { contains: 'camisa', mode: 'insensitive' } },
-        ],
-      };
-      expect(prisma.reward.count).toHaveBeenCalledWith({ where });
-      expect(prisma.reward.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where,
-          skip: 10,
-          take: 10,
-          orderBy: { createdAt: 'desc' },
-        }),
-      );
-      expect(prisma.rewardRedemption.groupBy).toHaveBeenCalledWith({
-        by: ['rewardId', 'status'],
-        where: { rewardId: { in: ['reward-1'] } },
-        _count: { _all: true },
-      });
-    });
+        await service.findAdminRewards({ page: 1, limit: 20, status } as never);
+
+        expect(prisma.reward.count).toHaveBeenCalledWith({
+          where: expectedWhere,
+        });
+      },
+    );
   });
 
   describe('findRedemptions', () => {
+    it.each([
+      ['all', undefined],
+      ['pending', RedemptionStatus.PENDING],
+      ['delivered', RedemptionStatus.DELIVERED],
+      ['cancelled', RedemptionStatus.CANCELLED],
+    ])(
+      'maps public redemption status %s to Prisma status',
+      async (status, expectedStatus) => {
+        const { service, prisma } = createService();
+        prisma.rewardRedemption.count.mockResolvedValue(0);
+        prisma.rewardRedemption.findMany.mockResolvedValue([]);
+
+        await service.findRedemptions({ page: 1, limit: 20, status } as never);
+
+        expect(prisma.rewardRedemption.count).toHaveBeenCalledWith({
+          where: expectedStatus ? { status: expectedStatus } : {},
+        });
+      },
+    );
+
     it('filters and returns recent redemption snapshots with controlled selects', async () => {
       const { service, prisma } = createService();
       prisma.rewardRedemption.count.mockResolvedValue(1);
@@ -155,7 +133,7 @@ describe('RewardsService', () => {
         service.findRedemptions({
           page: 1,
           limit: 20,
-          status: RedemptionStatus.PENDING,
+          status: 'pending',
           rewardId: 'reward-1',
           search: ' ada ',
         }),

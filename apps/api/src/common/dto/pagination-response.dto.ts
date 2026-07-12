@@ -1,13 +1,22 @@
-export interface PaginationMeta {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
+import { ApiProperty } from '@nestjs/swagger';
+
+export class PaginationMetaDto {
+  @ApiProperty({ example: 1 })
+  page!: number;
+
+  @ApiProperty({ example: 20 })
+  limit!: number;
+
+  @ApiProperty({ example: 42 })
+  total!: number;
+
+  @ApiProperty({ example: 3 })
+  totalPages!: number;
 }
 
 export interface PaginationResponse<T> {
   items: T[];
-  meta: PaginationMeta;
+  meta: PaginationMetaDto;
 }
 
 export function paginate<T>(

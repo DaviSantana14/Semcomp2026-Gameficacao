@@ -1,25 +1,14 @@
 import { ActionType } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
+import { PaginationMetaDto } from '../../common/dto/pagination-response.dto';
 import { AdminActionResponseDto } from './admin-action-response.dto';
+
+export { PaginationMetaDto } from '../../common/dto/pagination-response.dto';
 
 export enum ReusableCodeStatus {
   ACTIVE = 'ACTIVE',
   DISABLED = 'DISABLED',
   BLOCKED_BY_ACTION = 'BLOCKED_BY_ACTION',
-}
-
-export class PaginationMetaDto {
-  @ApiProperty({ example: 1 })
-  page!: number;
-
-  @ApiProperty({ example: 20 })
-  limit!: number;
-
-  @ApiProperty({ example: 42 })
-  total!: number;
-
-  @ApiProperty({ example: 3 })
-  totalPages!: number;
 }
 
 export class ReusableCodeHistoryResponseDto {

@@ -16,9 +16,11 @@ import { UpdateRewardDto } from './dto/update-reward.dto';
 import {
   AdminRewardsQueryDto,
   AdminRewardStatusFilter,
-  AdminRewardStockFilter,
 } from './dto/admin-rewards-query.dto';
-import { AdminRedemptionsQueryDto } from './dto/admin-redemptions-query.dto';
+import {
+  AdminRedemptionsQueryDto,
+  AdminRedemptionStatusFilter,
+} from './dto/admin-redemptions-query.dto';
 
 const rewardSelect = {
   id: true,
@@ -72,11 +74,13 @@ export class RewardsService {
   async findAdminRewards(query: AdminRewardsQueryDto) {
     const search = query.search?.trim();
     const where: Prisma.RewardWhereInput = {};
-    if (query.status)
-      where.isActive = query.status === AdminRewardStatusFilter.ACTIVE;
-    if (query.stock)
-      where.stock =
-        query.stock === AdminRewardStockFilter.OUT_OF_STOCK ? 0 : { gt: 0 };
+    if (query.status === AdminRewardStatusFilter.ACTIVE) where.isActive = true;
+    if (query.status === AdminRewardStatusFilter.INACTIVE)
+      where.isActive = false;
+    if (query.status === AdminRewardStatusFilter.OUT_OF_STOCK) {
+      where.isActive = true;
+      where.stock = 0;
+    }
     if (search)
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -126,7 +130,9 @@ export class RewardsService {
   async findRedemptions(query: AdminRedemptionsQueryDto) {
     const search = query.search?.trim();
     const where: Prisma.RewardRedemptionWhereInput = {
-      ...(query.status && { status: query.status }),
+      ...(query.status !== AdminRedemptionStatusFilter.ALL && {
+        status: mapRedemptionStatus(query.status),
+      }),
       ...(query.rewardId && { rewardId: query.rewardId }),
       ...(search && {
         user: {
@@ -338,6 +344,23 @@ export class RewardsService {
       return cancelled;
     });
   }
+}
+
+function mapRedemptionStatus(status: AdminRedemptionStatusFilter) {
+  const statuses: Record<
+    Exclude<AdminRedemptionStatusFilter, AdminRedemptionStatusFilter.ALL>,
+    RedemptionStatus
+  > = {
+    [AdminRedemptionStatusFilter.PENDING]: RedemptionStatus.PENDING,
+    [AdminRedemptionStatusFilter.DELIVERED]: RedemptionStatus.DELIVERED,
+    [AdminRedemptionStatusFilter.CANCELLED]: RedemptionStatus.CANCELLED,
+  };
+  return statuses[
+    status as Exclude<
+      AdminRedemptionStatusFilter,
+      AdminRedemptionStatusFilter.ALL
+    >
+  ];
 }
 
 function normalizeRewardInput(input: CreateRewardDto | UpdateRewardDto) {

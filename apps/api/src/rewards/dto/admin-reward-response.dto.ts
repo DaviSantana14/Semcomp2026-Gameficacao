@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { RedemptionStatus } from '@prisma/client';
 import { RewardResponseDto } from './reward-response.dto';
+import { PaginationMetaDto } from '../../common/dto/pagination-response.dto';
 
 export class RedemptionStatusCountsDto {
   @ApiProperty() [RedemptionStatus.PENDING]!: number;
@@ -16,10 +17,6 @@ export class AdminRewardResponseDto extends RewardResponseDto {
 export class AdminRewardsPageResponseDto {
   @ApiProperty({ type: AdminRewardResponseDto, isArray: true })
   items!: AdminRewardResponseDto[];
-  @ApiProperty() meta!: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  @ApiProperty({ type: PaginationMetaDto })
+  meta!: PaginationMetaDto;
 }
