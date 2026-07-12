@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LogoutButton } from "@/components/logout-button";
+import { useMe } from "@/hooks/use-auth";
 import {
   ApiError,
   fetchRanking,
@@ -78,6 +79,11 @@ export function RankingClient() {
   const [period, setPeriod] = useState<RankingPeriod>("all");
   const periodCopy = RANKING_PERIOD_COPY[period];
   const {
+    data: user,
+    error: userError,
+    isLoading: isUserLoading,
+  } = useMe();
+  const {
     data,
     error,
     isLoading,
@@ -88,12 +94,15 @@ export function RankingClient() {
   });
 
   useEffect(() => {
-    if (error instanceof ApiError && error.status === 401) {
+    if (
+      (error instanceof ApiError && error.status === 401) ||
+      (userError instanceof ApiError && userError.status === 401)
+    ) {
       router.replace("/login");
     }
-  }, [error, router]);
+  }, [error, router, userError]);
 
-  if (isLoading) {
+  if (isLoading || isUserLoading) {
     return (
       <main className="arcade-grid min-h-dvh px-4 py-6 md:px-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -104,10 +113,11 @@ export function RankingClient() {
     );
   }
 
-  if (error) {
+  if (error || userError) {
+    const displayError = error ?? userError;
     const message =
-      error instanceof ApiError
-        ? error.message
+      displayError instanceof ApiError
+        ? displayError.message
         : "Nao foi possivel carregar o ranking.";
 
     return (
@@ -115,7 +125,7 @@ export function RankingClient() {
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           <Button
             className="w-fit"
-            onClick={() => router.push("/home")}
+            onClick={() => router.push(user?.role === "ADMIN" ? "/admin" : "/home")}
             variant="outline"
           >
             <ArrowLeft aria-hidden="true" data-icon="inline-start" />
@@ -132,7 +142,7 @@ export function RankingClient() {
     );
   }
 
-  if (!data) {
+  if (!data || !user) {
     return null;
   }
 
@@ -144,7 +154,7 @@ export function RankingClient() {
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
           <Button
             className="w-full sm:w-fit"
-            onClick={() => router.push("/home")}
+            onClick={() => router.push(user.role === "ADMIN" ? "/admin" : "/home")}
             variant="outline"
           >
             <ArrowLeft aria-hidden="true" data-icon="inline-start" />
@@ -235,20 +245,26 @@ export function RankingClient() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <UserRound aria-hidden="true" className="text-success" />
-                  Minha posicao
+                  {user.role === "ADMIN" ? "Modo observador" : "Minha posicao"}
                 </CardTitle>
                 <CardDescription>
-                  {data.me
+                  {user.role === "ADMIN"
+                    ? "Acompanhe a disputa sem participar do placar."
+                    : data.me
                     ? "Sua posicao aparece mesmo fora do Top 10."
-                    : "Admins nao participam do ranking competitivo."}
+                    : "Sua posicao aparece depois do primeiro XP."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {data.me ? (
+                {user.role === "ADMIN" ? (
+                  <div className="rounded-lg border border-border bg-muted/45 p-4 text-sm text-muted-foreground">
+                    Visualizacao operacional ativa. Nenhuma pontuacao e atribuida a esta conta.
+                  </div>
+                ) : data.me ? (
                   <RankingRow entry={data.me} />
                 ) : (
                   <div className="rounded-lg border border-border bg-muted/45 p-4 text-sm text-muted-foreground">
-                    Entre com uma conta participante para disputar o placar.
+                    Participe de uma atividade para entrar no placar.
                   </div>
                 )}
               </CardContent>
