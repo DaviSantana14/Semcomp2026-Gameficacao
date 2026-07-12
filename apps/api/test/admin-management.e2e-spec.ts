@@ -363,9 +363,22 @@ describe('Admin management acceptance (e2e)', () => {
     ).resolves.toEqual([actionCount, codeCount, rewardCount]);
 
     await post(`/actions/${directActionId}/redeem`, adminSession).expect(403);
+    const availableClaimCodeBefore = await prisma.claimCode.findUniqueOrThrow({
+      where: { id: availableClaimCodeId },
+    });
     await post('/actions/redeem-code', adminSession)
-      .send({ code: reusableCode })
+      .send({ code: availableClaimCode })
       .expect(403);
+    const availableClaimCodeAfter = await prisma.claimCode.findUniqueOrThrow({
+      where: { id: availableClaimCodeId },
+    });
+    expect(availableClaimCodeAfter).toEqual(availableClaimCodeBefore);
+    expect(availableClaimCodeAfter).toMatchObject({
+      isUsed: false,
+      isActive: true,
+      usedById: null,
+      usedAt: null,
+    });
     await post(`/rewards/${rewardId}/redeem`, adminSession).expect(403);
   });
 
