@@ -1,5 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { PointEventKind, PointEventSource } from '@prisma/client';
+import {
+  PointEventKind,
+  PointEventSource,
+  RedemptionStatus,
+} from '@prisma/client';
 import { RewardsService } from './rewards.service';
 
 const activeReward = {
@@ -54,12 +58,15 @@ function createService() {
   const prisma = {
     reward: {
       create: jest.fn(),
+      count: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
     rewardRedemption: {
+      count: jest.fn(),
       findMany: jest.fn(),
+      groupBy: jest.fn(),
     },
     $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
       callback(tx),
@@ -74,6 +81,129 @@ function createService() {
 }
 
 describe('RewardsService', () => {
+  describe('findAdminRewards', () => {
+    it('lists inactive and out-of-stock rewards with status counters', async () => {
+      const { service, prisma } = createService();
+      prisma.reward.count.mockResolvedValue(1);
+      prisma.reward.findMany.mockResolvedValue([
+        { ...activeReward, stock: 0, isActive: false },
+      ]);
+      prisma.rewardRedemption.groupBy.mockResolvedValue([
+        {
+          rewardId: 'reward-1',
+          status: RedemptionStatus.PENDING,
+          _count: { _all: 2 },
+        },
+        {
+          rewardId: 'reward-1',
+          status: RedemptionStatus.DELIVERED,
+          _count: { _all: 3 },
+        },
+      ]);
+
+      await expect(
+        service.findAdminRewards({
+          page: 2,
+          limit: 10,
+          search: ' camisa ',
+          status: 'inactive',
+          stock: 'out_of_stock',
+        } as never),
+      ).resolves.toEqual({
+        items: [
+          {
+            ...activeReward,
+            stock: 0,
+            isActive: false,
+            redemptionCounts: { PENDING: 2, DELIVERED: 3, CANCELLED: 0 },
+          },
+        ],
+        meta: { page: 2, limit: 10, total: 1, totalPages: 1 },
+      });
+      const where = {
+        isActive: false,
+        stock: 0,
+        OR: [
+          { name: { contains: 'camisa', mode: 'insensitive' } },
+          { description: { contains: 'camisa', mode: 'insensitive' } },
+        ],
+      };
+      expect(prisma.reward.count).toHaveBeenCalledWith({ where });
+      expect(prisma.reward.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where,
+          skip: 10,
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+        }),
+      );
+      expect(prisma.rewardRedemption.groupBy).toHaveBeenCalledWith({
+        by: ['rewardId', 'status'],
+        where: { rewardId: { in: ['reward-1'] } },
+        _count: { _all: true },
+      });
+    });
+  });
+
+  describe('findRedemptions', () => {
+    it('filters and returns recent redemption snapshots with controlled selects', async () => {
+      const { service, prisma } = createService();
+      prisma.rewardRedemption.count.mockResolvedValue(1);
+      prisma.rewardRedemption.findMany.mockResolvedValue([pendingRedemption]);
+
+      await expect(
+        service.findRedemptions({
+          page: 1,
+          limit: 20,
+          status: RedemptionStatus.PENDING,
+          rewardId: 'reward-1',
+          search: ' ada ',
+        }),
+      ).resolves.toEqual({
+        items: [pendingRedemption],
+        meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      });
+      const where = {
+        status: RedemptionStatus.PENDING,
+        rewardId: 'reward-1',
+        user: {
+          OR: [
+            { name: { contains: 'ada', mode: 'insensitive' } },
+            { email: { contains: 'ada', mode: 'insensitive' } },
+          ],
+        },
+      };
+      expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith({
+        where,
+        skip: 0,
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          userId: true,
+          rewardId: true,
+          pointsSpent: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          user: { select: { id: true, name: true, email: true } },
+          reward: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              costInPoints: true,
+              isActive: true,
+              stock: true,
+              imageUrl: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+    });
+  });
   describe('redeem', () => {
     it('debits points and stock without changing xp', async () => {
       const { service, tx } = createService();

@@ -7,10 +7,18 @@ import {
   PointEventKind,
   PointEventSource,
   RedemptionStatus,
+  Prisma,
 } from '@prisma/client';
+import { paginate } from '../common/dto/pagination-response.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { UpdateRewardDto } from './dto/update-reward.dto';
+import {
+  AdminRewardsQueryDto,
+  AdminRewardStatusFilter,
+  AdminRewardStockFilter,
+} from './dto/admin-rewards-query.dto';
+import { AdminRedemptionsQueryDto } from './dto/admin-redemptions-query.dto';
 
 const rewardSelect = {
   id: true,
@@ -59,6 +67,98 @@ export class RewardsService {
       select: rewardSelect,
       orderBy: [{ isActive: 'desc' }, { stock: 'desc' }, { createdAt: 'asc' }],
     });
+  }
+
+  async findAdminRewards(query: AdminRewardsQueryDto) {
+    const search = query.search?.trim();
+    const where: Prisma.RewardWhereInput = {};
+    if (query.status)
+      where.isActive = query.status === AdminRewardStatusFilter.ACTIVE;
+    if (query.stock)
+      where.stock =
+        query.stock === AdminRewardStockFilter.OUT_OF_STOCK ? 0 : { gt: 0 };
+    if (search)
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
+    const [total, rows] = await Promise.all([
+      this.prisma.reward.count({ where }),
+      this.prisma.reward.findMany({
+        where,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+        select: rewardSelect,
+      }),
+    ]);
+    const counts = rows.length
+      ? await this.prisma.rewardRedemption.groupBy({
+          by: ['rewardId', 'status'],
+          where: { rewardId: { in: rows.map(({ id }) => id) } },
+          _count: { _all: true },
+        })
+      : [];
+    const countMap = new Map(
+      counts.map((entry) => [
+        `${entry.rewardId}:${entry.status}`,
+        entry._count._all,
+      ]),
+    );
+    return paginate(
+      rows.map((reward) => ({
+        ...reward,
+        redemptionCounts: {
+          PENDING:
+            countMap.get(`${reward.id}:${RedemptionStatus.PENDING}`) ?? 0,
+          DELIVERED:
+            countMap.get(`${reward.id}:${RedemptionStatus.DELIVERED}`) ?? 0,
+          CANCELLED:
+            countMap.get(`${reward.id}:${RedemptionStatus.CANCELLED}`) ?? 0,
+        },
+      })),
+      total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  async findRedemptions(query: AdminRedemptionsQueryDto) {
+    const search = query.search?.trim();
+    const where: Prisma.RewardRedemptionWhereInput = {
+      ...(query.status && { status: query.status }),
+      ...(query.rewardId && { rewardId: query.rewardId }),
+      ...(search && {
+        user: {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      }),
+    };
+    const select = {
+      id: true,
+      userId: true,
+      rewardId: true,
+      pointsSpent: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      user: { select: { id: true, name: true, email: true } },
+      reward: { select: rewardSelect },
+    } as const;
+    const [total, rows] = await Promise.all([
+      this.prisma.rewardRedemption.count({ where }),
+      this.prisma.rewardRedemption.findMany({
+        where,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+        select,
+      }),
+    ]);
+    return paginate(rows, total, query.page, query.limit);
   }
 
   findById(id: string) {
