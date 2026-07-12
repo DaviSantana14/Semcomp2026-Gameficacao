@@ -40,6 +40,9 @@ export class ActionResponseDto {
   })
   isActive: boolean;
 
+  @ApiProperty({ example: true })
+  isCodeActive: boolean;
+
   @ApiProperty({
     example: '2026-05-04T16:46:16.555Z',
     type: String,
@@ -54,6 +57,7 @@ export class ActionResponseDto {
     this.code = data.code;
     this.points = data.points;
     this.isActive = data.isActive;
+    this.isCodeActive = data.isCodeActive;
     this.createdAt = data.createdAt;
   }
 }
@@ -66,6 +70,7 @@ export type ActionResponseSource = {
   code: string | null;
   points: number;
   isActive: boolean;
+  isCodeActive: boolean;
   createdAt: Date;
 };
 
