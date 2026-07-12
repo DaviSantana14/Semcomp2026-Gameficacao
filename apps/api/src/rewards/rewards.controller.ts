@@ -111,6 +111,7 @@ export class RewardsController {
   }
 
   @Post('rewards/:id/redeem')
+  @Roles(UserRole.PARTICIPANT)
   @ApiOperation({ summary: 'Resgatar recompensa da lojinha' })
   @ApiHeader({
     name: 'X-CSRF-Token',
@@ -118,6 +119,10 @@ export class RewardsController {
   })
   @ApiCreatedResponse({ type: RewardRedemptionResponseDto })
   @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Resgate permitido apenas para participantes.',
+    type: HttpErrorResponseDto,
+  })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   async redeem(
