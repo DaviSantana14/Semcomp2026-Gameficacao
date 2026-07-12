@@ -42,50 +42,52 @@ export class ClaimCodesService {
       throw new NotFoundException('Atividade pontuável não encontrada.');
     }
 
-    const insertedCodes: string[] = [];
-
-    for (
-      let round = 0;
-      round < MAX_GENERATION_ROUNDS && insertedCodes.length < quantity;
-      round += 1
-    ) {
-      const remaining = quantity - insertedCodes.length;
-      const candidates = new Set<string>();
-      const maxGenerationAttempts =
-        remaining * MAX_GENERATION_ATTEMPTS_PER_CODE;
+    return this.prisma.$transaction(async (tx) => {
+      const insertedCodes: string[] = [];
 
       for (
-        let attempt = 0;
-        attempt < maxGenerationAttempts && candidates.size < remaining;
-        attempt += 1
+        let round = 0;
+        round < MAX_GENERATION_ROUNDS && insertedCodes.length < quantity;
+        round += 1
       ) {
-        candidates.add(generateClaimCode());
+        const remaining = quantity - insertedCodes.length;
+        const candidates = new Set<string>();
+        const maxGenerationAttempts =
+          remaining * MAX_GENERATION_ATTEMPTS_PER_CODE;
+
+        for (
+          let attempt = 0;
+          attempt < maxGenerationAttempts && candidates.size < remaining;
+          attempt += 1
+        ) {
+          candidates.add(generateClaimCode());
+        }
+
+        const inserted = await tx.claimCode.createManyAndReturn({
+          data: [...candidates].map((code) => ({
+            code,
+            actionId,
+            isActive: true,
+          })),
+          skipDuplicates: true,
+          select: { code: true },
+        });
+
+        insertedCodes.push(...inserted.map(({ code }) => code));
       }
 
-      const inserted = await this.prisma.claimCode.createManyAndReturn({
-        data: [...candidates].map((code) => ({
-          code,
-          actionId,
-          isActive: true,
-        })),
-        skipDuplicates: true,
-        select: { code: true },
-      });
+      if (insertedCodes.length < quantity) {
+        throw new ServiceUnavailableException(
+          'Não foi possível gerar o lote completo de códigos.',
+        );
+      }
 
-      insertedCodes.push(...inserted.map(({ code }) => code));
-    }
-
-    if (insertedCodes.length < quantity) {
-      throw new ServiceUnavailableException(
-        'Não foi possível gerar o lote completo de códigos.',
-      );
-    }
-
-    return {
-      action,
-      quantity: insertedCodes.length,
-      codes: insertedCodes.sort(),
-    };
+      return {
+        action,
+        quantity: insertedCodes.length,
+        codes: insertedCodes.sort(),
+      };
+    });
   }
 
   async findAll(query: ClaimCodesQueryDto) {

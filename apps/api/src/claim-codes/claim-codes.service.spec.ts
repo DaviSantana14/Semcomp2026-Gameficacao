@@ -7,15 +7,20 @@ import * as eventCode from '../common/event-code';
 import { ClaimCodesService } from './claim-codes.service';
 
 function createService() {
+  const claimCode = {
+    count: jest.fn(),
+    findMany: jest.fn(),
+    findUnique: jest.fn(),
+    createManyAndReturn: jest.fn(),
+    updateMany: jest.fn(),
+  };
+  const tx = { claimCode };
   const prisma = {
     action: { findUnique: jest.fn() },
-    claimCode: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-      findUnique: jest.fn(),
-      createManyAndReturn: jest.fn(),
-      updateMany: jest.fn(),
-    },
+    claimCode,
+    $transaction: jest.fn(
+      (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
+    ),
   };
 
   return { service: new ClaimCodesService(prisma as never), prisma };
@@ -208,6 +213,22 @@ describe('ClaimCodesService', () => {
     });
   });
 
+  it('creates a batch inside a transaction', async () => {
+    const { service, prisma } = createService();
+    prisma.action.findUnique.mockResolvedValue({
+      id: 'action-1',
+      name: 'Credenciamento',
+    });
+    jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
+    prisma.claimCode.createManyAndReturn.mockResolvedValue([
+      { code: 'AAAA-AAAA' },
+    ]);
+
+    await service.generateBatch('action-1', 1);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts an inactive action without selecting or filtering isActive', async () => {
     const { service, prisma } = createService();
     prisma.action.findUnique.mockResolvedValue({
@@ -275,6 +296,49 @@ describe('ClaimCodesService', () => {
       ServiceUnavailableException,
     );
     expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledTimes(5);
+  });
+
+  it('rolls back partial inserts when retries cannot complete the batch', async () => {
+    const { service, prisma } = createService();
+    const attemptedCodes: string[] = [];
+    const committedCodes: string[] = [];
+    let insertCalls = 0;
+    const tx = {
+      claimCode: {
+        createManyAndReturn: jest.fn(
+          (args: {
+            data: Array<{ code: string; actionId: string; isActive: boolean }>;
+          }) => {
+            insertCalls += 1;
+            const codes = args.data.map(({ code }) => code);
+            attemptedCodes.push(...codes);
+            return Promise.resolve(
+              insertCalls === 1 ? codes.map((code) => ({ code })) : [],
+            );
+          },
+        ),
+      },
+    };
+
+    prisma.action.findUnique.mockResolvedValue({
+      id: 'action-1',
+      name: 'Credenciamento',
+    });
+    jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
+    prisma.$transaction.mockImplementation(
+      (callback: (transaction: typeof tx) => Promise<unknown>) =>
+        callback(tx).then((result) => {
+          committedCodes.push(...attemptedCodes);
+          return result;
+        }),
+    );
+
+    await expect(service.generateBatch('action-1', 2)).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+
+    expect(attemptedCodes).toHaveLength(5);
+    expect(committedCodes).toEqual([]);
   });
 
   it('terminates with 503 when a repetitive generator cannot fill multiple candidates', async () => {
