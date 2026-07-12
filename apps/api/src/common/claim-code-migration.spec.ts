@@ -33,9 +33,9 @@ describe('claim code audit migration', () => {
   });
 
   it('adds relational and consistency constraints after the backfill', () => {
-    expect(sql.indexOf('SET "redemptionMethod" = \'LEGACY_UNKNOWN\'')).toBeLessThan(
-      sql.indexOf('PointEvent_claimCodeId_fkey'),
-    );
+    expect(
+      sql.indexOf('SET "redemptionMethod" = \'LEGACY_UNKNOWN\''),
+    ).toBeLessThan(sql.indexOf('PointEvent_claimCodeId_fkey'));
     expect(sql).toContain('ClaimCode_used_not_active_check');
     expect(sql).toContain('PointEvent_action_redemption_method_check');
     expect(sql).toContain('PointEvent_claim_code_method_check');
