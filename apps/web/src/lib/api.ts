@@ -190,11 +190,14 @@ export type CreateRewardPayload = {
   description?: string;
   costInPoints: number;
   stock: number;
-  isActive?: boolean;
+  isActive: boolean;
   imageUrl?: string;
 };
 
 export type UpdateRewardPayload = Partial<CreateRewardPayload>;
+export type UpdateRewardDetailsPayload = Partial<
+  Omit<CreateRewardPayload, "isActive">
+>;
 
 export type AdminReward = Reward & {
   redemptionCounts: Record<RedemptionStatus, number>;
@@ -537,9 +540,13 @@ export function fetchAdminDashboard() {
   return apiFetch<AdminDashboard>("/admin/dashboard");
 }
 
-export function fetchAdminRewards(filters: AdminRewardsFilters) {
+export function fetchAdminRewards(
+  filters: AdminRewardsFilters,
+  signal?: AbortSignal,
+) {
   return apiFetch<PaginatedResponse<AdminReward>>(
     withQuery("/admin/rewards", filters),
+    { signal },
   );
 }
 
