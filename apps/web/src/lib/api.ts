@@ -150,6 +150,12 @@ export type AdminDashboard = {
   participants: { total: number; active: number };
   pointsAwarded: number;
   claimCodes: { used: number; available: number };
+  shop: {
+    rewardsTotal: number;
+    rewardsActive: number;
+    outOfStock: number;
+    pendingRedemptions: number;
+  };
   recentPendingRedemptions: Array<{
     id: string;
     pointsSpent: number;
@@ -176,7 +182,7 @@ export type AdminParticipant = {
 };
 
 export type AdminParticipantDetail = AdminParticipant & {
-  lastLoginAt?: string | null;
+  lastLoginAt: string | null;
 };
 
 export type AdminParticipantPointEvent = {
@@ -197,6 +203,7 @@ export type AdminParticipantPointEvent = {
     | null;
   description: string | null;
   origin: string;
+  claimCode: { id: string; code: string } | null;
   createdAt: string;
 };
 

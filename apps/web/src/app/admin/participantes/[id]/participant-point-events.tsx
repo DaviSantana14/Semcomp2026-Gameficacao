@@ -126,14 +126,7 @@ export function ParticipantPointEvents({
 
 function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
   const credit = event.kind === "CREDIT";
-  const method =
-    event.redemptionMethod === "REUSABLE_CODE"
-      ? "Código reutilizável"
-      : event.redemptionMethod === "CLAIM_CODE"
-        ? "Código único"
-        : event.redemptionMethod === "DIRECT"
-          ? "Registro direto"
-          : null;
+  const method = formatRedemptionMethod(event);
   return (
     <article className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
@@ -149,9 +142,7 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
         </div>
         <p className="mt-2 break-words font-bold">{event.origin}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {method
-            ? `${method}${event.source === "ACTION_REDEEM" ? ` · ${event.origin}` : ""}`
-            : event.description || "Sem detalhe adicional"}
+          {method ?? event.description ?? "Sem detalhe adicional"}
         </p>
         <time
           className="mt-2 block font-mono text-xs text-muted-foreground"
@@ -169,6 +160,17 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
       </dl>
     </article>
   );
+}
+
+function formatRedemptionMethod(event: AdminParticipantPointEvent) {
+  if (event.redemptionMethod === "CLAIM_CODE")
+    return event.claimCode
+      ? `Código único · ${event.claimCode.code}`
+      : "Código único";
+  if (event.redemptionMethod === "REUSABLE_CODE")
+    return `Código reutilizável · ${event.origin}`;
+  if (event.redemptionMethod === "DIRECT") return "Registro direto";
+  return null;
 }
 
 function Delta({ label, value }: { label: string; value: number }) {

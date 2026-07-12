@@ -58,7 +58,8 @@ describe(AdminDashboardService.name, () => {
     user: { count: jest.fn() },
     pointEvent: { aggregate: jest.fn() },
     claimCode: { count: jest.fn() },
-    rewardRedemption: { findMany: jest.fn() },
+    reward: { count: jest.fn() },
+    rewardRedemption: { count: jest.fn(), findMany: jest.fn() },
   };
   let service: AdminDashboardService;
 
@@ -77,6 +78,11 @@ describe(AdminDashboardService.name, () => {
     prisma.user.count.mockResolvedValueOnce(12).mockResolvedValueOnce(9);
     prisma.pointEvent.aggregate.mockResolvedValue({ _sum: { points: 340 } });
     prisma.claimCode.count.mockResolvedValueOnce(7).mockResolvedValueOnce(13);
+    prisma.reward.count
+      .mockResolvedValueOnce(8)
+      .mockResolvedValueOnce(6)
+      .mockResolvedValueOnce(2);
+    prisma.rewardRedemption.count.mockResolvedValue(17);
     prisma.rewardRedemption.findMany.mockResolvedValue([
       {
         id: 'r1',
@@ -91,6 +97,12 @@ describe(AdminDashboardService.name, () => {
       participants: { total: 12, active: 9 },
       pointsAwarded: 340,
       claimCodes: { used: 7, available: 13 },
+      shop: {
+        rewardsTotal: 8,
+        rewardsActive: 6,
+        outOfStock: 2,
+        pendingRedemptions: 17,
+      },
       recentPendingRedemptions: [
         expect.objectContaining({ createdAt: '2026-07-11T12:00:00.000Z' }),
       ],
@@ -124,6 +136,16 @@ describe(AdminDashboardService.name, () => {
     });
     expect(prisma.claimCode.count).toHaveBeenNthCalledWith(2, {
       where: { isUsed: false, isActive: true },
+    });
+    expect(prisma.reward.count).toHaveBeenNthCalledWith(1);
+    expect(prisma.reward.count).toHaveBeenNthCalledWith(2, {
+      where: { isActive: true },
+    });
+    expect(prisma.reward.count).toHaveBeenNthCalledWith(3, {
+      where: { stock: 0 },
+    });
+    expect(prisma.rewardRedemption.count).toHaveBeenCalledWith({
+      where: { status: RedemptionStatus.PENDING },
     });
   });
 });

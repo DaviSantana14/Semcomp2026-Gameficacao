@@ -12,5 +12,6 @@ export class AdminParticipantEventResponseDto {
   redemptionMethod!: ActionRedemptionMethod | null;
   description!: string | null;
   origin!: string;
+  claimCode!: { id: string; code: string } | null;
   createdAt!: string;
 }

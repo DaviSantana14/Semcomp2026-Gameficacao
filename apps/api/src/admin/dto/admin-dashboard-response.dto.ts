@@ -13,5 +13,11 @@ export class AdminDashboardResponseDto {
   participants!: { total: number; active: number };
   pointsAwarded!: number;
   claimCodes!: { used: number; available: number };
+  shop!: {
+    rewardsTotal: number;
+    rewardsActive: number;
+    outOfStock: number;
+    pendingRedemptions: number;
+  };
   recentPendingRedemptions!: AdminDashboardPendingRedemptionResponseDto[];
 }

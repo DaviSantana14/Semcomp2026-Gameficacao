@@ -57,7 +57,7 @@ export function DashboardClient() {
     },
     {
       label: "Resgates pendentes",
-      value: number.format(data.recentPendingRedemptions.length),
+      value: number.format(data.shop.pendingRedemptions),
       note: "mais antigos primeiro",
       icon: PackageCheck,
     },
@@ -75,8 +75,8 @@ export function DashboardClient() {
     },
     {
       label: "Lojinha",
-      value: data.recentPendingRedemptions.length > 0 ? "Atenção" : "Em dia",
-      note: "fila de retiradas",
+      value: data.shop.pendingRedemptions > 0 ? "Atenção" : "Em dia",
+      note: `${number.format(data.shop.rewardsActive)} de ${number.format(data.shop.rewardsTotal)} recompensas ativas`,
       icon: ShoppingBag,
     },
   ];
@@ -114,7 +114,7 @@ export function DashboardClient() {
         {metrics.map(({ icon: Icon, label, note, value }, index) => (
           <Card
             className={
-              index === 1 && data.recentPendingRedemptions.length > 0
+              index === 1 && data.shop.pendingRedemptions > 0
                 ? "border-accent/50 bg-accent/5"
                 : "bg-card/90"
             }
@@ -148,13 +148,13 @@ export function DashboardClient() {
               <CardTitle className="mt-1">Pedidos urgentes</CardTitle>
             </div>
             <span className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 font-mono text-xs text-accent">
-              {data.recentPendingRedemptions.length} na fila
+              {number.format(data.shop.pendingRedemptions)} na fila
             </span>
           </CardHeader>
           <CardContent className="grid gap-3">
             {data.recentPendingRedemptions.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-                Nenhuma retirada pendente entre os cinco pedidos mais antigos.
+                Nenhuma retirada pendente.
               </div>
             ) : (
               data.recentPendingRedemptions.map((item) => (

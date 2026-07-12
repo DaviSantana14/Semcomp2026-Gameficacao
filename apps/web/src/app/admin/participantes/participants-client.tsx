@@ -33,6 +33,7 @@ export function ParticipantsClient() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const filters = {
     page,
     limit: LIMIT,
@@ -82,23 +83,29 @@ export function ParticipantsClient() {
     setPage(1);
   }
 
-  function toggle(participant: AdminParticipant) {
+  async function toggle(participant: AdminParticipant) {
     if (
       !participant.isActive ||
       window.confirm(
         `Desativar ${participant.name}? A sessão dessa pessoa deixará de funcionar imediatamente.`,
       )
     ) {
-      statusMutation.mutate({
-        id: participant.id,
-        isActive: !participant.isActive,
-      });
+      if (pendingIds.has(participant.id)) return;
+      setPendingIds((current) => new Set(current).add(participant.id));
+      try {
+        await statusMutation.mutateAsync({
+          id: participant.id,
+          isActive: !participant.isActive,
+        });
+      } finally {
+        setPendingIds((current) => {
+          const next = new Set(current);
+          next.delete(participant.id);
+          return next;
+        });
+      }
     }
   }
-
-  const pendingId = statusMutation.isPending
-    ? statusMutation.variables?.id
-    : undefined;
   const data = participantsQuery.data;
 
   return (
@@ -188,8 +195,8 @@ export function ParticipantsClient() {
               <ParticipantRow
                 key={participant.id}
                 participant={participant}
-                pending={pendingId === participant.id}
-                toggle={() => toggle(participant)}
+                pending={pendingIds.has(participant.id)}
+                toggle={() => void toggle(participant)}
               />
             ))}
           </div>

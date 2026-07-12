@@ -201,18 +201,23 @@ describe(AdminParticipantsService.name, () => {
       xp: 10,
       level: 2,
       isActive: true,
+      lastLoginAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       _count: { pointEvents: 2, rewardRedemptions: 1 },
     });
     await expect(service.findOne('p1')).resolves.toMatchObject({
       id: 'p1',
+      lastLoginAt: null,
       pointEventsCount: 2,
       rewardRedemptionsCount: 1,
     });
     expect(prisma.user.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'p1', role: UserRole.PARTICIPANT },
+        // Jest asymmetric matchers are intentionally untyped inside mock calls.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        select: expect.objectContaining({ lastLoginAt: true }),
       }),
     );
     prisma.user.findFirst.mockResolvedValueOnce(null);
@@ -221,7 +226,7 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
-  it('paginates point events, filters enums and derives xp delta and origin', async () => {
+  it('paginates point events, filters enums and returns a summarized claim code', async () => {
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
     prisma.pointEvent.count.mockResolvedValue(1);
     prisma.pointEvent.findMany.mockResolvedValue([
@@ -230,10 +235,11 @@ describe(AdminParticipantsService.name, () => {
         points: 30,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
-        redemptionMethod: null,
+        redemptionMethod: 'CLAIM_CODE',
         description: null,
         createdAt: new Date(),
         action: { id: 'a1', name: 'Check-in' },
+        claimCode: { id: 'claim-1', code: 'ABC123' },
       },
     ]);
     const result = await service.findPointEvents('p1', {
@@ -242,7 +248,11 @@ describe(AdminParticipantsService.name, () => {
       source: PointEventSource.ACTION_REDEEM,
       kind: PointEventKind.CREDIT,
     });
-    expect(result.items[0]).toMatchObject({ xpDelta: 30, origin: 'Check-in' });
+    expect(result.items[0]).toMatchObject({
+      xpDelta: 30,
+      origin: 'Check-in',
+      claimCode: { id: 'claim-1', code: 'ABC123' },
+    });
     expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -250,6 +260,11 @@ describe(AdminParticipantsService.name, () => {
           source: PointEventSource.ACTION_REDEEM,
           kind: PointEventKind.CREDIT,
         },
+        // Jest asymmetric matchers are intentionally untyped inside mock calls.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        select: expect.objectContaining({
+          claimCode: { select: { id: true, code: true } },
+        }),
       }),
     );
   });

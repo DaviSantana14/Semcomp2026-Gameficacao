@@ -24,6 +24,11 @@ const participantSelect = {
   _count: { select: { pointEvents: true, rewardRedemptions: true } },
 } as const;
 
+const participantDetailSelect = {
+  ...participantSelect,
+  lastLoginAt: true,
+} as const;
+
 @Injectable()
 export class AdminParticipantsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -65,11 +70,14 @@ export class AdminParticipantsService {
   async findOne(id: string) {
     const participant = await this.prisma.user.findFirst({
       where: { id, role: UserRole.PARTICIPANT },
-      select: participantSelect,
+      select: participantDetailSelect,
     });
     if (!participant)
       throw new NotFoundException('Participante não encontrado.');
-    return mapParticipant(participant);
+    return {
+      ...mapParticipant(participant),
+      lastLoginAt: participant.lastLoginAt?.toISOString() ?? null,
+    };
   }
 
   async findPointEvents(id: string, query: AdminParticipantEventsQueryDto) {
@@ -95,6 +103,7 @@ export class AdminParticipantsService {
           description: true,
           createdAt: true,
           action: { select: { id: true, name: true } },
+          claimCode: { select: { id: true, code: true } },
         },
       }),
     ]);
