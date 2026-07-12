@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PointEventSource, UserRole } from '@prisma/client';
+import { PointEventSource, RedemptionStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -7,7 +7,7 @@ export class AdminDashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getOverview() {
-    const [total, active, points, used, available, recentRedemptions] =
+    const [total, active, points, used, available, recentPendingRedemptions] =
       await Promise.all([
         this.prisma.user.count({ where: { role: UserRole.PARTICIPANT } }),
         this.prisma.user.count({
@@ -22,8 +22,9 @@ export class AdminDashboardService {
           where: { isUsed: false, isActive: true },
         }),
         this.prisma.rewardRedemption.findMany({
+          where: { status: RedemptionStatus.PENDING },
           take: 5,
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: 'asc' },
           select: {
             id: true,
             pointsSpent: true,
@@ -38,7 +39,7 @@ export class AdminDashboardService {
       participants: { total, active },
       pointsAwarded: points._sum.points ?? 0,
       claimCodes: { used, available },
-      recentRedemptions: recentRedemptions.map((redemption) => ({
+      recentPendingRedemptions: recentPendingRedemptions.map((redemption) => ({
         ...redemption,
         createdAt: redemption.createdAt.toISOString(),
       })),

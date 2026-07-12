@@ -58,6 +58,16 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
+  it('returns an empty page beyond the total while preserving metadata', async () => {
+    prisma.user.count.mockResolvedValue(1);
+    prisma.user.findMany.mockResolvedValue([]);
+
+    await expect(service.findAll({ page: 2, limit: 20 })).resolves.toEqual({
+      items: [],
+      meta: { page: 2, limit: 20, total: 1, totalPages: 1 },
+    });
+  });
+
   it('returns 404 when status update targets an admin or missing id', async () => {
     prisma.user.updateMany.mockResolvedValue({ count: 0 });
     await expect(

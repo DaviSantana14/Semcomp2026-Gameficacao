@@ -1,7 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Test } from '@nestjs/testing';
-import { PointEventSource, UserRole } from '@prisma/client';
+import { PointEventSource, RedemptionStatus, UserRole } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -74,7 +74,7 @@ describe(AdminDashboardService.name, () => {
       participants: { total: 12, active: 9 },
       pointsAwarded: 340,
       claimCodes: { used: 7, available: 13 },
-      recentRedemptions: [
+      recentPendingRedemptions: [
         expect.objectContaining({ createdAt: '2026-07-11T12:00:00.000Z' }),
       ],
     });
@@ -86,8 +86,18 @@ describe(AdminDashboardService.name, () => {
         where: { source: PointEventSource.ACTION_REDEEM },
       }),
     );
-    expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 5 }),
-    );
+    expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith({
+      where: { status: RedemptionStatus.PENDING },
+      take: 5,
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        pointsSpent: true,
+        status: true,
+        createdAt: true,
+        user: { select: { id: true, name: true } },
+        reward: { select: { id: true, name: true } },
+      },
+    });
   });
 });
