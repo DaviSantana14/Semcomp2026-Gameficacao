@@ -16,6 +16,7 @@ import {
   ReusableCodesQueryDto,
 } from './dto/reusable-codes-query.dto';
 import { UpdateActionDto } from './dto/update-action.dto';
+import { ReusableCodeStatus } from './dto/reusable-code-history-response.dto';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { isClaimCode, normalizeEventCode } from '../common/event-code';
 
@@ -95,7 +96,7 @@ export class ActionsService {
   async update(id: string, dto: UpdateActionDto) {
     const current = await this.prisma.action.findUnique({
       where: { id },
-      select: { id: true, code: true },
+      select: { id: true, code: true, isCodeActive: true },
     });
     if (!current)
       throw new NotFoundException('Atividade pontuável não encontrada.');
@@ -119,7 +120,9 @@ export class ActionsService {
         );
       }
       data.code = code;
-      data.isCodeActive = Boolean(code);
+      data.isCodeActive = code
+        ? (dto.isCodeActive ?? (current.code ? current.isCodeActive : true))
+        : false;
     } else if (dto.isCodeActive !== undefined) {
       data.isCodeActive = current.code ? dto.isCodeActive : false;
     }
@@ -241,10 +244,11 @@ export class ActionsService {
           type: row.type,
           code: row.code!,
           points: row.points,
-          status:
-            row.isActive && row.isCodeActive
-              ? ('ACTIVE' as const)
-              : ('INACTIVE' as const),
+          status: !row.isActive
+            ? ReusableCodeStatus.BLOCKED_BY_ACTION
+            : row.isCodeActive
+              ? ReusableCodeStatus.ACTIVE
+              : ReusableCodeStatus.DISABLED,
           totalUses: use?._count._all ?? 0,
           lastUsedAt: use?._max.createdAt?.toISOString() ?? null,
         };

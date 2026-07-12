@@ -217,11 +217,12 @@ describe('ActionsService', () => {
   });
 
   describe('update', () => {
-    it('patches only fields present and normalizes a replacement code', async () => {
+    it('preserves an active reusable code state when replacing its code', async () => {
       const { service, prisma } = createService();
       prisma.action.findUnique.mockResolvedValue({
         id: 'action-1',
         code: 'OLD',
+        isCodeActive: true,
       });
       prisma.action.update.mockResolvedValue({ ...activeAction, code: 'NEW' });
 
@@ -232,6 +233,51 @@ describe('ActionsService', () => {
         data: { name: 'Novo nome', code: 'NEW', isCodeActive: true },
         select: actionSummarySelect,
       });
+    });
+
+    it('preserves a disabled reusable code state when replacing its code', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: 'OLD',
+        isCodeActive: false,
+      });
+      prisma.action.update.mockResolvedValue({ ...activeAction, code: 'NEW' });
+
+      await service.update('action-1', { code: ' new ' });
+
+      expect(prisma.action.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { code: 'NEW', isCodeActive: false },
+        }),
+      );
+    });
+
+    it('activates a newly assigned code unless an explicit flag overrides it', async () => {
+      const { service, prisma } = createService();
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        code: null,
+        isCodeActive: false,
+      });
+      prisma.action.update.mockResolvedValue({ ...activeAction, code: 'NEW' });
+
+      await service.update('action-1', { code: 'NEW' });
+      expect(prisma.action.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: { code: 'NEW', isCodeActive: true },
+        }),
+      );
+
+      await service.update('action-1', {
+        code: 'NEW',
+        isCodeActive: false,
+      });
+      expect(prisma.action.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: { code: 'NEW', isCodeActive: false },
+        }),
+      );
     });
 
     it('removes a code with null and deactivates code redemption', async () => {
@@ -389,6 +435,23 @@ describe('ActionsService', () => {
           lastUsedAt: activeAction.createdAt.toISOString(),
         }),
       );
+    });
+
+    it.each([
+      [{ isActive: true, isCodeActive: true }, 'ACTIVE'],
+      [{ isActive: true, isCodeActive: false }, 'DISABLED'],
+      [{ isActive: false, isCodeActive: true }, 'BLOCKED_BY_ACTION'],
+    ] as const)('maps reusable-code state %o to %s', async (state, status) => {
+      const { service, prisma } = createService();
+      prisma.action.count.mockResolvedValue(1);
+      prisma.action.findMany.mockResolvedValue([
+        { ...activeAction, code: 'DIA1', ...state },
+      ]);
+      prisma.pointEvent.groupBy.mockResolvedValue([]);
+
+      const result = await service.findReusableCodes({ page: 1, limit: 20 });
+
+      expect(result.items[0]?.status).toBe(status);
     });
 
     it('returns paginated reusable-code redemptions with participant data', async () => {

@@ -27,8 +27,9 @@ import { ActionsService } from './actions.service';
 import { AdminActionResponseDto } from './dto/admin-action-response.dto';
 import { AdminActionsQueryDto } from './dto/admin-actions-query.dto';
 import {
-  ReusableCodeHistoryResponseDto,
-  ReusableCodeRedemptionResponseDto,
+  AdminActionsPageResponseDto,
+  ReusableCodeRedemptionsPageResponseDto,
+  ReusableCodesPageResponseDto,
 } from './dto/reusable-code-history-response.dto';
 import {
   ReusableCodeRedemptionsQueryDto,
@@ -47,7 +48,7 @@ export class AdminActionsController {
   constructor(private readonly actions: ActionsService) {}
 
   @Get('actions')
-  @ApiOkResponse({ type: AdminActionResponseDto, isArray: true })
+  @ApiOkResponse({ type: AdminActionsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   findAll(@Query() query: AdminActionsQueryDto) {
     return this.actions.findAdminActions(query);
@@ -63,14 +64,14 @@ export class AdminActionsController {
   }
 
   @Get('reusable-codes')
-  @ApiOkResponse({ type: ReusableCodeHistoryResponseDto, isArray: true })
+  @ApiOkResponse({ type: ReusableCodesPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   findReusableCodes(@Query() query: ReusableCodesQueryDto) {
     return this.actions.findReusableCodes(query);
   }
 
   @Get('reusable-codes/:actionId/redemptions')
-  @ApiOkResponse({ type: ReusableCodeRedemptionResponseDto, isArray: true })
+  @ApiOkResponse({ type: ReusableCodeRedemptionsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   findReusableCodeRedemptions(
