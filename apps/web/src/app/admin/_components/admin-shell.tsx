@@ -1,36 +1,73 @@
 "use client";
 
-import { Boxes, ClipboardCheck, LayoutDashboard, ShoppingBag, Trophy, UsersRound, Zap } from "lucide-react";
+import { Boxes, KeyRound, LayoutDashboard, ShoppingBag, Trophy, UsersRound, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useMe } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AdminLoading } from "./admin-loading";
 
 const ADMIN_AREAS = [
-  { href: "/admin", label: "Visao geral", icon: LayoutDashboard },
+  { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/participantes", label: "Participantes", icon: UsersRound },
   { href: "/admin/atividades", label: "Atividades", icon: Zap },
+  { href: "/admin/codigos", label: "Códigos", icon: KeyRound },
   { href: "/admin/lojinha", label: "Lojinha", icon: ShoppingBag },
-  { href: "/admin/entregas", label: "Entregas", icon: ClipboardCheck },
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: user, error, isLoading } = useMe();
+  const { data: user, error, isFetching, isLoading, refetch } = useMe();
+  const errorRef = useRef<HTMLDivElement>(null);
+  const isUnauthorized = error instanceof ApiError && error.status === 401;
 
   useEffect(() => {
-    if (error instanceof ApiError && error.status === 401) router.replace("/login");
-  }, [error, router]);
+    if (isUnauthorized) router.replace("/login");
+  }, [isUnauthorized, router]);
 
   useEffect(() => {
     if (user && user.role !== "ADMIN") router.replace("/home");
   }, [router, user]);
+
+  useEffect(() => {
+    if (error && !isUnauthorized) errorRef.current?.focus();
+  }, [error, isUnauthorized]);
+
+  if (error && !isUnauthorized) {
+    return (
+      <main className="arcade-grid flex min-h-dvh items-center justify-center p-4 md:p-6">
+        <div
+          aria-labelledby="admin-session-error-title"
+          className="grid w-full max-w-lg gap-4 rounded-lg border border-destructive/40 bg-card/95 p-5 shadow-lg"
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+        >
+          <div className="grid gap-2">
+            <p className="font-mono text-xs uppercase text-destructive">Sessão administrativa indisponível</p>
+            <h1 className="text-xl font-black" id="admin-session-error-title">Não foi possível validar seu acesso</h1>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Verifique sua conexão e tente consultar a sessão novamente. Se o problema continuar, acione o suporte do evento.
+            </p>
+          </div>
+          <Button
+            aria-label="Tentar validar o acesso administrativo novamente"
+            className="w-full sm:w-fit"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+          >
+            {isFetching ? "Validando acesso..." : "Tentar novamente"}
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   if (isLoading || !user || user.role !== "ADMIN") {
     return <main className="arcade-grid min-h-dvh p-4 md:p-6"><AdminLoading /></main>;
