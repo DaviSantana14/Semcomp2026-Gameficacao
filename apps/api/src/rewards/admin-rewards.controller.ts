@@ -1,8 +1,22 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBody,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
+  ApiNotFoundResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -17,11 +31,21 @@ import { AdminRedemptionsPageResponseDto } from './dto/admin-redemption-list-res
 import { AdminRedemptionsQueryDto } from './dto/admin-redemptions-query.dto';
 import { AdminRewardsPageResponseDto } from './dto/admin-reward-response.dto';
 import { AdminRewardsQueryDto } from './dto/admin-rewards-query.dto';
+import { CreateRewardDto } from './dto/create-reward.dto';
+import {
+  RewardRedemptionResponseDto,
+  toRewardRedemptionResponseDto,
+} from './dto/reward-redemption-response.dto';
+import {
+  RewardResponseDto,
+  toRewardResponseDto,
+} from './dto/reward-response.dto';
+import { UpdateRewardDto } from './dto/update-reward.dto';
 import { RewardsService } from './rewards.service';
 
 @ApiTags('Admin Rewards')
 @ApiSecurity('access-token-cookie')
-@Controller('admin')
+@Controller()
 @UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
@@ -29,14 +53,78 @@ import { RewardsService } from './rewards.service';
 export class AdminRewardsController {
   constructor(private readonly rewards: RewardsService) {}
 
-  @Get('rewards')
+  @Post('rewards')
+  @ApiOperation({ summary: 'Criar recompensa da lojinha (admin)' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiBody({ type: CreateRewardDto })
+  @ApiCreatedResponse({ type: RewardResponseDto })
+  async create(@Body() dto: CreateRewardDto) {
+    return toRewardResponseDto(await this.rewards.create(dto));
+  }
+
+  @Patch('rewards/:id')
+  @ApiOperation({ summary: 'Editar recompensa da lojinha (admin)' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiBody({ type: UpdateRewardDto })
+  @ApiOkResponse({ type: RewardResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async update(@Param('id') id: string, @Body() dto: UpdateRewardDto) {
+    return toRewardResponseDto(await this.rewards.update(id, dto));
+  }
+
+  @Get('admin/redemptions/pending')
+  @ApiOperation({ summary: 'Listar resgates pendentes da lojinha (admin)' })
+  @ApiOkResponse({ type: RewardRedemptionResponseDto, isArray: true })
+  async findPendingRedemptions() {
+    return (await this.rewards.findPendingRedemptions()).map(
+      toRewardRedemptionResponseDto,
+    );
+  }
+
+  @Patch('admin/redemptions/:id/deliver')
+  @ApiOperation({ summary: 'Marcar resgate como entregue (admin)' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiOkResponse({ type: RewardRedemptionResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async deliverRedemption(@Param('id') id: string) {
+    return toRewardRedemptionResponseDto(
+      await this.rewards.deliverRedemption(id),
+    );
+  }
+
+  @Patch('admin/redemptions/:id/cancel')
+  @ApiOperation({ summary: 'Cancelar resgate pendente (admin)' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiOkResponse({ type: RewardRedemptionResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async cancelRedemption(@Param('id') id: string) {
+    return toRewardRedemptionResponseDto(
+      await this.rewards.cancelRedemption(id),
+    );
+  }
+
+  @Get('admin/rewards')
   @ApiOkResponse({ type: AdminRewardsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   findRewards(@Query() query: AdminRewardsQueryDto) {
     return this.rewards.findAdminRewards(query);
   }
 
-  @Get('redemptions')
+  @Get('admin/redemptions')
   @ApiOkResponse({ type: AdminRedemptionsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   findRedemptions(@Query() query: AdminRedemptionsQueryDto) {

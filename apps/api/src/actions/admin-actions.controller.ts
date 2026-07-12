@@ -2,18 +2,24 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import {
+  ApiBody,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -24,8 +30,12 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { ActionsService } from './actions.service';
-import { ActionResponseDto } from './dto/action-response.dto';
+import {
+  ActionResponseDto,
+  toActionResponseDto,
+} from './dto/action-response.dto';
 import { AdminActionsQueryDto } from './dto/admin-actions-query.dto';
+import { CreateActionDto } from './dto/create-action.dto';
 import {
   AdminActionsPageResponseDto,
   ReusableCodeRedemptionsPageResponseDto,
@@ -39,7 +49,7 @@ import { UpdateActionDto } from './dto/update-action.dto';
 
 @ApiTags('Admin Actions')
 @ApiSecurity('access-token-cookie')
-@Controller('admin')
+@Controller()
 @UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
@@ -47,14 +57,107 @@ import { UpdateActionDto } from './dto/update-action.dto';
 export class AdminActionsController {
   constructor(private readonly actions: ActionsService) {}
 
+  @Post('actions')
+  @ApiOperation({ summary: 'Criar uma atividade pontuável (admin)' })
+  @ApiHeader({
+    name: 'X-CSRF-Token',
+    description: 'Token CSRF retornado no login ou em GET /auth/csrf.',
+  })
+  @ApiBody({ type: CreateActionDto })
+  @ApiCreatedResponse({ type: ActionResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente ou inválido.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 401,
+      message: 'Autenticação necessária ou token inválido.',
+      error: 'Unauthorized',
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Acesso permitido apenas para admins.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 403,
+      message: 'Você não tem permissão para acessar este recurso.',
+      error: 'Forbidden',
+    },
+  })
+  async create(@Body() dto: CreateActionDto) {
+    return toActionResponseDto(await this.actions.create(dto));
+  }
+
   @Get('actions')
+  @ApiOperation({ summary: 'Listar atividades pontuáveis (admin)' })
+  @ApiOkResponse({ type: ActionResponseDto, isArray: true })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente ou inválido.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 401,
+      message: 'Autenticação necessária ou token inválido.',
+      error: 'Unauthorized',
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Acesso permitido apenas para admins.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 403,
+      message: 'Você não tem permissão para acessar este recurso.',
+      error: 'Forbidden',
+    },
+  })
+  async findLegacyActions() {
+    return (await this.actions.findAll()).map(toActionResponseDto);
+  }
+
+  @Get('actions/:id')
+  @ApiOperation({ summary: 'Buscar atividade por id (admin)' })
+  @ApiOkResponse({ type: ActionResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente ou inválido.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 401,
+      message: 'Autenticação necessária ou token inválido.',
+      error: 'Unauthorized',
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Acesso permitido apenas para admins.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 403,
+      message: 'Você não tem permissão para acessar este recurso.',
+      error: 'Forbidden',
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'Atividade não encontrada.',
+    type: HttpErrorResponseDto,
+    example: {
+      statusCode: 404,
+      message: 'Atividade pontuável não encontrada.',
+      error: 'Not Found',
+    },
+  })
+  async findLegacyActionById(@Param('id') id: string) {
+    const action = await this.actions.findById(id);
+    if (!action) {
+      throw new NotFoundException('Atividade pontuável não encontrada.');
+    }
+    return toActionResponseDto(action);
+  }
+
+  @Get('admin/actions')
   @ApiOkResponse({ type: AdminActionsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   findAll(@Query() query: AdminActionsQueryDto) {
     return this.actions.findAdminActions(query);
   }
 
-  @Patch('actions/:id')
+  @Patch('admin/actions/:id')
   @ApiOkResponse({ type: ActionResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -63,14 +166,14 @@ export class AdminActionsController {
     return this.actions.update(id, dto);
   }
 
-  @Get('reusable-codes')
+  @Get('admin/reusable-codes')
   @ApiOkResponse({ type: ReusableCodesPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   findReusableCodes(@Query() query: ReusableCodesQueryDto) {
     return this.actions.findReusableCodes(query);
   }
 
-  @Get('reusable-codes/:actionId/redemptions')
+  @Get('admin/reusable-codes/:actionId/redemptions')
   @ApiOkResponse({ type: ReusableCodeRedemptionsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })

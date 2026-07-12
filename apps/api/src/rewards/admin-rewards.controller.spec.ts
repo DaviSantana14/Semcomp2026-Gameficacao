@@ -18,6 +18,11 @@ describe('AdminRewardsController', () => {
 
   it('delegates catalog and history queries', async () => {
     const service = {
+      create: jest.fn().mockResolvedValue({ id: 'reward-1' }),
+      update: jest.fn().mockResolvedValue({ id: 'reward-1' }),
+      findPendingRedemptions: jest.fn().mockResolvedValue([]),
+      deliverRedemption: jest.fn().mockResolvedValue({ user: {}, reward: {} }),
+      cancelRedemption: jest.fn().mockResolvedValue({ user: {}, reward: {} }),
       findAdminRewards: jest.fn().mockResolvedValue({ items: [], meta: {} }),
       findRedemptions: jest.fn().mockResolvedValue({ items: [], meta: {} }),
     };
@@ -29,6 +34,36 @@ describe('AdminRewardsController', () => {
 
     expect(service.findAdminRewards).toHaveBeenCalledWith(query);
     expect(service.findRedemptions).toHaveBeenCalledWith(query);
+  });
+
+  it('owns and delegates the legacy administrative reward endpoints', async () => {
+    const service = {
+      create: jest.fn().mockResolvedValue({ id: 'reward-1' }),
+      update: jest.fn().mockResolvedValue({ id: 'reward-1' }),
+      findPendingRedemptions: jest.fn().mockResolvedValue([]),
+      deliverRedemption: jest.fn().mockResolvedValue({ user: {}, reward: {} }),
+      cancelRedemption: jest.fn().mockResolvedValue({ user: {}, reward: {} }),
+    };
+    const controller = new AdminRewardsController(service as never);
+    const createDto = {
+      name: 'Camiseta',
+      costInPoints: 25,
+      stock: 5,
+      isActive: true,
+    };
+    const updateDto = { stock: 4 };
+
+    await controller.create(createDto);
+    await controller.update('reward-1', updateDto);
+    await controller.findPendingRedemptions();
+    await controller.deliverRedemption('redemption-1');
+    await controller.cancelRedemption('redemption-1');
+
+    expect(service.create).toHaveBeenCalledWith(createDto);
+    expect(service.update).toHaveBeenCalledWith('reward-1', updateDto);
+    expect(service.findPendingRedemptions).toHaveBeenCalledWith();
+    expect(service.deliverRedemption).toHaveBeenCalledWith('redemption-1');
+    expect(service.cancelRedemption).toHaveBeenCalledWith('redemption-1');
   });
 });
 

@@ -10,6 +10,9 @@ import { ActionResponseDto } from './dto/action-response.dto';
 
 describe('AdminActionsController', () => {
   const service = {
+    create: jest.fn().mockResolvedValue({}),
+    findAll: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue({}),
     findAdminActions: jest.fn(),
     update: jest.fn(),
     findReusableCodes: jest.fn(),
@@ -35,6 +38,22 @@ describe('AdminActionsController', () => {
     await controller.update('action-1', dto);
     expect(service.findAdminActions).toHaveBeenCalledWith(query);
     expect(service.update).toHaveBeenCalledWith('action-1', dto);
+  });
+
+  it('owns and delegates the legacy administrative action endpoints', async () => {
+    const dto = {
+      name: 'Credenciamento',
+      type: 'CHECKIN' as const,
+      points: 10,
+    };
+
+    await controller.create(dto);
+    await controller.findLegacyActions();
+    await controller.findLegacyActionById('action-1');
+
+    expect(service.create).toHaveBeenCalledWith(dto);
+    expect(service.findAll).toHaveBeenCalledWith();
+    expect(service.findById).toHaveBeenCalledWith('action-1');
   });
 
   it('documents the partial update response with the returned action shape', () => {
