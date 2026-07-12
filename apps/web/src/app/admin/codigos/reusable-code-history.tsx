@@ -31,7 +31,9 @@ export function ReusableCodeHistory() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AdminReusableCode | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
-  const usesTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLElement>(null);
+  const usesTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const selectedOriginIdRef = useRef<string | null>(null);
   const query = useQuery({
     queryKey: ["admin", "reusable-codes", { page, limit: 10, search }],
     queryFn: () =>
@@ -63,8 +65,17 @@ export function ReusableCodeHistory() {
         return next;
       }),
   });
+  const closeRedemptions = () => {
+    const originId = selectedOriginIdRef.current;
+    setSelected(null);
+    requestAnimationFrame(() => {
+      const trigger = originId ? usesTriggerRefs.current.get(originId) : null;
+      (trigger?.isConnected ? trigger : listRef.current)?.focus();
+      selectedOriginIdRef.current = null;
+    });
+  };
   return (
-    <section className="grid gap-4">
+    <section className="grid gap-4" ref={listRef} tabIndex={-1}>
       <h2 className="text-2xl font-black">Códigos reutilizáveis</h2>
       <Input
         aria-label="Buscar código reutilizável"
@@ -107,7 +118,8 @@ export function ReusableCodeHistory() {
                 <Button
                   variant="outline"
                   onClick={(event) => {
-                    usesTriggerRef.current = event.currentTarget;
+                    usesTriggerRefs.current.set(c.id, event.currentTarget);
+                    selectedOriginIdRef.current = c.id;
                     setSelected(c);
                   }}
                 >
@@ -145,13 +157,7 @@ export function ReusableCodeHistory() {
         </p>
       )}
       {selected ? (
-        <Redemptions
-          code={selected}
-          close={() => {
-            setSelected(null);
-            requestAnimationFrame(() => usesTriggerRef.current?.focus());
-          }}
-        />
+        <Redemptions code={selected} close={closeRedemptions} />
       ) : null}
     </section>
   );

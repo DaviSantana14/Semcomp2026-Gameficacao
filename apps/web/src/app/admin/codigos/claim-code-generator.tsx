@@ -42,6 +42,7 @@ export function ClaimCodeGenerator() {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
         qc.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
+        qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
       ]);
     },
     onError: (e) =>
