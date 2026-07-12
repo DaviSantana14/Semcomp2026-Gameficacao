@@ -196,6 +196,27 @@ export type CreateRewardPayload = {
 
 export type UpdateRewardPayload = Partial<CreateRewardPayload>;
 
+export type AdminReward = Reward & {
+  redemptionCounts: Record<RedemptionStatus, number>;
+};
+
+export type AdminRedemption = RewardRedemption;
+
+export type AdminRewardsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: "all" | "active" | "inactive" | "out_of_stock";
+};
+
+export type AdminRedemptionsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  rewardId?: string;
+  status?: "all" | "pending" | "delivered" | "cancelled";
+};
+
 export type PaginatedResponse<T> = {
   items: T[];
   meta: {
@@ -514,6 +535,18 @@ function withQuery(
 
 export function fetchAdminDashboard() {
   return apiFetch<AdminDashboard>("/admin/dashboard");
+}
+
+export function fetchAdminRewards(filters: AdminRewardsFilters) {
+  return apiFetch<PaginatedResponse<AdminReward>>(
+    withQuery("/admin/rewards", filters),
+  );
+}
+
+export function fetchAdminRedemptions(filters: AdminRedemptionsFilters) {
+  return apiFetch<PaginatedResponse<AdminRedemption>>(
+    withQuery("/admin/redemptions", filters),
+  );
 }
 
 export function fetchAdminParticipants(filters: AdminParticipantsFilters) {
