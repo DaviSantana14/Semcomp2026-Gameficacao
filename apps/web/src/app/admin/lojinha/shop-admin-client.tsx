@@ -29,6 +29,10 @@ import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { RedemptionHistory } from "./redemption-history";
 import { RewardForm, RewardFormSubmission } from "./reward-form";
+import {
+  finalizeRewardOptions,
+  validateRewardOptionsPage,
+} from "./reward-options-pagination";
 
 const statuses: Array<{
   value: NonNullable<AdminRewardsFilters["status"]>;
@@ -330,22 +334,9 @@ async function fetchAllRewardOptions(signal: AbortSignal) {
     { page: 1, limit: 100, status: "all" },
     signal,
   );
-  const totalPages = first.meta.totalPages;
-  const { limit, page, total } = first.meta;
-  if (
-    !Number.isSafeInteger(totalPages) ||
-    !Number.isSafeInteger(total) ||
-    !Number.isSafeInteger(limit) ||
-    totalPages < 0 ||
-    total < 0 ||
-    limit < 1 ||
-    page !== 1 ||
-    totalPages !== Math.ceil(total / limit) ||
-    first.items.length > total
-  ) {
-    throw new Error("Invalid reward options pagination metadata");
-  }
-  if (totalPages === 0) return [];
+  const pagination = validateRewardOptionsPage(first, 1);
+  const { totalPages } = pagination;
+  if (totalPages === 0) return finalizeRewardOptions([], pagination);
   const items = [...first.items];
   const batchSize = 5;
   for (let page = 2; page <= totalPages; page += batchSize) {
@@ -361,7 +352,10 @@ async function fetchAllRewardOptions(signal: AbortSignal) {
         ),
       ),
     );
-    items.push(...responses.flatMap((response) => response.items));
+    responses.forEach((response, index) => {
+      validateRewardOptionsPage(response, pages[index], pagination);
+      items.push(...response.items);
+    });
   }
-  return items;
+  return finalizeRewardOptions(items, pagination);
 }
