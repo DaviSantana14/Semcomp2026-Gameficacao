@@ -21,6 +21,17 @@ type Page<T> = {
   meta: { page: number; limit: number; total: number; totalPages: number };
 };
 type LoginBody = { csrfToken: string };
+type Dashboard = {
+  participants: { total: number; active: number };
+  pointsAwarded: number;
+  claimCodes: { used: number; available: number };
+  shop: {
+    rewardsTotal: number;
+    rewardsActive: number;
+    outOfStock: number;
+    pendingRedemptions: number;
+  };
+};
 
 describe('Admin management acceptance (e2e)', () => {
   let app: INestApplication<App>;
@@ -45,6 +56,7 @@ describe('Admin management acceptance (e2e)', () => {
   let pendingRedemptionId: string;
   let deliveredRedemptionId: string;
   let cancelledRedemptionId: string;
+  let fixtureSuffix: string;
   const userIds: string[] = [];
   const actionIds: string[] = [];
   const claimCodeIds: string[] = [];
@@ -67,6 +79,7 @@ describe('Admin management acceptance (e2e)', () => {
     prisma = moduleFixture.get(PrismaService);
 
     const suffix = randomUUID();
+    fixtureSuffix = suffix;
     reusableCode = `TASK11-REUSABLE-${suffix}`.toUpperCase();
     availableClaimCode = claimCodeFor(suffix, 1);
     usedClaimCode = claimCodeFor(suffix, 2);
@@ -232,26 +245,31 @@ describe('Admin management acceptance (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.pointEvent.deleteMany({
-      where: {
-        OR: [
-          { userId: { in: userIds } },
-          { actionId: { in: actionIds } },
-          { claimCodeId: { in: claimCodeIds } },
-        ],
-      },
-    });
-    await prisma.rewardRedemption.deleteMany({
-      where: {
-        OR: [{ userId: { in: userIds } }, { rewardId: { in: rewardIds } }],
-      },
-    });
-    await prisma.claimCode.deleteMany({ where: { id: { in: claimCodeIds } } });
-    await prisma.reward.deleteMany({ where: { id: { in: rewardIds } } });
-    await prisma.action.deleteMany({ where: { id: { in: actionIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await app.close();
-    await prisma.$disconnect();
+    try {
+      if (!prisma) return;
+      await prisma.pointEvent.deleteMany({
+        where: {
+          OR: [
+            { userId: { in: userIds } },
+            { actionId: { in: actionIds } },
+            { claimCodeId: { in: claimCodeIds } },
+          ],
+        },
+      });
+      await prisma.rewardRedemption.deleteMany({
+        where: {
+          OR: [{ userId: { in: userIds } }, { rewardId: { in: rewardIds } }],
+        },
+      });
+      await prisma.claimCode.deleteMany({
+        where: { id: { in: claimCodeIds } },
+      });
+      await prisma.reward.deleteMany({ where: { id: { in: rewardIds } } });
+      await prisma.action.deleteMany({ where: { id: { in: actionIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    } finally {
+      if (app) await app.close();
+    }
   });
 
   it('enforces the complete role matrix on admin and player mutations', async () => {
@@ -262,6 +280,88 @@ describe('Admin management acceptance (e2e)', () => {
     await get('/admin/rewards', firstSession).expect(403);
     await get('/admin/redemptions', firstSession).expect(403);
 
+    const [userBefore, actionBefore, codeBefore, rewardBefore, pendingBefore] =
+      await Promise.all([
+        prisma.user.findUniqueOrThrow({ where: { id: secondParticipant.id } }),
+        prisma.action.findUniqueOrThrow({ where: { id: reusableActionId } }),
+        prisma.claimCode.findUniqueOrThrow({
+          where: { id: disabledClaimCodeId },
+        }),
+        prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
+        prisma.rewardRedemption.findUniqueOrThrow({
+          where: { id: pendingRedemptionId },
+        }),
+      ]);
+    const [actionCount, codeCount, rewardCount] = await Promise.all([
+      prisma.action.count(),
+      prisma.claimCode.count(),
+      prisma.reward.count(),
+    ]);
+
+    await patch(
+      `/admin/participants/${secondParticipant.id}/status`,
+      firstSession,
+    )
+      .send({ isActive: false })
+      .expect(403);
+    await post('/actions', firstSession)
+      .send({ name: 'Forbidden action', type: 'BONUS', points: 999 })
+      .expect(403);
+    await patch(`/admin/actions/${reusableActionId}`, firstSession)
+      .send({ isActive: false })
+      .expect(403);
+    await post(
+      `/admin/actions/${claimActionId}/claim-codes/generate`,
+      firstSession,
+    )
+      .send({ quantity: 1 })
+      .expect(403);
+    await patch(
+      `/admin/claim-codes/${disabledClaimCodeId}/status`,
+      firstSession,
+    )
+      .send({ isActive: true })
+      .expect(403);
+    await post('/rewards', firstSession)
+      .send({ name: 'Forbidden reward', costInPoints: 1, stock: 1 })
+      .expect(403);
+    await patch(`/rewards/${rewardId}`, firstSession)
+      .send({ stock: 999 })
+      .expect(403);
+    await patch(
+      `/admin/redemptions/${pendingRedemptionId}/deliver`,
+      firstSession,
+    ).expect(403);
+    await patch(
+      `/admin/redemptions/${pendingRedemptionId}/cancel`,
+      firstSession,
+    ).expect(403);
+
+    const [userAfter, actionAfter, codeAfter, rewardAfter, pendingAfter] =
+      await Promise.all([
+        prisma.user.findUniqueOrThrow({ where: { id: secondParticipant.id } }),
+        prisma.action.findUniqueOrThrow({ where: { id: reusableActionId } }),
+        prisma.claimCode.findUniqueOrThrow({
+          where: { id: disabledClaimCodeId },
+        }),
+        prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
+        prisma.rewardRedemption.findUniqueOrThrow({
+          where: { id: pendingRedemptionId },
+        }),
+      ]);
+    expect(userAfter.isActive).toBe(userBefore.isActive);
+    expect(actionAfter).toEqual(actionBefore);
+    expect(codeAfter).toEqual(codeBefore);
+    expect(rewardAfter).toEqual(rewardBefore);
+    expect(pendingAfter).toEqual(pendingBefore);
+    await expect(
+      Promise.all([
+        prisma.action.count(),
+        prisma.claimCode.count(),
+        prisma.reward.count(),
+      ]),
+    ).resolves.toEqual([actionCount, codeCount, rewardCount]);
+
     await post(`/actions/${directActionId}/redeem`, adminSession).expect(403);
     await post('/actions/redeem-code', adminSession)
       .send({ code: reusableCode })
@@ -270,17 +370,44 @@ describe('Admin management acceptance (e2e)', () => {
   });
 
   it('reports dashboard totals without counting admin accounts as players', async () => {
-    const response = await get('/admin/dashboard', adminSession).expect(200);
-    const dashboard = response.body as {
-      participants: { total: number; active: number };
-      pointsAwarded: number;
-      claimCodes: { used: number; available: number };
-    };
-    expect(dashboard.participants.total).toBeGreaterThanOrEqual(2);
-    expect(dashboard.participants.active).toBeGreaterThanOrEqual(2);
-    expect(dashboard.pointsAwarded).toBeGreaterThanOrEqual(30);
-    expect(dashboard.claimCodes.used).toBeGreaterThanOrEqual(1);
-    expect(dashboard.claimCodes.available).toBeGreaterThanOrEqual(1);
+    await dashboardMatchingDatabase();
+    const [fixtureParticipants, fixturePoints, fixtureCodes, fixtureRewards] =
+      await Promise.all([
+        prisma.user.count({
+          where: { id: { in: userIds }, role: UserRole.PARTICIPANT },
+        }),
+        prisma.pointEvent.aggregate({
+          where: {
+            actionId: { in: actionIds },
+            source: PointEventSource.ACTION_REDEEM,
+          },
+          _sum: { points: true },
+        }),
+        prisma.claimCode.groupBy({
+          by: ['isUsed', 'isActive'],
+          where: { id: { in: claimCodeIds } },
+          _count: { _all: true },
+        }),
+        prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
+      ]);
+    expect(fixtureParticipants).toBe(2);
+    expect(fixturePoints._sum.points).toBe(30);
+    expect(fixtureCodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ isUsed: true, _count: { _all: 1 } }),
+        expect.objectContaining({
+          isUsed: false,
+          isActive: true,
+          _count: { _all: 1 },
+        }),
+        expect.objectContaining({
+          isUsed: false,
+          isActive: false,
+          _count: { _all: 1 },
+        }),
+      ]),
+    );
+    expect(fixtureRewards).toMatchObject({ stock: 10, isActive: true });
 
     const adminSearch = await get(
       `/admin/participants?search=${encodeURIComponent(admin.email)}`,
@@ -299,6 +426,98 @@ describe('Admin management acceptance (e2e)', () => {
       expect.objectContaining({ id: firstParticipant.id }),
     ]);
     expect(body.meta).toMatchObject({ page: 1, limit: 1, total: 1 });
+
+    const participantsPage1 = await get(
+      `/admin/participants?search=${fixtureSuffix}&page=1&limit=1`,
+      adminSession,
+    ).expect(200);
+    const participantsPage2 = await get(
+      `/admin/participants?search=${fixtureSuffix}&page=2&limit=1`,
+      adminSession,
+    ).expect(200);
+    const firstList = participantsPage1.body as Page<{ id: string }>;
+    const secondList = participantsPage2.body as Page<{ id: string }>;
+    expect(firstList.meta).toEqual({
+      page: 1,
+      limit: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(secondList.meta).toEqual({
+      page: 2,
+      limit: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(firstList.items[0].id).not.toBe(secondList.items[0].id);
+
+    const detail = await get(
+      `/admin/participants/${secondParticipant.id}`,
+      adminSession,
+    ).expect(200);
+    const participantDetail = detail.body as {
+      id: string;
+      name: string;
+      cpf: string;
+      email: string;
+      isActive: boolean;
+      points: number;
+      xp: number;
+      level: number;
+      pointEventsCount: number;
+      rewardRedemptionsCount: number;
+      lastLoginAt: string | null;
+    };
+    expect(participantDetail).toMatchObject({
+      id: secondParticipant.id,
+      cpf: secondParticipant.cpf,
+      email: secondParticipant.email,
+      isActive: true,
+      points: 500,
+      xp: 60,
+      level: 1,
+      pointEventsCount: 2,
+      rewardRedemptionsCount: 3,
+    });
+    expect(participantDetail.name).toBe(`Task 11 Beta ${fixtureSuffix}`);
+    expect(typeof participantDetail.lastLoginAt).toBe('string');
+
+    const eventPage1 = await get(
+      `/admin/participants/${secondParticipant.id}/point-events?source=ACTION_REDEEM&page=1&limit=1`,
+      adminSession,
+    ).expect(200);
+    const eventPage2 = await get(
+      `/admin/participants/${secondParticipant.id}/point-events?source=ACTION_REDEEM&page=2&limit=1`,
+      adminSession,
+    ).expect(200);
+    const redemptionPage = await get(
+      `/admin/participants/${secondParticipant.id}/reward-redemptions?status=PENDING&page=1&limit=1`,
+      adminSession,
+    ).expect(200);
+    expect((eventPage1.body as Page<{ id: string }>).meta).toEqual({
+      page: 1,
+      limit: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect((eventPage2.body as Page<{ id: string }>).meta).toEqual({
+      page: 2,
+      limit: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect((eventPage1.body as Page<{ id: string }>).items[0].id).not.toBe(
+      (eventPage2.body as Page<{ id: string }>).items[0].id,
+    );
+    expect((redemptionPage.body as Page<{ id: string }>).meta).toEqual({
+      page: 1,
+      limit: 1,
+      total: 1,
+      totalPages: 1,
+    });
+    expect((redemptionPage.body as Page<{ id: string }>).items[0].id).toBe(
+      pendingRedemptionId,
+    );
 
     await get(`/admin/participants/${admin.id}`, adminSession).expect(404);
     await patch(
@@ -365,13 +584,21 @@ describe('Admin management acceptance (e2e)', () => {
       ({ redemptionMethod }) =>
         redemptionMethod === ActionRedemptionMethod.DIRECT,
     );
-    expect(claimEvent).toMatchObject({ xpDelta: 11 });
+    expect(claimEvent).toMatchObject({
+      xpDelta: 11,
+      origin: `Task 11 claim ${fixtureSuffix}`,
+    });
     expect(claimEvent?.claimCode?.id).toBe(availableClaimCodeId);
-    expect(reusableEvent).toMatchObject({ claimCode: null, xpDelta: 13 });
-    expect(directEvent).toMatchObject({ claimCode: null, xpDelta: 17 });
-    expect(events.every(({ origin }) => origin.startsWith('Task 11'))).toBe(
-      true,
-    );
+    expect(reusableEvent).toMatchObject({
+      claimCode: null,
+      xpDelta: 13,
+      origin: `Task 11 reusable ${fixtureSuffix}`,
+    });
+    expect(directEvent).toMatchObject({
+      claimCode: null,
+      xpDelta: 17,
+      origin: `Task 11 direct ${fixtureSuffix}`,
+    });
 
     const redemptions = await get(
       `/admin/participants/${secondParticipant.id}/reward-redemptions?status=PENDING&page=1&limit=1`,
@@ -383,7 +610,135 @@ describe('Admin management acceptance (e2e)', () => {
     });
   });
 
+  it('creates, edits and deactivates an action while preserving its redemption snapshot', async () => {
+    const originalName = `Task 11 managed action ${randomUUID()}`;
+    const created = await post('/actions', adminSession)
+      .send({
+        name: originalName,
+        type: ActionType.BONUS,
+        points: 23,
+        isActive: true,
+      })
+      .expect(201);
+    const managedActionId = (created.body as { id: string }).id;
+    actionIds.push(managedActionId);
+
+    await post(`/actions/${managedActionId}/redeem`, secondSession)
+      .expect(201)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ awardedPoints: 23 }),
+      );
+    await patch(`/admin/actions/${managedActionId}`, adminSession)
+      .send({ name: `${originalName} edited`, points: 99, isActive: false })
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({
+          id: managedActionId,
+          name: `${originalName} edited`,
+          points: 99,
+          isActive: false,
+        }),
+      );
+
+    const event = await prisma.pointEvent.findFirstOrThrow({
+      where: { userId: secondParticipant.id, actionId: managedActionId },
+    });
+    expect(event.points).toBe(23);
+    expect(event.redemptionMethod).toBe(ActionRedemptionMethod.DIRECT);
+    await post(`/actions/${managedActionId}/redeem`, firstSession).expect(400);
+
+    await patch(`/admin/actions/${reusableActionId}`, adminSession)
+      .send({ isActive: false, isCodeActive: true })
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ isActive: false, isCodeActive: true }),
+      );
+    await patch(`/admin/actions/${reusableActionId}`, adminSession)
+      .send({ isActive: true, isCodeActive: false })
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ isActive: true, isCodeActive: false }),
+      );
+    await patch(`/admin/actions/${reusableActionId}`, adminSession)
+      .send({ isCodeActive: true })
+      .expect(200);
+  });
+
   it('separates claim-code state and reusable history from legacy events', async () => {
+    const generatedAction = await post('/actions', adminSession)
+      .send({
+        name: `Task 11 generated codes ${randomUUID()}`,
+        type: ActionType.CHECKIN,
+        points: 7,
+      })
+      .expect(201);
+    const generatedActionId = (generatedAction.body as { id: string }).id;
+    actionIds.push(generatedActionId);
+    const generatedResponse = await post(
+      `/admin/actions/${generatedActionId}/claim-codes/generate`,
+      adminSession,
+    )
+      .send({ quantity: 2 })
+      .expect(201);
+    const generatedCodes = (generatedResponse.body as { codes: string[] })
+      .codes;
+    expect(generatedCodes).toHaveLength(2);
+    const generatedRows = await prisma.claimCode.findMany({
+      where: { code: { in: generatedCodes } },
+      orderBy: { code: 'asc' },
+    });
+    expect(generatedRows).toHaveLength(2);
+    claimCodeIds.push(...generatedRows.map(({ id }) => id));
+
+    const toggledId = generatedRows[0].id;
+    await patch(`/admin/claim-codes/${toggledId}/status`, adminSession)
+      .send({ isActive: false })
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ id: toggledId, status: 'DISABLED' }),
+      );
+    const disabledFilter = await get(
+      `/admin/claim-codes?actionId=${generatedActionId}&status=disabled&page=1&limit=20`,
+      adminSession,
+    ).expect(200);
+    expect(
+      (disabledFilter.body as Page<{ id: string }>).items.map(({ id }) => id),
+    ).toEqual([toggledId]);
+    await patch(`/admin/claim-codes/${toggledId}/status`, adminSession)
+      .send({ isActive: true })
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ id: toggledId, status: 'AVAILABLE' }),
+      );
+
+    await post('/actions/redeem-code', secondSession)
+      .send({ code: generatedRows[1].code })
+      .expect(201);
+    const usedFilter = await get(
+      `/admin/claim-codes?actionId=${generatedActionId}&status=used&page=1&limit=20`,
+      adminSession,
+    ).expect(200);
+    const newlyUsed = (
+      usedFilter.body as Page<{
+        id: string;
+        usedAt: string | null;
+        usedBy: { id: string } | null;
+        status: string;
+      }>
+    ).items.find(({ id }) => id === generatedRows[1].id);
+    expect(newlyUsed).toMatchObject({
+      id: generatedRows[1].id,
+      status: 'USED',
+      usedBy: { id: secondParticipant.id },
+    });
+    expect(typeof newlyUsed?.usedAt).toBe('string');
+    await patch(
+      `/admin/claim-codes/${generatedRows[1].id}/status`,
+      adminSession,
+    )
+      .send({ isActive: true })
+      .expect(409);
+
     const claimCodesResponse = await get(
       `/admin/claim-codes?actionId=${claimActionId}&page=1&limit=10`,
       adminSession,
@@ -491,47 +846,97 @@ describe('Admin management acceptance (e2e)', () => {
     });
   });
 
-  it('delivers and cancels only pending orders while cancellation refunds points and stock without XP', async () => {
-    const beforeCancel = await prisma.user.findUniqueOrThrow({
-      where: { id: secondParticipant.id },
-    });
-    const rewardBefore = await prisma.reward.findUniqueOrThrow({
-      where: { id: rewardId },
+  it('runs real redeem/cancel and redeem/deliver cycles with exact balances and terminal statuses', async () => {
+    const created = await post('/rewards', adminSession)
+      .send({
+        name: `Task 11 transactional reward ${randomUUID()}`,
+        costInPoints: 40,
+        stock: 2,
+        isActive: true,
+      })
+      .expect(201);
+    const transactionalRewardId = (created.body as { id: string }).id;
+    rewardIds.push(transactionalRewardId);
+    const participantBefore = await prisma.user.findUniqueOrThrow({
+      where: { id: firstParticipant.id },
     });
 
-    await patch(
-      `/admin/redemptions/${pendingRedemptionId}/deliver`,
-      adminSession,
-    ).expect(200);
-    await patch(
-      `/admin/redemptions/${pendingRedemptionId}/cancel`,
-      adminSession,
-    ).expect(400);
-    await patch(
-      `/admin/redemptions/${deliveredRedemptionId}/deliver`,
-      adminSession,
-    ).expect(400);
-
-    const cancellable = await prisma.rewardRedemption.create({
-      data: {
-        userId: secondParticipant.id,
-        rewardId,
-        pointsSpent: 25,
-        status: RedemptionStatus.PENDING,
-      },
-    });
-    await patch(
-      `/admin/redemptions/${cancellable.id}/cancel`,
-      adminSession,
-    ).expect(200);
-    const [afterCancel, rewardAfter] = await Promise.all([
-      prisma.user.findUniqueOrThrow({ where: { id: secondParticipant.id } }),
-      prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
+    const cancellableResponse = await post(
+      `/rewards/${transactionalRewardId}/redeem`,
+      firstSession,
+    )
+      .expect(201)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({
+          pointsSpent: 40,
+          status: RedemptionStatus.PENDING,
+        }),
+      );
+    const cancellableId = (cancellableResponse.body as { id: string }).id;
+    const [afterRedeem, rewardAfterRedeem] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: firstParticipant.id } }),
+      prisma.reward.findUniqueOrThrow({ where: { id: transactionalRewardId } }),
     ]);
-    expect(afterCancel.points).toBe(beforeCancel.points + 25);
-    expect(afterCancel.xp).toBe(beforeCancel.xp);
-    expect(rewardAfter.stock).toBe(rewardBefore.stock + 1);
-    expect(cancelledRedemptionId).toBeTruthy();
+    expect(afterRedeem.points).toBe(participantBefore.points - 40);
+    expect(afterRedeem.xp).toBe(participantBefore.xp);
+    expect(rewardAfterRedeem.stock).toBe(1);
+
+    await patch(`/admin/redemptions/${cancellableId}/cancel`, adminSession)
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ status: RedemptionStatus.CANCELLED }),
+      );
+    const [afterCancel, rewardAfterCancel, cancelled] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: firstParticipant.id } }),
+      prisma.reward.findUniqueOrThrow({ where: { id: transactionalRewardId } }),
+      prisma.rewardRedemption.findUniqueOrThrow({
+        where: { id: cancellableId },
+      }),
+    ]);
+    expect(afterCancel.points).toBe(participantBefore.points);
+    expect(afterCancel.xp).toBe(participantBefore.xp);
+    expect(rewardAfterCancel.stock).toBe(2);
+    expect(cancelled.status).toBe(RedemptionStatus.CANCELLED);
+    await patch(
+      `/admin/redemptions/${cancellableId}/cancel`,
+      adminSession,
+    ).expect(400);
+    await patch(
+      `/admin/redemptions/${cancellableId}/deliver`,
+      adminSession,
+    ).expect(400);
+
+    const deliverableResponse = await post(
+      `/rewards/${transactionalRewardId}/redeem`,
+      firstSession,
+    ).expect(201);
+    const deliverableId = (deliverableResponse.body as { id: string }).id;
+    await patch(`/admin/redemptions/${deliverableId}/deliver`, adminSession)
+      .expect(200)
+      .expect(({ body }: Response) =>
+        expect(body).toMatchObject({ status: RedemptionStatus.DELIVERED }),
+      );
+    const delivered = await prisma.rewardRedemption.findUniqueOrThrow({
+      where: { id: deliverableId },
+    });
+    expect(delivered.status).toBe(RedemptionStatus.DELIVERED);
+    await patch(
+      `/admin/redemptions/${deliverableId}/deliver`,
+      adminSession,
+    ).expect(400);
+    await patch(
+      `/admin/redemptions/${deliverableId}/cancel`,
+      adminSession,
+    ).expect(400);
+
+    const originalCancelled = await prisma.rewardRedemption.findUniqueOrThrow({
+      where: { id: cancelledRedemptionId },
+    });
+    const originalDelivered = await prisma.rewardRedemption.findUniqueOrThrow({
+      where: { id: deliveredRedemptionId },
+    });
+    expect(originalCancelled.status).toBe(RedemptionStatus.CANCELLED);
+    expect(originalDelivered.status).toBe(RedemptionStatus.DELIVERED);
   });
 
   function get(path: string, session: AuthSession) {
@@ -565,6 +970,61 @@ describe('Admin management acceptance (e2e)', () => {
       cookie: setCookie[0].split(';')[0],
       csrfToken: (response.body as LoginBody).csrfToken,
     };
+  }
+
+  async function dashboardMatchingDatabase(): Promise<Dashboard> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await get('/admin/dashboard', adminSession).expect(200);
+      const actual = response.body as Dashboard;
+      const [
+        total,
+        active,
+        points,
+        used,
+        available,
+        rewardsTotal,
+        rewardsActive,
+        outOfStock,
+        pendingRedemptions,
+      ] = await Promise.all([
+        prisma.user.count({ where: { role: UserRole.PARTICIPANT } }),
+        prisma.user.count({
+          where: { role: UserRole.PARTICIPANT, isActive: true },
+        }),
+        prisma.pointEvent.aggregate({
+          where: { source: PointEventSource.ACTION_REDEEM },
+          _sum: { points: true },
+        }),
+        prisma.claimCode.count({ where: { isUsed: true } }),
+        prisma.claimCode.count({ where: { isUsed: false, isActive: true } }),
+        prisma.reward.count(),
+        prisma.reward.count({ where: { isActive: true } }),
+        prisma.reward.count({ where: { stock: 0 } }),
+        prisma.rewardRedemption.count({
+          where: { status: RedemptionStatus.PENDING },
+        }),
+      ]);
+      const expected: Dashboard = {
+        participants: { total, active },
+        pointsAwarded: points._sum.points ?? 0,
+        claimCodes: { used, available },
+        shop: { rewardsTotal, rewardsActive, outOfStock, pendingRedemptions },
+      };
+      if (
+        JSON.stringify(actual.participants) ===
+          JSON.stringify(expected.participants) &&
+        actual.pointsAwarded === expected.pointsAwarded &&
+        JSON.stringify(actual.claimCodes) ===
+          JSON.stringify(expected.claimCodes) &&
+        JSON.stringify(actual.shop) === JSON.stringify(expected.shop)
+      ) {
+        expect(actual).toMatchObject(expected);
+        return actual;
+      }
+    }
+    throw new Error(
+      'Dashboard did not stabilize against exact database totals.',
+    );
   }
 });
 
