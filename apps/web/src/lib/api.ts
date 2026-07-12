@@ -50,8 +50,66 @@ export type Action = {
   code: string | null;
   points: number;
   isActive: boolean;
+  isCodeActive: boolean;
   createdAt: string;
 };
+
+export type AdminAction = Action & {
+  claimCodesCount: number;
+  redemptionsCount: number;
+};
+export type AdminClaimCodeStatus =
+  | "AVAILABLE"
+  | "DISABLED"
+  | "BLOCKED_BY_ACTION"
+  | "USED";
+export type AdminClaimCode = {
+  id: string;
+  code: string;
+  status: AdminClaimCodeStatus;
+  isActive: boolean;
+  createdAt: string;
+  usedAt: string | null;
+  action: { id: string; name: string };
+  usedBy: { id: string; name: string; email: string } | null;
+};
+export type AdminReusableCode = {
+  id: string;
+  name: string;
+  type: ActionType;
+  code: string;
+  points: number;
+  status: "ACTIVE" | "DISABLED" | "BLOCKED_BY_ACTION";
+  totalUses: number;
+  lastUsedAt: string | null;
+};
+export type ReusableCodeRedemption = {
+  id: string;
+  points: number;
+  createdAt: string;
+  participant: { id: string; name: string; email: string; cpf: string };
+};
+export type AdminActionsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: "active" | "inactive";
+  type?: ActionType;
+};
+export type AdminClaimCodesFilters = {
+  page: number;
+  limit: number;
+  actionId?: string;
+  search?: string;
+};
+export type AdminReusableCodesFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+};
+export type UpdateActionPayload = Partial<
+  Pick<Action, "name" | "type" | "points" | "isActive" | "isCodeActive">
+> & { description?: string | null; code?: string | null };
 
 export type CreateActionPayload = {
   name: string;
@@ -492,4 +550,40 @@ export function updateParticipantStatus(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function fetchAdminActions(filters: AdminActionsFilters) {
+  return apiFetch<PaginatedResponse<AdminAction>>(
+    withQuery("/admin/actions", filters),
+  );
+}
+export function updateAction(id: string, payload: UpdateActionPayload) {
+  return apiFetch<Action>(`/admin/actions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchAdminClaimCodes(filters: AdminClaimCodesFilters) {
+  return apiFetch<PaginatedResponse<AdminClaimCode>>(
+    withQuery("/admin/claim-codes", filters),
+  );
+}
+export function updateClaimCodeStatus(id: string, isActive: boolean) {
+  return apiFetch<AdminClaimCode>(`/admin/claim-codes/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
+  });
+}
+export function fetchAdminReusableCodes(filters: AdminReusableCodesFilters) {
+  return apiFetch<PaginatedResponse<AdminReusableCode>>(
+    withQuery("/admin/reusable-codes", filters),
+  );
+}
+export function fetchReusableCodeRedemptions(
+  actionId: string,
+  filters: { page: number; limit: number },
+) {
+  return apiFetch<PaginatedResponse<ReusableCodeRedemption>>(
+    withQuery(`/admin/reusable-codes/${actionId}/redemptions`, filters),
+  );
 }

@@ -32,7 +32,7 @@ import {
   fetchCsrfToken,
   getCsrfToken,
 } from "@/lib/api";
-import { ClaimCodeGenerator } from "./claim-code-generator";
+import { ClaimCodeGenerator } from "./codigos/claim-code-generator";
 
 const actionTypes: ActionType[] = [
   "CHECKIN",
