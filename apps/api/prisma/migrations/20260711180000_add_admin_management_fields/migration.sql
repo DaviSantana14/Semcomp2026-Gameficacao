@@ -11,30 +11,41 @@ ALTER TABLE "PointEvent"
   ADD COLUMN "redemptionMethod" "ActionRedemptionMethod",
   ADD COLUMN "claimCodeId" TEXT;
 
+CREATE TEMP TABLE "_ClaimCodePointEventBackfill" ON COMMIT DROP AS
+SELECT cc."id" AS "claimCodeId", pe."id" AS "pointEventId"
+FROM "ClaimCode" cc
+LEFT JOIN "PointEvent" pe
+  ON pe."userId" = cc."usedById"
+ AND pe."actionId" = cc."actionId"
+ AND pe."source" = 'ACTION_REDEEM'
+WHERE cc."isUsed" = true;
+
 DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
-    FROM "ClaimCode" cc
-    LEFT JOIN "PointEvent" pe
-      ON pe."userId" = cc."usedById"
-     AND pe."actionId" = cc."actionId"
-     AND pe."source" = 'ACTION_REDEEM'
-    WHERE cc."isUsed" = true
-    GROUP BY cc."id"
-    HAVING COUNT(pe."id") <> 1
+    FROM "_ClaimCodePointEventBackfill" mapping
+    GROUP BY mapping."claimCodeId"
+    HAVING COUNT(mapping."pointEventId") <> 1
   ) THEN
     RAISE EXCEPTION 'Cannot backfill used ClaimCode: expected exactly one matching ACTION_REDEEM PointEvent';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "_ClaimCodePointEventBackfill" mapping
+    WHERE mapping."pointEventId" IS NOT NULL
+    GROUP BY mapping."pointEventId"
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Cannot backfill used ClaimCode: multiple ClaimCodes match the same ACTION_REDEEM PointEvent';
   END IF;
 END $$;
 
 UPDATE "PointEvent" pe
-SET "claimCodeId" = cc."id", "redemptionMethod" = 'CLAIM_CODE'
-FROM "ClaimCode" cc
-WHERE cc."isUsed" = true
-  AND pe."userId" = cc."usedById"
-  AND pe."actionId" = cc."actionId"
-  AND pe."source" = 'ACTION_REDEEM';
+SET "claimCodeId" = mapping."claimCodeId", "redemptionMethod" = 'CLAIM_CODE'
+FROM "_ClaimCodePointEventBackfill" mapping
+WHERE pe."id" = mapping."pointEventId";
 
 UPDATE "PointEvent"
 SET "redemptionMethod" = 'LEGACY_UNKNOWN'

@@ -15,7 +15,16 @@ describe('claim code audit migration', () => {
     expect(sql.indexOf('RAISE EXCEPTION')).toBeLessThan(
       sql.indexOf('SET "claimCodeId"'),
     );
-    expect(sql).toContain('HAVING COUNT(pe."id") <> 1');
+    expect(sql).toContain('HAVING COUNT(mapping."pointEventId") <> 1');
+  });
+
+  it('rejects two used claim codes mapped to the same point event', () => {
+    expect(sql).toContain('CREATE TEMP TABLE "_ClaimCodePointEventBackfill"');
+    expect(sql).toContain('GROUP BY mapping."pointEventId"');
+    expect(sql).toContain('HAVING COUNT(*) > 1');
+    expect(sql.indexOf('HAVING COUNT(*) > 1')).toBeLessThan(
+      sql.indexOf('SET "claimCodeId"'),
+    );
   });
 
   it('marks linked and ambiguous legacy action redemptions accurately', () => {
