@@ -298,11 +298,11 @@ describe('Admin management acceptance (e2e)', () => {
           where: { id: pendingRedemptionId },
         }),
       ]);
-    const [actionCount, codeCount, rewardCount] = await Promise.all([
-      prisma.action.count(),
-      prisma.claimCode.count(),
-      prisma.reward.count(),
-    ]);
+    const forbiddenActionName = `Task 11 forbidden action ${fixtureSuffix}`;
+    const forbiddenRewardName = `Task 11 forbidden reward ${fixtureSuffix}`;
+    const claimActionCodeCount = await prisma.claimCode.count({
+      where: { actionId: claimActionId },
+    });
 
     await patch(
       `/admin/participants/${secondParticipant.id}/status`,
@@ -311,7 +311,7 @@ describe('Admin management acceptance (e2e)', () => {
       .send({ isActive: false })
       .expect(403);
     await post('/actions', firstSession)
-      .send({ name: 'Forbidden action', type: 'BONUS', points: 999 })
+      .send({ name: forbiddenActionName, type: 'BONUS', points: 999 })
       .expect(403);
     await patch(`/admin/actions/${reusableActionId}`, firstSession)
       .send({ isActive: false })
@@ -329,7 +329,7 @@ describe('Admin management acceptance (e2e)', () => {
       .send({ isActive: true })
       .expect(403);
     await post('/rewards', firstSession)
-      .send({ name: 'Forbidden reward', costInPoints: 1, stock: 1 })
+      .send({ name: forbiddenRewardName, costInPoints: 1, stock: 1 })
       .expect(403);
     await patch(`/rewards/${rewardId}`, firstSession)
       .send({ stock: 999 })
@@ -362,11 +362,11 @@ describe('Admin management acceptance (e2e)', () => {
     expect(pendingAfter).toEqual(pendingBefore);
     await expect(
       Promise.all([
-        prisma.action.count(),
-        prisma.claimCode.count(),
-        prisma.reward.count(),
+        prisma.action.count({ where: { name: forbiddenActionName } }),
+        prisma.claimCode.count({ where: { actionId: claimActionId } }),
+        prisma.reward.count({ where: { name: forbiddenRewardName } }),
       ]),
-    ).resolves.toEqual([actionCount, codeCount, rewardCount]);
+    ).resolves.toEqual([0, claimActionCodeCount, 0]);
 
     await post(`/actions/${directActionId}/redeem`, adminSession).expect(403);
     const availableClaimCodeBefore = await prisma.claimCode.findUniqueOrThrow({
