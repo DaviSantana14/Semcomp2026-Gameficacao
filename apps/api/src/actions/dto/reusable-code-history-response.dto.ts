@@ -25,6 +25,8 @@ export class ReusableCodeHistoryResponseDto {
   @ApiProperty({ enum: ReusableCodeStatus })
   status!: ReusableCodeStatus;
   @ApiProperty()
+  isCodeActive!: boolean;
+  @ApiProperty()
   totalUses!: number;
   @ApiProperty({ nullable: true, type: String })
   lastUsedAt!: string | null;

@@ -93,6 +93,21 @@ export class ClaimCodesService {
     const where: Prisma.ClaimCodeWhereInput = {};
     if (query.actionId) where.actionId = query.actionId;
     if (search) where.code = { contains: search };
+    if (query.status === 'available')
+      Object.assign(where, {
+        isUsed: false,
+        isActive: true,
+        action: { isActive: true },
+      });
+    if (query.status === 'disabled')
+      Object.assign(where, { isUsed: false, isActive: false });
+    if (query.status === 'blocked')
+      Object.assign(where, {
+        isUsed: false,
+        isActive: true,
+        action: { isActive: false },
+      });
+    if (query.status === 'used') Object.assign(where, { isUsed: true });
     const [total, rows] = await Promise.all([
       this.prisma.claimCode.count({ where }),
       this.prisma.claimCode.findMany({

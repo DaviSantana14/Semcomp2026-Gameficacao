@@ -80,6 +80,7 @@ export type AdminReusableCode = {
   code: string;
   points: number;
   status: "ACTIVE" | "DISABLED" | "BLOCKED_BY_ACTION";
+  isCodeActive: boolean;
   totalUses: number;
   lastUsedAt: string | null;
 };
@@ -101,6 +102,7 @@ export type AdminClaimCodesFilters = {
   limit: number;
   actionId?: string;
   search?: string;
+  status?: "all" | "available" | "disabled" | "blocked" | "used";
 };
 export type AdminReusableCodesFilters = {
   page: number;

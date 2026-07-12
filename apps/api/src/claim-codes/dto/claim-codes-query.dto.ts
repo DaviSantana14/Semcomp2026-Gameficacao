@@ -1,8 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 export class ClaimCodesQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsEnum(['all', 'available', 'disabled', 'blocked', 'used'])
+  status?: 'all' | 'available' | 'disabled' | 'blocked' | 'used';
+
   @IsOptional()
   @IsString()
   actionId?: string;

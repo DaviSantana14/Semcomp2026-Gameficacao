@@ -452,6 +452,7 @@ describe('ActionsService', () => {
       const result = await service.findReusableCodes({ page: 1, limit: 20 });
 
       expect(result.items[0]?.status).toBe(status);
+      expect(result.items[0]?.isCodeActive).toBe(state.isCodeActive);
     });
 
     it('returns paginated reusable-code redemptions with participant data', async () => {

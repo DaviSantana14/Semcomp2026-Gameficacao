@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ export function ReusableCodeHistory() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AdminReusableCode | null>(null);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const usesTriggerRef = useRef<HTMLButtonElement | null>(null);
   const query = useQuery({
     queryKey: ["admin", "reusable-codes", { page, limit: 10, search }],
     queryFn: () =>
@@ -40,8 +42,9 @@ export function ReusableCodeHistory() {
   const toggle = useMutation({
     mutationFn: async (c: AdminReusableCode) => {
       if (!getCsrfToken()) await fetchCsrfToken();
-      return updateAction(c.id, { isCodeActive: c.status !== "ACTIVE" });
+      return updateAction(c.id, { isCodeActive: !c.isCodeActive });
     },
+    onMutate: (c) => setPendingIds((ids) => new Set(ids).add(c.id)),
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
@@ -53,6 +56,12 @@ export function ReusableCodeHistory() {
       toast.error(
         e instanceof ApiError ? e.message : "Não foi possível atualizar.",
       ),
+    onSettled: (_, __, c) =>
+      setPendingIds((ids) => {
+        const next = new Set(ids);
+        next.delete(c.id);
+        return next;
+      }),
   });
   return (
     <section className="grid gap-4">
@@ -95,17 +104,33 @@ export function ReusableCodeHistory() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setSelected(c)}>
+                <Button
+                  variant="outline"
+                  onClick={(event) => {
+                    usesTriggerRef.current = event.currentTarget;
+                    setSelected(c);
+                  }}
+                >
                   Ver usos
                 </Button>
                 <Button
-                  disabled={toggle.isPending}
+                  disabled={pendingIds.has(c.id)}
                   variant="outline"
                   onClick={() => toggle.mutate(c)}
                 >
-                  {c.status === "ACTIVE" ? "Desativar" : "Ativar"}
+                  {pendingIds.has(c.id)
+                    ? "Atualizando..."
+                    : c.isCodeActive
+                      ? "Desativar"
+                      : "Ativar"}
                 </Button>
               </div>
+              {c.status === "BLOCKED_BY_ACTION" ? (
+                <p className="text-xs text-muted-foreground md:col-span-2">
+                  A atividade está inativa e bloqueia o uso deste código. O
+                  controle acima reflete o estado próprio do código.
+                </p>
+              ) : null}
             </article>
           ))}
           <PaginationControls
@@ -120,7 +145,13 @@ export function ReusableCodeHistory() {
         </p>
       )}
       {selected ? (
-        <Redemptions code={selected} close={() => setSelected(null)} />
+        <Redemptions
+          code={selected}
+          close={() => {
+            setSelected(null);
+            requestAnimationFrame(() => usesTriggerRef.current?.focus());
+          }}
+        />
       ) : null}
     </section>
   );
@@ -133,6 +164,10 @@ function Redemptions({
   close: () => void;
 }) {
   const [page, setPage] = useState(1);
+  const sectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    sectionRef.current?.focus();
+  }, []);
   const query = useQuery({
     queryKey: [
       "admin",
@@ -150,6 +185,7 @@ function Redemptions({
       aria-labelledby="uses-title"
       className="grid gap-4 rounded-lg border border-primary/40 bg-card p-5"
       tabIndex={-1}
+      ref={sectionRef}
     >
       <div className="flex items-start justify-between gap-3">
         <div>

@@ -20,21 +20,35 @@ export function CodesClient() {
         </p>
       </header>
       <ClaimCodeGenerator />
-      <nav aria-label="Tipo de código" className="flex gap-2">
+      <div aria-label="Tipo de código" className="flex gap-2" role="tablist">
         <Button
+          aria-controls="single-codes-panel"
+          aria-selected={tab === "single"}
+          id="single-codes-tab"
           onClick={() => setTab("single")}
+          role="tab"
           variant={tab === "single" ? "primary" : "outline"}
         >
           Uso único
         </Button>
         <Button
+          aria-controls="reusable-codes-panel"
+          aria-selected={tab === "reusable"}
+          id="reusable-codes-tab"
           onClick={() => setTab("reusable")}
+          role="tab"
           variant={tab === "reusable" ? "primary" : "outline"}
         >
           Reutilizáveis
         </Button>
-      </nav>
-      {tab === "single" ? <ClaimCodeHistory /> : <ReusableCodeHistory />}
+      </div>
+      <div
+        aria-labelledby={`${tab}-codes-tab`}
+        id={`${tab}-codes-panel`}
+        role="tabpanel"
+      >
+        {tab === "single" ? <ClaimCodeHistory /> : <ReusableCodeHistory />}
+      </div>
     </div>
   );
 }

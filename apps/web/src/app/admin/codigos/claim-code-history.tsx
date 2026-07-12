@@ -26,19 +26,28 @@ export function ClaimCodeHistory() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [actionId, setActionId] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "available" | "disabled" | "blocked" | "used"
+  >("all");
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const actions = useQuery({
     queryKey: ["admin", "actions", "claim-filter"],
     queryFn: () => fetchAdminActions({ page: 1, limit: 100 }),
     retry: false,
   });
   const query = useQuery({
-    queryKey: ["admin", "claim-codes", { page, limit: 10, search, actionId }],
+    queryKey: [
+      "admin",
+      "claim-codes",
+      { page, limit: 10, search, actionId, status: statusFilter },
+    ],
     queryFn: () =>
       fetchAdminClaimCodes({
         page,
         limit: 10,
         search: search || undefined,
         actionId: actionId || undefined,
+        status: statusFilter,
       }),
     retry: false,
   });
@@ -47,6 +56,7 @@ export function ClaimCodeHistory() {
       if (!getCsrfToken()) await fetchCsrfToken();
       return updateClaimCodeStatus(c.id, !c.isActive);
     },
+    onMutate: (c) => setPendingIds((ids) => new Set(ids).add(c.id)),
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
@@ -57,11 +67,17 @@ export function ClaimCodeHistory() {
       toast.error(
         e instanceof ApiError ? e.message : "Não foi possível atualizar.",
       ),
+    onSettled: (_, __, c) =>
+      setPendingIds((ids) => {
+        const next = new Set(ids);
+        next.delete(c.id);
+        return next;
+      }),
   });
   return (
     <section className="grid gap-4">
       <h2 className="text-2xl font-black">Histórico de uso único</h2>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-3">
         <Input
           aria-label="Buscar código"
           placeholder="Buscar código"
@@ -86,6 +102,21 @@ export function ClaimCodeHistory() {
               {a.name}
             </option>
           ))}
+        </select>
+        <select
+          aria-label="Filtrar por status"
+          className="min-h-11 rounded-md border border-input bg-muted px-3"
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as typeof statusFilter);
+            setPage(1);
+          }}
+        >
+          <option value="all">Todos os status</option>
+          <option value="available">Disponíveis</option>
+          <option value="disabled">Desativados</option>
+          <option value="blocked">Atividade bloqueada</option>
+          <option value="used">Utilizados</option>
         </select>
       </div>
       {query.isPending ? (
@@ -118,11 +149,15 @@ export function ClaimCodeHistory() {
               </div>
               {c.status !== "USED" ? (
                 <Button
-                  disabled={toggle.isPending}
+                  disabled={pendingIds.has(c.id)}
                   variant="outline"
                   onClick={() => toggle.mutate(c)}
                 >
-                  {c.isActive ? "Desativar" : "Ativar"}
+                  {pendingIds.has(c.id)
+                    ? "Atualizando..."
+                    : c.isActive
+                      ? "Desativar"
+                      : "Ativar"}
                 </Button>
               ) : null}
             </article>

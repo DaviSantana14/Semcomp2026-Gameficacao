@@ -86,6 +86,29 @@ describe('ClaimCodesService', () => {
   });
 
   it.each([
+    [
+      'available',
+      { isUsed: false, isActive: true, action: { isActive: true } },
+    ],
+    ['disabled', { isUsed: false, isActive: false }],
+    ['blocked', { isUsed: false, isActive: true, action: { isActive: false } }],
+    ['used', { isUsed: true }],
+  ] as const)(
+    'filters claim codes by %s status',
+    async (status, expectedStatusWhere) => {
+      const { service, prisma } = createService();
+      prisma.claimCode.count.mockResolvedValue(0);
+      prisma.claimCode.findMany.mockResolvedValue([]);
+
+      await service.findAll({ page: 1, limit: 10, status });
+
+      expect(prisma.claimCode.count).toHaveBeenCalledWith({
+        where: expectedStatusWhere,
+      });
+    },
+  );
+
+  it.each([
     [false, 'DISABLED'],
     [true, 'AVAILABLE'],
   ])('toggles an unused code to %s conditionally', async (isActive, status) => {

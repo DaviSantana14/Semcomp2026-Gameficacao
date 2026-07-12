@@ -249,6 +249,7 @@ export class ActionsService {
             : row.isCodeActive
               ? ReusableCodeStatus.ACTIVE
               : ReusableCodeStatus.DISABLED,
+          isCodeActive: row.isCodeActive,
           totalUses: use?._count._all ?? 0,
           lastUsedAt: use?._max.createdAt?.toISOString() ?? null,
         };

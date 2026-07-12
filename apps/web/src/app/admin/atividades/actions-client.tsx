@@ -63,6 +63,7 @@ export function ActionsClient() {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<AdminAction | null>(null);
   const [form, setForm] = useState(empty);
+  const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
   const query = useQuery({
     queryKey: ["admin", "actions", { page, limit: 10, search }],
     queryFn: () =>
@@ -85,9 +86,19 @@ export function ActionsClient() {
           points: form.points,
           code: code || null,
         };
-        return updateAction(editing.id, payload);
+        const reusableAffected = (
+          ["name", "type", "points", "code"] as const
+        ).some((field) => payload[field] !== editing[field]);
+        const claimAffected = payload.name !== editing.name;
+        const action = await updateAction(editing.id, payload);
+        return {
+          action,
+          mode: "edit" as const,
+          reusableAffected,
+          claimAffected,
+        };
       }
-      return createAction({
+      const action = await createAction({
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         type: form.type,
@@ -95,16 +106,28 @@ export function ActionsClient() {
         code: code || undefined,
         isActive: form.isActive,
       });
+      return {
+        action,
+        mode: "create" as const,
+        reusableAffected: Boolean(code),
+        claimAffected: false,
+      };
     },
-    onSuccess: async () => {
-      toast.success(editing ? "Atividade atualizada." : "Atividade criada.");
+    onSuccess: async (result) => {
+      toast.success(
+        result.mode === "edit" ? "Atividade atualizada." : "Atividade criada.",
+      );
       setEditing(null);
       setForm(empty);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
         qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
-        qc.invalidateQueries({ queryKey: ["admin", "reusable-codes"] }),
-        qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
+        ...(result.reusableAffected
+          ? [qc.invalidateQueries({ queryKey: ["admin", "reusable-codes"] })]
+          : []),
+        ...(result.claimAffected
+          ? [qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] })]
+          : []),
       ]);
     },
     onError: (e) =>
@@ -122,6 +145,8 @@ export function ActionsClient() {
       if (!getCsrfToken()) await fetchCsrfToken();
       return updateAction(v.a.id, { [v.field]: !v.a[v.field] });
     },
+    onMutate: (v) =>
+      setPendingToggles((keys) => new Set(keys).add(`${v.a.id}:${v.field}`)),
     onSuccess: async (_, v) => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
@@ -138,6 +163,12 @@ export function ActionsClient() {
           ? e.message
           : "Não foi possível alterar o status.",
       ),
+    onSettled: (_, __, v) =>
+      setPendingToggles((keys) => {
+        const next = new Set(keys);
+        next.delete(`${v.a.id}:${v.field}`);
+        return next;
+      }),
   });
   function edit(a: AdminAction) {
     setEditing(a);
@@ -297,11 +328,7 @@ export function ActionsClient() {
                     label={a.isActive ? "Ativa" : "Inativa"}
                     status={a.isActive ? "active" : "inactive"}
                   />
-                  {a.code ? (
-                    <Badge>{a.code}</Badge>
-                  ) : (
-                    <Badge>Sem código</Badge>
-                  )}
+                  {a.code ? <Badge>{a.code}</Badge> : <Badge>Sem código</Badge>}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {labels[a.type]} · {a.points} PTS · {a.redemptionsCount}{" "}
@@ -314,19 +341,27 @@ export function ActionsClient() {
                   Editar
                 </Button>
                 <Button
-                  disabled={toggle.isPending}
+                  disabled={pendingToggles.has(`${a.id}:isActive`)}
                   variant="outline"
                   onClick={() => toggle.mutate({ a, field: "isActive" })}
                 >
-                  {a.isActive ? "Desativar atividade" : "Ativar atividade"}
+                  {pendingToggles.has(`${a.id}:isActive`)
+                    ? "Atualizando atividade..."
+                    : a.isActive
+                      ? "Desativar atividade"
+                      : "Ativar atividade"}
                 </Button>
                 {a.code ? (
                   <Button
-                    disabled={toggle.isPending}
+                    disabled={pendingToggles.has(`${a.id}:isCodeActive`)}
                     variant="outline"
                     onClick={() => toggle.mutate({ a, field: "isCodeActive" })}
                   >
-                    {a.isCodeActive ? "Desativar código" : "Ativar código"}
+                    {pendingToggles.has(`${a.id}:isCodeActive`)
+                      ? "Atualizando código..."
+                      : a.isCodeActive
+                        ? "Desativar código"
+                        : "Ativar código"}
                   </Button>
                 ) : null}
               </div>
