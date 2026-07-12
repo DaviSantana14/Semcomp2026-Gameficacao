@@ -474,6 +474,44 @@ describe('RewardsService', () => {
     });
   });
 
+  it('explicitly clears optional reward details on update', async () => {
+    const { service, prisma } = createService();
+    prisma.reward.findUnique.mockResolvedValue(activeReward);
+    prisma.reward.update.mockResolvedValue({
+      ...activeReward,
+      description: '',
+      imageUrl: null,
+    });
+
+    await service.update('reward-1', {
+      description: '',
+      imageUrl: null,
+    });
+
+    expect(prisma.reward.update).toHaveBeenCalledWith({
+      where: { id: 'reward-1' },
+      data: {
+        name: undefined,
+        description: '',
+        costInPoints: undefined,
+        stock: undefined,
+        imageUrl: null,
+        isActive: undefined,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        costInPoints: true,
+        stock: true,
+        isActive: true,
+        imageUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  });
+
   it('lists pending redemptions for admin operation', async () => {
     const { service, prisma } = createService();
     prisma.rewardRedemption.findMany.mockResolvedValue([pendingRedemption]);

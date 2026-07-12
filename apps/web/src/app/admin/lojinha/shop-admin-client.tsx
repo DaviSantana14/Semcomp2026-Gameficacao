@@ -331,9 +331,21 @@ async function fetchAllRewardOptions(signal: AbortSignal) {
     signal,
   );
   const totalPages = first.meta.totalPages;
-  if (!Number.isSafeInteger(totalPages) || totalPages < 1) {
+  const { limit, page, total } = first.meta;
+  if (
+    !Number.isSafeInteger(totalPages) ||
+    !Number.isSafeInteger(total) ||
+    !Number.isSafeInteger(limit) ||
+    totalPages < 0 ||
+    total < 0 ||
+    limit < 1 ||
+    page !== 1 ||
+    totalPages !== Math.ceil(total / limit) ||
+    first.items.length > total
+  ) {
     throw new Error("Invalid reward options pagination metadata");
   }
+  if (totalPages === 0) return [];
   const items = [...first.items];
   const batchSize = 5;
   for (let page = 2; page <= totalPages; page += batchSize) {

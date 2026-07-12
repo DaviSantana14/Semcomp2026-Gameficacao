@@ -68,10 +68,10 @@ export function RewardForm({
     if (reward) {
       const payload: UpdateRewardDetailsPayload = {
         name: normalized.name,
-        description: normalized.description,
+        description: form.description?.trim() ?? "",
         costInPoints: normalized.costInPoints,
         stock: normalized.stock,
-        imageUrl: normalized.imageUrl,
+        imageUrl: normalized.imageUrl ?? null,
       };
       onSubmit({ mode: "edit", rewardId: reward.id, payload });
       return;

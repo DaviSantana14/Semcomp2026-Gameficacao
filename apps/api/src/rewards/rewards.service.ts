@@ -366,12 +366,20 @@ function mapRedemptionStatus(status: AdminRedemptionStatusFilter) {
 function normalizeRewardInput(input: CreateRewardDto | UpdateRewardDto) {
   return {
     name: input.name?.trim(),
-    description: normalizeOptionalText(input.description),
+    description: normalizeNullableText(input.description),
     costInPoints: input.costInPoints,
     stock: input.stock,
-    imageUrl: normalizeOptionalText(input.imageUrl),
+    imageUrl: normalizeNullableText(input.imageUrl),
     isActive: input.isActive,
   };
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  if (value == null) {
+    return value;
+  }
+
+  return value.trim();
 }
 
 async function transitionPendingRedemption(

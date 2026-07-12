@@ -194,10 +194,10 @@ export type CreateRewardPayload = {
   imageUrl?: string;
 };
 
-export type UpdateRewardPayload = Partial<CreateRewardPayload>;
-export type UpdateRewardDetailsPayload = Partial<
-  Omit<CreateRewardPayload, "isActive">
->;
+export type UpdateRewardPayload = Partial<
+  Omit<CreateRewardPayload, "description" | "imageUrl">
+> & { description?: string | null; imageUrl?: string | null };
+export type UpdateRewardDetailsPayload = Omit<UpdateRewardPayload, "isActive">;
 
 export type AdminReward = Reward & {
   redemptionCounts: Record<RedemptionStatus, number>;
