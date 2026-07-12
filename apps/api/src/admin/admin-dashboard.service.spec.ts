@@ -27,6 +27,23 @@ describe('shared pagination', () => {
     expect(await validate(dto)).toHaveLength(2);
   });
 
+  it('rejects limit below 1 and accepts page above 1', async () => {
+    const invalid = plainToInstance(PaginationQueryDto, {
+      page: '2',
+      limit: '0',
+    });
+    const valid = plainToInstance(PaginationQueryDto, {
+      page: '37',
+      limit: '100',
+    });
+
+    const errors = await validate(invalid);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].property).toBe('limit');
+    expect(await validate(valid)).toHaveLength(0);
+    expect(valid).toMatchObject({ page: 37, limit: 100 });
+  });
+
   it('builds page metadata, including an empty result', () => {
     expect(paginate(['x'], 21, 2, 20)).toEqual({
       items: ['x'],
@@ -81,6 +98,9 @@ describe(AdminDashboardService.name, () => {
     expect(prisma.user.count).toHaveBeenNthCalledWith(1, {
       where: { role: UserRole.PARTICIPANT },
     });
+    expect(prisma.user.count).toHaveBeenNthCalledWith(2, {
+      where: { role: UserRole.PARTICIPANT, isActive: true },
+    });
     expect(prisma.pointEvent.aggregate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { source: PointEventSource.ACTION_REDEEM },
@@ -98,6 +118,12 @@ describe(AdminDashboardService.name, () => {
         user: { select: { id: true, name: true } },
         reward: { select: { id: true, name: true } },
       },
+    });
+    expect(prisma.claimCode.count).toHaveBeenNthCalledWith(1, {
+      where: { isUsed: true },
+    });
+    expect(prisma.claimCode.count).toHaveBeenNthCalledWith(2, {
+      where: { isUsed: false, isActive: true },
     });
   });
 });

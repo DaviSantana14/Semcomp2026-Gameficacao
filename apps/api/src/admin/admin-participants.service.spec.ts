@@ -58,6 +58,87 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
+  it('filters inactive participants', async () => {
+    prisma.user.count.mockResolvedValue(0);
+    prisma.user.findMany.mockResolvedValue([]);
+
+    await service.findAll({ page: 1, limit: 20, status: 'inactive' });
+
+    expect(prisma.user.count).toHaveBeenCalledWith({
+      where: { role: UserRole.PARTICIPANT, isActive: false },
+    });
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { role: UserRole.PARTICIPANT, isActive: false },
+      }),
+    );
+  });
+
+  it('maps event and redemption counters for every listed participant', async () => {
+    const now = new Date('2026-07-11T12:00:00.000Z');
+    prisma.user.count.mockResolvedValue(2);
+    prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        name: 'Ana',
+        cpf: '1',
+        email: 'ana@example.com',
+        points: 10,
+        xp: 20,
+        level: 2,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        _count: { pointEvents: 3, rewardRedemptions: 1 },
+      },
+      {
+        id: 'p2',
+        name: 'Bia',
+        cpf: '2',
+        email: 'bia@example.com',
+        points: 0,
+        xp: 0,
+        level: 1,
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+        _count: { pointEvents: 7, rewardRedemptions: 4 },
+      },
+    ]);
+
+    const result = await service.findAll({ page: 1, limit: 20 });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'p1',
+        pointEventsCount: 3,
+        rewardRedemptionsCount: 1,
+      }),
+      expect.objectContaining({
+        id: 'p2',
+        pointEventsCount: 7,
+        rewardRedemptionsCount: 4,
+      }),
+    ]);
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          name: true,
+          cpf: true,
+          email: true,
+          points: true,
+          xp: true,
+          level: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { pointEvents: true, rewardRedemptions: true } },
+        },
+      }),
+    );
+  });
+
   it('returns an empty page beyond the total while preserving metadata', async () => {
     prisma.user.count.mockResolvedValue(1);
     prisma.user.findMany.mockResolvedValue([]);
@@ -75,6 +156,37 @@ describe(AdminParticipantsService.name, () => {
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.user.updateMany).toHaveBeenCalledWith({
       where: { id: 'admin', role: UserRole.PARTICIPANT },
+      data: { isActive: false },
+    });
+  });
+
+  it('updates participant status and returns the refreshed participant', async () => {
+    const now = new Date('2026-07-11T12:00:00.000Z');
+    prisma.user.updateMany.mockResolvedValue({ count: 1 });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'p1',
+      name: 'Ana',
+      cpf: '1',
+      email: 'ana@example.com',
+      points: 5,
+      xp: 10,
+      level: 2,
+      isActive: false,
+      createdAt: now,
+      updatedAt: now,
+      _count: { pointEvents: 2, rewardRedemptions: 1 },
+    });
+
+    await expect(
+      service.updateStatus('p1', { isActive: false }),
+    ).resolves.toMatchObject({
+      id: 'p1',
+      isActive: false,
+      pointEventsCount: 2,
+      rewardRedemptionsCount: 1,
+    });
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', role: UserRole.PARTICIPANT },
       data: { isActive: false },
     });
   });
@@ -142,6 +254,23 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
+  it.each(['admin', 'missing'])(
+    'rejects %s id before querying point events',
+    async (id) => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.findPointEvents(id, { page: 1, limit: 20 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id, role: UserRole.PARTICIPANT },
+        select: { id: true },
+      });
+      expect(prisma.pointEvent.count).not.toHaveBeenCalled();
+      expect(prisma.pointEvent.findMany).not.toHaveBeenCalled();
+    },
+  );
+
   it('paginates reward redemptions by status', async () => {
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
     prisma.rewardRedemption.count.mockResolvedValue(0);
@@ -157,4 +286,21 @@ describe(AdminParticipantsService.name, () => {
       }),
     );
   });
+
+  it.each(['admin', 'missing'])(
+    'rejects %s id before querying reward redemptions',
+    async (id) => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.findRewardRedemptions(id, { page: 1, limit: 20 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id, role: UserRole.PARTICIPANT },
+        select: { id: true },
+      });
+      expect(prisma.rewardRedemption.count).not.toHaveBeenCalled();
+      expect(prisma.rewardRedemption.findMany).not.toHaveBeenCalled();
+    },
+  );
 });
