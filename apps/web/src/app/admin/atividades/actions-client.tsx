@@ -268,7 +268,7 @@ export function ActionsClient() {
               </p>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button disabled={save.isPending}>
+              <Button type="submit" disabled={save.isPending}>
                 <Plus />
                 {save.isPending
                   ? "Salvando..."
@@ -306,7 +306,9 @@ export function ActionsClient() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
-        <Button variant="outline">Buscar</Button>
+        <Button type="submit" variant="outline">
+          Buscar
+        </Button>
       </form>
       {query.isPending ? (
         <div role="status">
