@@ -17,6 +17,7 @@ const actionSummarySelect = {
   code: true,
   points: true,
   isActive: true,
+  isCodeActive: true,
   createdAt: true,
 } as const;
 
@@ -49,6 +50,7 @@ export class ActionsService {
           code: normalizedCode,
           points: createActionDto.points,
           isActive: createActionDto.isActive,
+          isCodeActive: Boolean(normalizedCode),
         },
         select: actionSummarySelect,
       });
@@ -100,10 +102,18 @@ export class ActionsService {
       throw new NotFoundException('Atividade pontuável não encontrada.');
     }
 
-    return this.redeem(action.id, userId);
+    return this.redeemWithMethod(action.id, userId, 'REUSABLE_CODE');
   }
 
   async redeem(actionId: string, userId: string) {
+    return this.redeemWithMethod(actionId, userId, 'DIRECT');
+  }
+
+  private async redeemWithMethod(
+    actionId: string,
+    userId: string,
+    redemptionMethod: 'DIRECT' | 'REUSABLE_CODE',
+  ) {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const action = await tx.action.findUnique({
@@ -115,7 +125,10 @@ export class ActionsService {
           throw new NotFoundException('Atividade pontuável não encontrada.');
         }
 
-        return this.grantAction(tx, action, userId);
+        if (redemptionMethod === 'REUSABLE_CODE' && !action.isCodeActive) {
+          throw new BadRequestException('Este código está inativo.');
+        }
+        return this.grantAction(tx, action, userId, { redemptionMethod });
       });
     } catch (error) {
       if (
@@ -145,6 +158,10 @@ export class ActionsService {
           throw new ConflictException('Este código já foi utilizado.');
         }
 
+        if (!claimCode.isActive) {
+          throw new BadRequestException('Este código está inativo.');
+        }
+
         if (!claimCode.action.isActive) {
           throw new BadRequestException(
             'Esta atividade está inativa e não pode ser resgatada.',
@@ -153,15 +170,28 @@ export class ActionsService {
 
         const usedAt = new Date();
         const consumed = await tx.claimCode.updateMany({
-          where: { id: claimCode.id, isUsed: false },
-          data: { isUsed: true, usedById: userId, usedAt },
+          where: { id: claimCode.id, isUsed: false, isActive: true },
+          data: { isUsed: true, isActive: false, usedById: userId, usedAt },
         });
 
         if (consumed.count !== 1) {
-          throw new ConflictException('Este código já foi utilizado.');
+          const current = await tx.claimCode.findUnique({
+            where: { id: claimCode.id },
+            select: { isUsed: true, isActive: true },
+          });
+          if (current?.isUsed) {
+            throw new ConflictException('Este código já foi utilizado.');
+          }
+          if (current && !current.isActive) {
+            throw new BadRequestException('Este código está inativo.');
+          }
+          throw new ConflictException('Não foi possível consumir este código.');
         }
 
-        return this.grantAction(tx, claimCode.action, userId);
+        return this.grantAction(tx, claimCode.action, userId, {
+          redemptionMethod: 'CLAIM_CODE',
+          claimCodeId: claimCode.id,
+        });
       });
     } catch (error) {
       if (
@@ -179,6 +209,9 @@ export class ActionsService {
     tx: Prisma.TransactionClient,
     action: Prisma.ActionGetPayload<{ select: typeof actionSummarySelect }>,
     userId: string,
+    redemption:
+      | { redemptionMethod: 'DIRECT' | 'REUSABLE_CODE'; claimCodeId?: never }
+      | { redemptionMethod: 'CLAIM_CODE'; claimCodeId: string },
   ) {
     if (!action.isActive) {
       throw new BadRequestException(
@@ -195,6 +228,8 @@ export class ActionsService {
         points: action.points,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
+        redemptionMethod: redemption.redemptionMethod,
+        claimCodeId: redemption.claimCodeId,
         description: `Resgate da atividade: ${action.name}`,
         createdAt: redeemedAt,
       },

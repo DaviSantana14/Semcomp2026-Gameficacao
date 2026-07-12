@@ -19,6 +19,7 @@ const activeAction = {
   code: null,
   points: 10,
   isActive: true,
+  isCodeActive: false,
   createdAt: new Date('2026-05-17T12:00:00.000Z'),
 };
 
@@ -30,6 +31,7 @@ const actionSummarySelect = {
   code: true,
   points: true,
   isActive: true,
+  isCodeActive: true,
   createdAt: true,
 };
 
@@ -124,6 +126,7 @@ describe('ActionsService', () => {
           points: 10,
           code: 'DIA1',
           isActive: true,
+          isCodeActive: true,
         },
         select: {
           id: true,
@@ -133,6 +136,7 @@ describe('ActionsService', () => {
           code: true,
           points: true,
           isActive: true,
+          isCodeActive: true,
           createdAt: true,
         },
       });
@@ -155,6 +159,7 @@ describe('ActionsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             code: undefined,
+            isCodeActive: false,
           }) as object,
         }),
       );
@@ -256,6 +261,8 @@ describe('ActionsService', () => {
           points: 10,
           kind: 'CREDIT',
           source: 'ACTION_REDEEM',
+          redemptionMethod: 'DIRECT',
+          claimCodeId: undefined,
           description: 'Resgate da atividade: Check-in',
           createdAt: expect.any(Date) as Date,
         },
@@ -312,7 +319,11 @@ describe('ActionsService', () => {
     it('normalizes the code and reuses the action redeem flow', async () => {
       const { service, prisma, tx } = createService();
       prisma.action.findUnique.mockResolvedValue({ id: 'action-1' });
-      tx.action.findUnique.mockResolvedValue(activeAction);
+      tx.action.findUnique.mockResolvedValue({
+        ...activeAction,
+        code: 'DIA1',
+        isCodeActive: true,
+      });
       tx.pointEvent.create.mockResolvedValue(undefined);
       tx.user.update.mockResolvedValue({
         id: 'user-1',
@@ -332,11 +343,13 @@ describe('ActionsService', () => {
           data: expect.objectContaining({
             actionId: 'action-1',
             userId: 'user-1',
+            redemptionMethod: 'REUSABLE_CODE',
+            claimCodeId: undefined,
           }) as object,
         }),
       );
       expect(result).toMatchObject({
-        action: activeAction,
+        action: { ...activeAction, code: 'DIA1', isCodeActive: true },
         awardedPoints: 10,
         currentPoints: 110,
         currentXp: 210,
@@ -380,6 +393,7 @@ describe('ActionsService', () => {
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: true,
+        isActive: false,
         action: activeAction,
       });
 
@@ -389,11 +403,28 @@ describe('ActionsService', () => {
       expect(tx.claimCode.updateMany).not.toHaveBeenCalled();
     });
 
+    it('rejects an inactive claim code without writing', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique.mockResolvedValue({
+        id: 'claim-1',
+        isUsed: false,
+        isActive: false,
+        action: activeAction,
+      });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new BadRequestException('Este código está inativo.'),
+      );
+      expect(tx.claimCode.updateMany).not.toHaveBeenCalled();
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
+    });
+
     it('rejects an inactive action without consuming its claim code', async () => {
       const { service, tx } = createService();
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: false,
+        isActive: true,
         action: { ...activeAction, isActive: false },
       });
 
@@ -405,25 +436,48 @@ describe('ActionsService', () => {
 
     it('maps a lost claim-code compare-and-set to the used-code conflict', async () => {
       const { service, tx } = createService();
-      tx.claimCode.findUnique.mockResolvedValue({
-        id: 'claim-1',
-        isUsed: false,
-        action: activeAction,
-      });
+      tx.claimCode.findUnique
+        .mockResolvedValueOnce({
+          id: 'claim-1',
+          isUsed: false,
+          isActive: true,
+          action: activeAction,
+        })
+        .mockResolvedValueOnce({ isUsed: true, isActive: false });
       tx.claimCode.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
         new ConflictException('Este código já foi utilizado.'),
       );
       expect(tx.claimCode.updateMany).toHaveBeenCalledWith({
-        where: { id: 'claim-1', isUsed: false },
+        where: { id: 'claim-1', isUsed: false, isActive: true },
         data: {
           isUsed: true,
+          isActive: false,
           usedById: 'user-1',
           usedAt: expect.any(Date) as Date,
         },
       });
       expect(tx.pointEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('maps a lost compare-and-set caused by deactivation to bad request', async () => {
+      const { service, tx } = createService();
+      tx.claimCode.findUnique
+        .mockResolvedValueOnce({
+          id: 'claim-1',
+          isUsed: false,
+          isActive: true,
+          action: activeAction,
+        })
+        .mockResolvedValueOnce({ isUsed: false, isActive: false });
+      tx.claimCode.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.redeemByCode('K7XM-9N2P', 'user-1')).rejects.toThrow(
+        new BadRequestException('Este código está inativo.'),
+      );
+      expect(tx.pointEvent.create).not.toHaveBeenCalled();
+      expect(tx.user.update).not.toHaveBeenCalled();
     });
 
     it('atomically consumes a claim code and grants its action', async () => {
@@ -432,6 +486,7 @@ describe('ActionsService', () => {
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: false,
+        isActive: true,
         action: activeAction,
       });
       tx.claimCode.updateMany.mockImplementation(() => {
@@ -454,6 +509,14 @@ describe('ActionsService', () => {
         'pointEvent.create',
         'user.update',
       ]);
+      expect(tx.pointEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            redemptionMethod: 'CLAIM_CODE',
+            claimCodeId: 'claim-1',
+          }) as object,
+        }),
+      );
       expect(result).toMatchObject({
         action: activeAction,
         awardedPoints: 10,
@@ -468,6 +531,7 @@ describe('ActionsService', () => {
       tx.claimCode.findUnique.mockResolvedValue({
         id: 'claim-1',
         isUsed: false,
+        isActive: true,
         action: activeAction,
       });
       tx.claimCode.updateMany.mockResolvedValue({ count: 1 });
