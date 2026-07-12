@@ -22,14 +22,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  AdminReward,
-  ApiError,
   cancelRedemption,
   deliverRedemption,
   fetchAdminRedemptions,
-  fetchCsrfToken,
-  getCsrfToken,
-} from "@/lib/api";
+} from "@/features/rewards/rewards.service";
+import type { AdminReward } from "@/features/rewards/rewards.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 
@@ -85,7 +83,6 @@ export function RedemptionHistory({
       id: string;
       kind: "deliver" | "cancel";
     }) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return kind === "deliver" ? deliverRedemption(id) : cancelRedemption(id);
     },
     onSuccess: async (_, variables) => {

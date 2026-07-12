@@ -11,13 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ApiError,
-  type AdminParticipant,
   fetchAdminParticipants,
-  fetchCsrfToken,
-  getCsrfToken,
   updateParticipantStatus,
-} from "@/lib/api";
+} from "@/features/participants/participants.service";
+import type { AdminParticipant } from "@/features/participants/participants.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 
@@ -47,7 +45,6 @@ export function ParticipantsClient() {
   });
   const statusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return updateParticipantStatus(id, { isActive });
     },
     onSuccess: (participant) => {

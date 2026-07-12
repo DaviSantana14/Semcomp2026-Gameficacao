@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ApiError,
-  type AdminParticipantPointEvent,
-  type AdminPointEventsFilters,
-  fetchAdminParticipantPointEvents,
-} from "@/lib/api";
+import { fetchAdminParticipantPointEvents } from "@/features/participants/participants.service";
+import type {
+  AdminParticipantPointEvent,
+  AdminPointEventsFilters,
+} from "@/features/participants/participants.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../../_components/pagination-controls";
 
 const LIMIT = 10;

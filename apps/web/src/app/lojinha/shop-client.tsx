@@ -22,14 +22,10 @@ import {
 } from "@/components/ui/card";
 import { LogoutButton } from "@/components/logout-button";
 import { useMe } from "@/hooks/use-auth";
-import {
-  ApiError,
-  fetchCsrfToken,
-  fetchRewards,
-  getCsrfToken,
-  redeemReward,
-  type Reward,
-} from "@/lib/api";
+import { fetchRewards, redeemReward } from "@/features/rewards/rewards.service";
+import type { Reward } from "@/features/rewards/rewards.types";
+import type { User } from "@/features/users/users.types";
+import { ApiError } from "@/lib/http/api-error";
 
 function getRedeemDisabledReason(reward: Reward, points: number) {
   if (reward.stock <= 0) {
@@ -137,7 +133,7 @@ export function ShopClient() {
   return <ParticipantShop user={user} />;
 }
 
-function ParticipantShop({ user }: { user: import("@/lib/api").User }) {
+function ParticipantShop({ user }: { user: User }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
@@ -151,13 +147,7 @@ function ParticipantShop({ user }: { user: import("@/lib/api").User }) {
     retry: false,
   });
   const redeemMutation = useMutation({
-    mutationFn: async (reward: Reward) => {
-      if (!getCsrfToken()) {
-        await fetchCsrfToken();
-      }
-
-      return redeemReward(reward.id);
-    },
+    mutationFn: (reward: Reward) => redeemReward(reward.id),
     onSuccess: (redemption) => {
       toast.success(`Resgate de ${redemption.reward.name} criado.`);
       void queryClient.invalidateQueries({ queryKey: ["me"] });

@@ -7,12 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ApiError,
-  type AdminRewardRedemptionsFilters,
-  type RedemptionStatus,
-  fetchAdminParticipantRewardRedemptions,
-} from "@/lib/api";
+import { fetchAdminParticipantRewardRedemptions } from "@/features/participants/participants.service";
+import type { AdminRewardRedemptionsFilters } from "@/features/participants/participants.types";
+import type { RedemptionStatus } from "@/features/rewards/rewards.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { StatusBadge } from "../../_components/status-badge";
 

@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ApiError, logout } from "@/lib/api";
+import { logout } from "@/features/auth/auth.service";
+import { ApiError } from "@/lib/http/api-error";
 import { cn } from "@/lib/utils";
 
 type LogoutButtonProps = {

@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, login, register as registerUser } from "@/lib/api";
+import { login, register as registerUser } from "@/features/auth/auth.service";
+import { ApiError } from "@/lib/http/api-error";
 
 function normalizeCpf(cpf: string) {
   return cpf.replace(/\D/g, "");

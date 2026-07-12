@@ -15,12 +15,12 @@ import {
 } from "@/components/ui/card";
 import { LogoutButton } from "@/components/logout-button";
 import { useMe } from "@/hooks/use-auth";
-import {
-  ApiError,
-  fetchRanking,
-  type RankingEntry,
-  type RankingPeriod,
-} from "@/lib/api";
+import { fetchRanking } from "@/features/ranking/ranking.service";
+import type {
+  RankingEntry,
+  RankingPeriod,
+} from "@/features/ranking/ranking.types";
+import { ApiError } from "@/lib/http/api-error";
 
 const RANKING_PERIOD_OPTIONS: Array<{
   label: string;

@@ -13,7 +13,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, fetchAdminDashboard } from "@/lib/api";
+import { fetchAdminDashboard } from "@/features/dashboard/dashboard.service";
+import { ApiError } from "@/lib/http/api-error";
 
 const number = new Intl.NumberFormat("pt-BR");
 const date = new Intl.DateTimeFormat("pt-BR", {

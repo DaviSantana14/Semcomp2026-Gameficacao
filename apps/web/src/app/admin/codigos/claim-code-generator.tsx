@@ -14,13 +14,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ApiError,
   fetchAdminActions,
-  fetchCsrfToken,
   generateClaimCodes,
-  GeneratedClaimCodesResponse,
-  getCsrfToken,
-} from "@/lib/api";
+} from "@/features/actions/actions.service";
+import type { GeneratedClaimCodesResponse } from "@/features/actions/actions.types";
+import { ApiError } from "@/lib/http/api-error";
 export function ClaimCodeGenerator() {
   const qc = useQueryClient();
   const [actionId, setActionId] = useState("");
@@ -32,10 +30,7 @@ export function ClaimCodeGenerator() {
     retry: false,
   });
   const mutation = useMutation({
-    mutationFn: async () => {
-      if (!getCsrfToken()) await fetchCsrfToken();
-      return generateClaimCodes(actionId, { quantity });
-    },
+    mutationFn: () => generateClaimCodes(actionId, { quantity }),
     onSuccess: async (batch) => {
       setLast(batch);
       toast.success(`${batch.quantity} códigos gerados.`);

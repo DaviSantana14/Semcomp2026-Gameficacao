@@ -15,16 +15,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ActionType,
-  AdminAction,
-  ApiError,
   createAction,
   fetchAdminActions,
-  fetchCsrfToken,
-  getCsrfToken,
   updateAction,
+} from "@/features/actions/actions.service";
+import type {
+  ActionType,
+  AdminAction,
   UpdateActionPayload,
-} from "@/lib/api";
+} from "@/features/actions/actions.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 
@@ -72,7 +72,6 @@ export function ActionsClient() {
   });
   const save = useMutation({
     mutationFn: async () => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       const code = form.code.trim().toUpperCase();
       if (/^....-....$/.test(code))
         throw new Error(
@@ -142,7 +141,6 @@ export function ActionsClient() {
       a: AdminAction;
       field: "isActive" | "isCodeActive";
     }) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return updateAction(v.a.id, { [v.field]: !v.a[v.field] });
     },
     onMutate: (v) =>

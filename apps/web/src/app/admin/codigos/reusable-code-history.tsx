@@ -10,14 +10,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  AdminReusableCode,
-  ApiError,
   fetchAdminReusableCodes,
-  fetchCsrfToken,
   fetchReusableCodeRedemptions,
-  getCsrfToken,
   updateAction,
-} from "@/lib/api";
+} from "@/features/actions/actions.service";
+import type { AdminReusableCode } from "@/features/actions/actions.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 const status = {
@@ -43,7 +41,6 @@ export function ReusableCodeHistory() {
   });
   const toggle = useMutation({
     mutationFn: async (c: AdminReusableCode) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return updateAction(c.id, { isCodeActive: !c.isCodeActive });
     },
     onMutate: (c) => setPendingIds((ids) => new Set(ids).add(c.id)),
