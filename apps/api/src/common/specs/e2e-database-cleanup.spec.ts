@@ -1,6 +1,7 @@
 import {
   assertDisposableTestDatabase,
   isDisposableTestDatabase,
+  truncateDisposableTestDatabase,
 } from '../../../test/support/e2e-database-cleanup';
 
 describe('E2E database cleanup guard', () => {
@@ -18,7 +19,48 @@ describe('E2E database cleanup guard', () => {
   ])('rejects environment %s with database %s', (environment, databaseName) => {
     expect(isDisposableTestDatabase(environment, databaseName)).toBe(false);
     expect(() =>
-      assertDisposableTestDatabase(environment, databaseName),
+      assertDisposableTestDatabase(
+        environment,
+        databaseName,
+        `postgresql://user:password@localhost:5432/${databaseName}`,
+      ),
     ).toThrow(/disposable test database/i);
+  });
+
+  it('rejects a production DATABASE_URL even when DB_NAME looks disposable', () => {
+    expect(() =>
+      assertDisposableTestDatabase(
+        'test',
+        'semcomp_test',
+        'postgresql://user:password@localhost:5432/semcomp',
+      ),
+    ).toThrow(/database_url.*db_name|db_name.*database_url/i);
+  });
+
+  it('checks the connected database before executing destructive cleanup', async () => {
+    const originalEnvironment = process.env.NODE_ENV;
+    const originalDatabaseName = process.env.DB_NAME;
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    process.env.NODE_ENV = 'test';
+    process.env.DB_NAME = 'semcomp_test';
+    process.env.DATABASE_URL =
+      'postgresql://user:password@localhost:5432/semcomp_test';
+    const prisma = {
+      $queryRawUnsafe: jest
+        .fn()
+        .mockResolvedValue([{ databaseName: 'semcomp_production' }]),
+      $executeRawUnsafe: jest.fn(),
+    };
+
+    try {
+      await expect(
+        truncateDisposableTestDatabase(prisma as never),
+      ).rejects.toThrow(/connected database/i);
+      expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = originalEnvironment;
+      process.env.DB_NAME = originalDatabaseName;
+      process.env.DATABASE_URL = originalDatabaseUrl;
+    }
   });
 });

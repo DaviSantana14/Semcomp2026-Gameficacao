@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TYPE "AuditActorType" AS ENUM ('ADMIN', 'SYSTEM');
 CREATE TYPE "AuditEntityType" AS ENUM (
   'PARTICIPANT',
@@ -121,3 +123,5 @@ FOR EACH ROW EXECUTE FUNCTION reject_immutable_ledger_change();
 CREATE TRIGGER "AdminAuditEvent_append_only"
 BEFORE UPDATE OR DELETE ON "AdminAuditEvent"
 FOR EACH ROW EXECUTE FUNCTION reject_immutable_ledger_change();
+
+COMMIT;

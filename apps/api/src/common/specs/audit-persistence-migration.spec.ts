@@ -8,6 +8,19 @@ describe('Marco 10 audit persistence migration', () => {
   );
   const sql = readFileSync(migrationPath, 'utf8');
 
+  it('wraps the complete PostgreSQL migration in one transaction', () => {
+    const statements = sql.trim();
+
+    expect(statements).toMatch(/^BEGIN;\s/i);
+    expect(statements).toMatch(/\sCOMMIT;$/i);
+    expect(statements.indexOf('BEGIN;')).toBeLessThan(
+      statements.indexOf('CREATE TYPE "AuditActorType"'),
+    );
+    expect(statements.lastIndexOf('COMMIT;')).toBeGreaterThan(
+      statements.indexOf('AdminAuditEvent_append_only'),
+    );
+  });
+
   it('backfills XP only for provable action redemptions before constraints', () => {
     expect(sql).toContain(
       'SET "xpDelta" = CASE WHEN "source" = \'ACTION_REDEEM\' THEN "points" ELSE 0 END',
