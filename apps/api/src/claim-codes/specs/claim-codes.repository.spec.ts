@@ -172,7 +172,7 @@ describe('ClaimCodesRepository', () => {
       updateStatus(repository, 'c1', isActive),
     ).resolves.toMatchObject({ status });
     expect(prisma.claimCode.updateMany).toHaveBeenCalledWith({
-      where: { id: 'c1', isUsed: false },
+      where: { id: 'c1', isUsed: false, isActive: !isActive },
       data: { isActive },
     });
   });
@@ -252,7 +252,7 @@ describe('ClaimCodesRepository', () => {
     });
     expect(prisma.action.findUnique).toHaveBeenCalledWith({
       where: { id: 'action-1' },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true },
     });
     expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledWith({
       data: [
@@ -301,7 +301,7 @@ describe('ClaimCodesRepository', () => {
     });
     expect(prisma.action.findUnique).toHaveBeenCalledWith({
       where: { id: 'inactive-action' },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true },
     });
   });
 

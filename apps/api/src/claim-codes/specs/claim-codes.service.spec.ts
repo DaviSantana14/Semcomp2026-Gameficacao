@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ActionRedemptionMethod } from '@prisma/client';
 import { ClaimCodesRepository } from '../claim-codes.repository';
 import { ClaimCodesService } from '../claim-codes.service';
 import { AuditService } from '../../audit/audit.service';
@@ -58,16 +59,27 @@ describe(ClaimCodesService.name, () => {
 
   it('maps a lost status update to the used-code conflict', async () => {
     repository.updateClaimCodeStatus.mockResolvedValue({ count: 0 });
-    repository.findClaimCodeById.mockResolvedValue({
-      id: 'code-1',
-      code: 'ABCD-EFGH',
-      isActive: false,
-      isUsed: true,
-      createdAt: new Date(),
-      usedAt: new Date(),
-      usedBy: null,
-      action: { id: 'action-1', name: 'Check-in', isActive: true },
-    });
+    repository.findClaimCodeById
+      .mockResolvedValueOnce({
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: false,
+        isUsed: false,
+        createdAt: new Date(),
+        usedAt: null,
+        usedBy: null,
+        action: { id: 'action-1', name: 'Check-in', isActive: true },
+      })
+      .mockResolvedValueOnce({
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: false,
+        isUsed: true,
+        createdAt: new Date(),
+        usedAt: new Date(),
+        usedBy: null,
+        action: { id: 'action-1', name: 'Check-in', isActive: true },
+      });
     await expect(
       service.updateStatus(
         'code-1',
@@ -77,6 +89,34 @@ describe(ClaimCodesService.name, () => {
     ).rejects.toEqual(
       new ConflictException('Código de uso único já utilizado.'),
     );
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('maps deletion after a lost status update to not found', async () => {
+    repository.updateClaimCodeStatus.mockResolvedValue({ count: 0 });
+    repository.findClaimCodeById
+      .mockResolvedValueOnce({
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: true,
+        isUsed: false,
+        createdAt: new Date(),
+        usedAt: null,
+        usedBy: null,
+        action: { id: 'action-1', name: 'Check-in', isActive: true },
+      })
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      service.updateStatus(
+        'code-1',
+        { isActive: false, reason: 'Desativacao administrativa do codigo' },
+        context,
+      ),
+    ).rejects.toEqual(
+      new NotFoundException('Código de uso único não encontrado.'),
+    );
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('records one safe batch event in the code transaction', async () => {
@@ -111,7 +151,7 @@ describe(ClaimCodesService.name, () => {
         after: {
           requestedQuantity: 2,
           createdQuantity: 2,
-          type: 'CHECKIN',
+          redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
           actionId: 'action-1',
         },
       }),
@@ -216,5 +256,57 @@ describe(ClaimCodesService.name, () => {
 
     expect(repository.updateClaimCodeStatus.mock.calls).toHaveLength(0);
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('allows only one concurrent status request to mutate and audit', async () => {
+    let isActive = true;
+    let initialReads = 0;
+    let releaseInitialReads: () => void = () => undefined;
+    const bothInitialReads = new Promise<void>((resolve) => {
+      releaseInitialReads = resolve;
+    });
+    repository.findClaimCodeById.mockImplementation(async () => {
+      initialReads += 1;
+      const snapshot = {
+        id: 'code-id-1',
+        code: 'ABCD-EFGH',
+        isActive,
+        isUsed: false,
+        usedBy: null,
+        usedAt: null,
+        createdAt: new Date(),
+        action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+      };
+      if (initialReads <= 2) {
+        if (initialReads === 2) releaseInitialReads();
+        await bothInitialReads;
+      }
+      return snapshot;
+    });
+    repository.updateClaimCodeStatus.mockImplementation((...args) => {
+      const [, nextIsActive, previousIsActive] = args;
+      if (isActive !== previousIsActive) return { count: 0 };
+      isActive = nextIsActive;
+      return { count: 1 };
+    });
+
+    const results = await Promise.all([
+      service.updateStatus(
+        'code-id-1',
+        { isActive: false, reason: 'Primeira desativacao concorrente' },
+        context,
+      ),
+      service.updateStatus(
+        'code-id-1',
+        { isActive: false, reason: 'Segunda desativacao concorrente' },
+        context,
+      ),
+    ]);
+
+    expect(results).toEqual([
+      expect.objectContaining({ status: 'DISABLED' }),
+      expect.objectContaining({ status: 'DISABLED' }),
+    ]);
+    expect(audit.record).toHaveBeenCalledTimes(1);
   });
 });

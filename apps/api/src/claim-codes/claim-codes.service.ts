@@ -6,12 +6,14 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
+  ActionRedemptionMethod,
   AuditActorType,
   AuditEntityType,
   AuditOperation,
 } from '../audit/audit.repository';
 import { AuditService } from '../audit/audit.service';
 import { AdminOperationContext } from '../common/request-context';
+import { maskClaimCode } from '../common/claim-code-mask';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { generateClaimCode } from '../common/event-code';
 import { ClaimCodesRepository } from './claim-codes.repository';
@@ -77,7 +79,7 @@ export class ClaimCodesService {
         after: {
           requestedQuantity: quantity,
           createdQuantity: insertedCodes.length,
-          type: action.type,
+          redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
           actionId: action.id,
         },
       });
@@ -120,15 +122,25 @@ export class ClaimCodesService {
       }
       if (current.isActive === dto.isActive) return this.toHistory(current);
 
-      const updated = await repository.updateClaimCodeStatus(id, dto.isActive);
+      const updated = await repository.updateClaimCodeStatus(
+        id,
+        dto.isActive,
+        current.isActive,
+      );
       const row = await repository.findClaimCodeById(id);
       if (!row) {
         throw new NotFoundException('Código de uso único não encontrado.');
       }
-      if (updated.count === 0 || row.isUsed) {
+      if (row.isUsed) {
         throw new ConflictException('Código de uso único já utilizado.');
       }
-      const maskedCode = maskCode(current.code);
+      if (updated.count === 0) {
+        if (row.isActive === dto.isActive) return this.toHistory(row);
+        throw new ConflictException(
+          'Código de uso único teve o status alterado concorrentemente.',
+        );
+      }
+      const maskedCode = maskClaimCode(current.code);
       await this.audit.record(repository.auditWriter!, {
         actor: { actorType: AuditActorType.ADMIN, ...context },
         operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
@@ -178,9 +190,4 @@ export class ClaimCodesService {
       status,
     };
   }
-}
-
-function maskCode(code: string) {
-  if (code.length <= 4) return '*'.repeat(code.length);
-  return `${code.slice(0, 2)}${'*'.repeat(code.length - 4)}${code.slice(-2)}`;
 }

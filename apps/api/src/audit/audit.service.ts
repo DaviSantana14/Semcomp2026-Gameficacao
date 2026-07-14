@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { isCanonicalClaimCodeMask } from '../common/claim-code-mask';
 import {
   AuditActorType,
   AuditEntityType,
@@ -42,7 +43,7 @@ export interface ActionAuditSnapshot {
 export interface ClaimCodeBatchSnapshot {
   requestedQuantity: number;
   createdQuantity: number;
-  type: string;
+  redemptionMethod: string;
   actionId: string;
 }
 
@@ -343,7 +344,7 @@ const claimCodeBatchRule: ObjectRule = {
   required: {
     requestedQuantity: 'number',
     createdQuantity: 'number',
-    type: 'string',
+    redemptionMethod: 'string',
     actionId: 'string',
   },
 };
@@ -723,7 +724,7 @@ export class AuditService {
         return pickScalarFields(value, [
           'requestedQuantity',
           'createdQuantity',
-          'type',
+          'redemptionMethod',
           'actionId',
         ]);
       case AuditOperation.CLAIM_CODE_STATUS_CHANGED:
@@ -858,9 +859,7 @@ function matchesFieldKind(value: unknown, kind: FieldKind) {
         Array.isArray(value) && value.every((item) => typeof item === 'string')
       );
     case 'maskedCode':
-      return (
-        typeof value === 'string' && value.length <= 100 && value.includes('*')
-      );
+      return isCanonicalClaimCodeMask(value);
     case 'date':
       return typeof value === 'string' || value instanceof Date;
     case 'nullableString':

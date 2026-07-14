@@ -1,4 +1,5 @@
 import {
+  ActionRedemptionMethod,
   AuditActorType,
   AuditEntityType,
   AuditOperation,
@@ -168,7 +169,7 @@ describe(AuditService.name, () => {
       after: {
         requestedQuantity: 2,
         createdQuantity: 2,
-        type: 'SINGLE_USE',
+        redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
         actionId: 'action-1',
       },
       metadata: {
@@ -186,7 +187,7 @@ describe(AuditService.name, () => {
         after: {
           requestedQuantity: 2,
           createdQuantity: 2,
-          type: 'SINGLE_USE',
+          redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
           actionId: 'action-1',
         },
         metadata: {
@@ -263,6 +264,49 @@ describe(AuditService.name, () => {
     );
     expect(JSON.stringify(create.mock.calls[0])).not.toContain('ABCDEF123456');
   });
+
+  it.each(['SECRET-CODE*', 'A*CDEF123456', 'AB**56*'])(
+    'rejects a non-canonical claim-code mask: %s',
+    async (maskedCode) => {
+      await expect(
+        service.record(writer, {
+          actor: {
+            actorType: AuditActorType.ADMIN,
+            actorAdminId: 'admin-1',
+            requestId: 'request-1',
+          },
+          operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+          entityType: AuditEntityType.CLAIM_CODE,
+          entityId: 'code-1',
+          reason: 'Desativacao solicitada pelo suporte',
+          before: { id: 'code-1', isActive: true, isUsed: false, maskedCode },
+          after: { id: 'code-1', isActive: false, isUsed: false, maskedCode },
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['*', '****', 'AB*56', 'AB********56'])(
+    'accepts a canonical short or long claim-code mask: %s',
+    async (maskedCode) => {
+      await expect(
+        service.record(writer, {
+          actor: {
+            actorType: AuditActorType.ADMIN,
+            actorAdminId: 'admin-1',
+            requestId: 'request-1',
+          },
+          operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+          entityType: AuditEntityType.CLAIM_CODE,
+          entityId: 'code-1',
+          reason: 'Desativacao solicitada pelo suporte',
+          before: { id: 'code-1', isActive: true, isUsed: false, maskedCode },
+          after: { id: 'code-1', isActive: false, isUsed: false, maskedCode },
+        }),
+      ).resolves.toBeDefined();
+    },
+  );
 
   it('lists persisted snapshots with database filters and pagination', async () => {
     const createdAt = new Date('2026-07-14T12:00:00.000Z');

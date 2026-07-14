@@ -6,10 +6,11 @@ import {
   UserRole,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { Response } from 'supertest';
+import request, { Response } from 'supertest';
 import { AdminE2eHarness, AuthSession } from './support/admin-e2e-harness';
 import {
   assertDisposableTestDatabase,
+  hasDisposableTestDatabaseConfiguration,
   isDisposableTestDatabase,
 } from './support/e2e-database-cleanup';
 
@@ -18,7 +19,11 @@ type Page<T> = {
   meta: { page: number; limit: number; total: number; totalPages: number };
 };
 
-describe('Admin actions and codes (e2e)', () => {
+const describeDisposable = hasDisposableTestDatabaseConfiguration()
+  ? describe
+  : describe.skip;
+
+describeDisposable('Admin actions and codes (e2e)', () => {
   let harness: AdminE2eHarness;
   let adminSession: AuthSession;
   let firstSession: AuthSession;
@@ -339,7 +344,7 @@ describe('Admin actions and codes (e2e)', () => {
     expect(batchEvents[0]?.after).toEqual({
       requestedQuantity: 2,
       createdQuantity: 2,
-      type: ActionType.CHECKIN,
+      redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
       actionId,
     });
     expect(JSON.stringify(batchEvents[0])).not.toContain(codes[0]);
@@ -351,6 +356,7 @@ describe('Admin actions and codes (e2e)', () => {
       )
       .expect(200);
     expect((filtered.body as Page<{ id: string }>).items).toHaveLength(1);
+    expect((filtered.body as Page<{ id: string }>).meta.total).toBe(1);
 
     await harness
       .patch(`/admin/claim-codes/${rows[0].id}/status`, adminSession)
@@ -437,16 +443,57 @@ describe('Admin actions and codes (e2e)', () => {
       usedBy: { id: secondId },
     });
     expect(typeof usedItem?.usedAt).toBe('string');
-    await harness
+    expect(
+      await harness.prisma.pointEvent.findUnique({
+        where: { claimCodeId: rows[1].id },
+        select: {
+          claimCodeId: true,
+          userId: true,
+          redemptionMethod: true,
+        },
+      }),
+    ).toEqual({
+      claimCodeId: rows[1].id,
+      userId: secondId,
+      redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
+    });
+    const conflict = await harness
       .patch(`/admin/claim-codes/${rows[1].id}/status`, adminSession)
       .send({
         isActive: true,
         reason: 'Reativacao administrativa de codigo utilizado',
       })
       .expect(409);
+    const conflictBody = JSON.stringify(conflict.body);
+    expect(conflictBody).not.toContain(rows[1].code);
+    expect(conflictBody).not.toContain(`actions-beta-${suffix}@example.test`);
+    expect(conflictBody).not.toContain(harness.uniqueCpf(suffix, 3));
+    expect(
+      await harness.prisma.adminAuditEvent.count({
+        where: {
+          operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+          entityId: rows[1].id,
+        },
+      }),
+    ).toBe(0);
   });
 
   it('requires admin authorization and a valid reason for code mutations', async () => {
+    const code = await harness.prisma.claimCode.create({
+      data: {
+        actionId: reusableActionId,
+        code: `AUTH-${randomUUID()}`.toUpperCase(),
+      },
+    });
+    claimCodeIds.push(code.id);
+    await request(harness.app.getHttpServer())
+      .post(`/admin/actions/${reusableActionId}/claim-codes/generate`)
+      .send({ quantity: 1, reason: 'Geracao sem autenticacao' })
+      .expect(401);
+    await request(harness.app.getHttpServer())
+      .patch(`/admin/claim-codes/${code.id}/status`)
+      .send({ isActive: false, reason: 'Status sem autenticacao' })
+      .expect(401);
     await harness
       .post(
         `/admin/actions/${reusableActionId}/claim-codes/generate`,
@@ -461,6 +508,90 @@ describe('Admin actions and codes (e2e)', () => {
       )
       .send({ quantity: 1 })
       .expect(400);
+    await harness
+      .patch(`/admin/claim-codes/${code.id}/status`, adminSession)
+      .send({ isActive: false })
+      .expect(400);
+  });
+
+  it('uses canonical short and long masks without persisting raw codes', async () => {
+    const action = await harness.prisma.action.create({
+      data: {
+        name: `Mask formats ${randomUUID()}`,
+        type: ActionType.BONUS,
+        points: 1,
+      },
+    });
+    actionIds.push(action.id);
+    const codes = await Promise.all([
+      harness.prisma.claimCode.create({
+        data: { actionId: action.id, code: 'A1B2' },
+      }),
+      harness.prisma.claimCode.create({
+        data: { actionId: action.id, code: `AB${randomUUID()}YZ` },
+      }),
+    ]);
+    claimCodeIds.push(...codes.map(({ id }) => id));
+
+    await Promise.all(
+      codes.map(({ id }) =>
+        harness
+          .patch(`/admin/claim-codes/${id}/status`, adminSession)
+          .send({
+            isActive: false,
+            reason: 'Validacao administrativa da mascara canonica',
+          })
+          .expect(200),
+      ),
+    );
+
+    const events = await harness.prisma.adminAuditEvent.findMany({
+      where: { entityId: { in: codes.map(({ id }) => id) } },
+      orderBy: { entityId: 'asc' },
+    });
+    expect(events).toHaveLength(2);
+    const masks = events.map(
+      ({ before }) => (before as { maskedCode: string }).maskedCode,
+    );
+    expect(masks).toContain('****');
+    expect(masks).toContain(`AB${'*'.repeat(36)}YZ`);
+    const serialized = JSON.stringify(events);
+    for (const { code } of codes) expect(serialized).not.toContain(code);
+  });
+
+  it('audits exactly one winner for concurrent identical status requests', async () => {
+    const action = await harness.prisma.action.create({
+      data: {
+        name: `Concurrent status ${randomUUID()}`,
+        type: ActionType.BONUS,
+        points: 1,
+      },
+    });
+    actionIds.push(action.id);
+    const code = await harness.prisma.claimCode.create({
+      data: { actionId: action.id, code: `RACE-${randomUUID()}`.toUpperCase() },
+    });
+    claimCodeIds.push(code.id);
+
+    const responses = await Promise.all([
+      harness
+        .patch(`/admin/claim-codes/${code.id}/status`, adminSession)
+        .send({ isActive: false, reason: 'Primeira desativacao concorrente' }),
+      harness
+        .patch(`/admin/claim-codes/${code.id}/status`, adminSession)
+        .send({ isActive: false, reason: 'Segunda desativacao concorrente' }),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    expect(
+      await harness.prisma.adminAuditEvent.count({
+        where: {
+          operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+          entityType: AuditEntityType.CLAIM_CODE,
+          entityId: code.id,
+        },
+      }),
+    ).toBe(1);
   });
 
   it('rolls back generated codes and status changes when audit fails', async () => {

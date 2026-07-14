@@ -56,7 +56,7 @@ export class ClaimCodesRepository {
   findActionForCodeBatch(actionId: string) {
     return this.client.action.findUnique({
       where: { id: actionId },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true },
     });
   }
 
@@ -103,9 +103,13 @@ export class ClaimCodesRepository {
     return { rows, total };
   }
 
-  updateClaimCodeStatus(id: string, isActive: boolean) {
+  updateClaimCodeStatus(
+    id: string,
+    isActive: boolean,
+    previousIsActive: boolean,
+  ) {
     return this.client.claimCode.updateMany({
-      where: { id, isUsed: false },
+      where: { id, isUsed: false, isActive: previousIsActive },
       data: { isActive },
     });
   }

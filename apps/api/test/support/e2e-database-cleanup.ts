@@ -31,6 +31,15 @@ export function assertDisposableTestDatabase(
   }
 }
 
+export function hasDisposableTestDatabaseConfiguration(): boolean {
+  try {
+    assertDisposableTestDatabase();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function truncateDisposableTestDatabase(
   prisma: Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>,
 ): Promise<void> {
