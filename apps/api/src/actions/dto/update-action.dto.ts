@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { ActionType } from '@prisma/client';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEnum,
@@ -18,7 +18,7 @@ import {
 } from '../../common/event-code';
 
 export class UpdateActionDto {
-  @ApiPropertyOptional({ minLength: 10, maxLength: 500, required: true })
+  @ApiProperty({ minLength: 10, maxLength: 500 })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )

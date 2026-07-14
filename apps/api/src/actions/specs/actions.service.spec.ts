@@ -250,4 +250,101 @@ describe(ActionsService.name, () => {
     expect(transactional.updateAction).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
+
+  it('rolls back action creation when the audit writer fails', async () => {
+    const failure = new Error('audit writer failed');
+    const state: {
+      actions: Array<{ id: string; name: string }>;
+      audits: number;
+    } = {
+      actions: [],
+      audits: 0,
+    };
+    const transactional = {
+      auditWriter: { create: jest.fn() },
+      createAction: jest.fn((input: { name: string }) => {
+        const action = {
+          id: 'action-rollback-create',
+          description: null,
+          type: ActionType.CHECKIN,
+          code: null,
+          points: 10,
+          isActive: true,
+          isCodeActive: false,
+          createdAt: new Date(),
+          ...input,
+        };
+        state.actions.push({ id: action.id, name: action.name });
+        return Promise.resolve(action);
+      }),
+    };
+    audit.record.mockRejectedValue(failure);
+    repository.withTransaction.mockImplementation(async (callback) => {
+      const before = [...state.actions];
+      try {
+        return await callback(transactional as never, {} as never);
+      } catch (error) {
+        state.actions.splice(0, state.actions.length, ...before);
+        throw error;
+      }
+    });
+
+    await expect(
+      service.create(
+        {
+          name: 'Check-in',
+          type: ActionType.CHECKIN,
+          points: 10,
+          reason: 'Criacao operacional confirmada',
+        },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
+    ).rejects.toBe(failure);
+
+    expect(state).toEqual({ actions: [], audits: 0 });
+  });
+
+  it('rolls back action editing when the audit writer fails', async () => {
+    const failure = new Error('audit writer failed');
+    const original = {
+      id: 'action-rollback-update',
+      name: 'Check-in',
+      description: null,
+      type: ActionType.CHECKIN,
+      code: null,
+      points: 10,
+      isActive: true,
+      isCodeActive: false,
+      createdAt: new Date(),
+    };
+    const state = { action: { ...original }, audits: 0 };
+    const transactional = {
+      auditWriter: { create: jest.fn() },
+      findActionById: jest.fn(() => Promise.resolve({ ...state.action })),
+      updateAction: jest.fn((_id: string, input: { name?: string }) => {
+        state.action = { ...state.action, ...input };
+        return Promise.resolve({ ...state.action });
+      }),
+    };
+    audit.record.mockRejectedValue(failure);
+    repository.withTransaction.mockImplementation(async (callback) => {
+      const before = { ...state.action };
+      try {
+        return await callback(transactional as never, {} as never);
+      } catch (error) {
+        state.action = before;
+        throw error;
+      }
+    });
+
+    await expect(
+      service.update(
+        original.id,
+        { name: 'Credenciamento', reason: 'Edicao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
+    ).rejects.toBe(failure);
+
+    expect(state).toEqual({ action: original, audits: 0 });
+  });
 });

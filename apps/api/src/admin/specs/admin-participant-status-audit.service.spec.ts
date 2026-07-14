@@ -156,4 +156,43 @@ describe('participant status audit', () => {
     ).rejects.toBe(failure);
     expect(repository.findParticipantById).not.toHaveBeenCalled();
   });
+
+  it('rolls back the participant state when the audit writer fails', async () => {
+    const failure = new Error('audit writer failed');
+    const state = { participant: { id: 'p1', isActive: true }, audits: 0 };
+    const transaction = {
+      auditWriter: { create: jest.fn() },
+      findParticipantStatus: jest.fn(() =>
+        Promise.resolve({ ...state.participant }),
+      ),
+      updateParticipantStatus: jest.fn((id: string, isActive: boolean) => {
+        state.participant = { id, isActive };
+        return Promise.resolve({ ...state.participant });
+      }),
+    };
+    audit.record.mockRejectedValue(failure);
+    repository.withTransaction.mockImplementation(async (callback) => {
+      const before = { ...state.participant };
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        await callback(transaction);
+      } catch (error) {
+        state.participant = before;
+        throw error;
+      }
+    });
+
+    await expect(
+      service.updateStatus(
+        'p1',
+        { isActive: false, reason: 'Desativacao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
+    ).rejects.toBe(failure);
+
+    expect(state).toEqual({
+      participant: { id: 'p1', isActive: true },
+      audits: 0,
+    });
+  });
 });

@@ -1,10 +1,25 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { ActionType } from '@prisma/client';
+import { ModelPropertiesAccessor } from '@nestjs/swagger/dist/services/model-properties-accessor';
+import { SchemaObjectFactory } from '@nestjs/swagger/dist/services/schema-object-factory';
+import { SwaggerTypesMapper } from '@nestjs/swagger/dist/services/swagger-types-mapper';
+import { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import { CreateActionDto } from '../dto/create-action.dto';
 import { UpdateActionDto } from '../dto/update-action.dto';
 
 describe('administrative action audit reasons', () => {
+  it('publishes the update reason as required in Swagger', () => {
+    const schemas: Record<string, SchemaObject> = {};
+    const factory = new SchemaObjectFactory(
+      new ModelPropertiesAccessor(),
+      new SwaggerTypesMapper(),
+    );
+    factory.exploreModelSchema(UpdateActionDto, schemas);
+
+    expect(schemas.UpdateActionDto?.required).toContain('reason');
+  });
+
   it.each([
     [
       CreateActionDto,

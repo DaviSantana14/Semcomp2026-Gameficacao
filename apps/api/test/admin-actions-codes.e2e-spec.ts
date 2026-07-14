@@ -1,7 +1,16 @@
-import { ActionRedemptionMethod, ActionType, UserRole } from '@prisma/client';
+import {
+  ActionRedemptionMethod,
+  ActionType,
+  AuditOperation,
+  UserRole,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { Response } from 'supertest';
 import { AdminE2eHarness, AuthSession } from './support/admin-e2e-harness';
+import {
+  assertDisposableTestDatabase,
+  isDisposableTestDatabase,
+} from './support/e2e-database-cleanup';
 
 type Page<T> = {
   items: T[];
@@ -88,6 +97,10 @@ describe('Admin actions and codes (e2e)', () => {
     if (harness) await harness.close();
   });
 
+  afterEach(async () => {
+    if (harness) await removeAuditFailureTrigger(harness);
+  });
+
   it('creates and edits an action while preserving its redemption snapshot', async () => {
     const originalName = `Actions managed ${randomUUID()}`;
     const created = await harness
@@ -102,6 +115,23 @@ describe('Admin actions and codes (e2e)', () => {
       .expect(201);
     const id = (created.body as { id: string }).id;
     actionIds.push(id);
+
+    const createdLedger = await harness.prisma.adminAuditEvent.findMany({
+      where: { entityId: id },
+      select: { operation: true, reason: true, before: true, after: true },
+    });
+    expect(createdLedger).toHaveLength(1);
+    expect(createdLedger[0]?.operation).toBe(AuditOperation.ACTION_CREATED);
+    expect(createdLedger[0]?.reason).toBe(
+      'Criacao administrativa da atividade',
+    );
+    expect(createdLedger[0]?.before).toBeNull();
+    expect(createdLedger[0]?.after as Record<string, unknown>).toMatchObject({
+      id,
+      name: originalName,
+      points: 23,
+      isActive: true,
+    });
 
     await harness
       .post(`/actions/${id}/redeem`, secondSession)
@@ -127,12 +157,114 @@ describe('Admin actions and codes (e2e)', () => {
         }),
       );
 
+    const ledger = await harness.prisma.adminAuditEvent.findMany({
+      where: { entityId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { operation: true, reason: true, before: true, after: true },
+    });
+    expect(ledger).toHaveLength(2);
+    expect(ledger[1]?.operation).toBe(AuditOperation.ACTION_UPDATED);
+    expect(ledger[1]?.reason).toBe('Edicao administrativa da atividade');
+    expect(ledger[1]?.before as Record<string, unknown>).toMatchObject({
+      name: originalName,
+      points: 23,
+    });
+    expect(ledger[1]?.after as Record<string, unknown>).toMatchObject({
+      name: `${originalName} edited`,
+      points: 99,
+      isActive: false,
+    });
+
+    await harness
+      .patch(`/admin/actions/${id}`, adminSession)
+      .send({
+        name: `${originalName} edited`,
+        points: 99,
+        isActive: false,
+        reason: 'Confirmacao administrativa sem alteracao',
+      })
+      .expect(200);
+    expect(
+      await harness.prisma.adminAuditEvent.count({ where: { entityId: id } }),
+    ).toBe(2);
+
+    await harness
+      .patch(`/admin/actions/${id}`, adminSession)
+      .send({ name: 'Nao deve persistir', reason: 'curto' })
+      .expect(400);
+    expect(
+      await harness.prisma.adminAuditEvent.count({ where: { entityId: id } }),
+    ).toBe(2);
+
+    const missingId = randomUUID();
+    await harness
+      .patch(`/admin/actions/${missingId}`, adminSession)
+      .send({
+        name: 'Nao deve persistir',
+        reason: 'Edicao administrativa de alvo ausente',
+      })
+      .expect(404);
+    expect(
+      await harness.prisma.adminAuditEvent.count({
+        where: { entityId: missingId },
+      }),
+    ).toBe(0);
     const event = await harness.prisma.pointEvent.findFirstOrThrow({
       where: { userId: secondId, actionId: id },
     });
     expect(event.points).toBe(23);
     expect(event.redemptionMethod).toBe(ActionRedemptionMethod.DIRECT);
     await harness.post(`/actions/${id}/redeem`, firstSession).expect(400);
+  });
+
+  it('rolls back action creation and editing when audit persistence fails', async () => {
+    const failedCreateName = `Actions failed create ${randomUUID()}`;
+    const updateTarget = await harness.prisma.action.findUniqueOrThrow({
+      where: { id: reusableActionId },
+    });
+    const failedCreateReason =
+      'Criacao que deve reverter por falha de auditoria';
+    const failedUpdateReason =
+      'Edicao que deve reverter por falha de auditoria';
+    await installAuditFailureTrigger(harness);
+
+    await harness
+      .post('/actions', adminSession)
+      .send({
+        name: failedCreateName,
+        type: ActionType.BONUS,
+        points: 31,
+        reason: failedCreateReason,
+      })
+      .expect(500);
+    expect(
+      await harness.prisma.action.findFirst({
+        where: { name: failedCreateName },
+      }),
+    ).toBeNull();
+    expect(
+      await harness.prisma.adminAuditEvent.count({
+        where: { reason: failedCreateReason },
+      }),
+    ).toBe(0);
+
+    await harness
+      .patch(`/admin/actions/${reusableActionId}`, adminSession)
+      .send({
+        name: 'Actions update that must roll back',
+        reason: failedUpdateReason,
+      })
+      .expect(500);
+    expect(
+      await harness.prisma.action.findUniqueOrThrow({
+        where: { id: reusableActionId },
+      }),
+    ).toEqual(updateTarget);
+    expect(
+      await harness.prisma.adminAuditEvent.count({
+        where: { reason: failedUpdateReason },
+      }),
+    ).toBe(0);
   });
 
   it('controls action and reusable-code activation independently', async () => {
@@ -276,3 +408,46 @@ describe('Admin actions and codes (e2e)', () => {
     });
   });
 });
+
+async function installAuditFailureTrigger(harness: AdminE2eHarness) {
+  await assertDisposableConnection(harness);
+  await removeAuditFailureTrigger(harness);
+  await harness.prisma.$executeRawUnsafe(`
+    CREATE FUNCTION fail_admin_audit_insert_for_e2e() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'forced audit writer failure';
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await harness.prisma.$executeRawUnsafe(`
+    CREATE TRIGGER fail_admin_audit_insert_for_e2e
+    BEFORE INSERT ON "AdminAuditEvent"
+    FOR EACH ROW EXECUTE FUNCTION fail_admin_audit_insert_for_e2e()
+  `);
+}
+
+async function removeAuditFailureTrigger(harness: AdminE2eHarness) {
+  await assertDisposableConnection(harness);
+  await harness.prisma.$executeRawUnsafe(
+    'DROP TRIGGER IF EXISTS fail_admin_audit_insert_for_e2e ON "AdminAuditEvent"',
+  );
+  await harness.prisma.$executeRawUnsafe(
+    'DROP FUNCTION IF EXISTS fail_admin_audit_insert_for_e2e()',
+  );
+}
+
+async function assertDisposableConnection(harness: AdminE2eHarness) {
+  assertDisposableTestDatabase();
+  const [{ databaseName } = { databaseName: '' }] =
+    await harness.prisma.$queryRawUnsafe<Array<{ databaseName: string }>>(
+      'SELECT current_database() AS "databaseName"',
+    );
+  if (
+    !isDisposableTestDatabase(process.env.NODE_ENV, databaseName) ||
+    databaseName !== process.env.DB_NAME
+  ) {
+    throw new Error(
+      'Refusing E2E trigger setup outside the disposable database.',
+    );
+  }
+}
