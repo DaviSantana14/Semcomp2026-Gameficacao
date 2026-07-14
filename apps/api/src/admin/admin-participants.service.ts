@@ -88,23 +88,25 @@ export class AdminParticipantsService {
           : undefined,
     });
     return paginate(
-      page.rows.map((row) => ({
-        ...row,
-        xpDelta: row.xpDelta,
-        reversalOfPointEventId: row.reversedEventId,
-        reversalPointEventId: row.reversal?.id ?? null,
-        origin:
-          row.source === 'REWARD_REDEMPTION'
-            ? 'REWARD'
-            : row.source !== 'ACTION_REDEEM'
-              ? 'ADMIN'
-              : row.redemptionMethod === 'CLAIM_CODE'
-                ? 'UNIQUE_CODE'
-                : row.redemptionMethod === 'REUSABLE_CODE'
-                  ? 'REUSABLE_CODE'
-                  : 'DIRECT_ACTION',
-        createdAt: row.createdAt.toISOString(),
-      })),
+      page.rows.map((row) => {
+        const { reversedEventId, reversal, ...pointEvent } = row;
+        return {
+          ...pointEvent,
+          reversalOfPointEventId: reversedEventId,
+          reversalPointEventId: reversal?.id ?? null,
+          origin:
+            row.source === 'REWARD_REDEMPTION'
+              ? 'REWARD'
+              : row.source !== 'ACTION_REDEEM'
+                ? 'ADMIN'
+                : row.redemptionMethod === 'CLAIM_CODE'
+                  ? 'UNIQUE_CODE'
+                  : row.redemptionMethod === 'REUSABLE_CODE'
+                    ? 'REUSABLE_CODE'
+                    : 'DIRECT_ACTION',
+          createdAt: row.createdAt.toISOString(),
+        };
+      }),
       page.total,
       query.page,
       query.limit,

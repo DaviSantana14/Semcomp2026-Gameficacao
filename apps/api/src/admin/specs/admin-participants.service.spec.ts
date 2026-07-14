@@ -254,6 +254,7 @@ describe(AdminParticipantsService.name, () => {
   });
 
   it('paginates point events, filters enums and returns a summarized claim code', async () => {
+    const createdAt = new Date('2026-07-12T12:00:00.000Z');
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
     prisma.pointEvent.count.mockResolvedValue(1);
     prisma.pointEvent.findMany.mockResolvedValue([
@@ -265,7 +266,7 @@ describe(AdminParticipantsService.name, () => {
         source: PointEventSource.ACTION_REDEEM,
         redemptionMethod: 'CLAIM_CODE',
         description: null,
-        createdAt: new Date(),
+        createdAt,
         action: { id: 'a1', name: 'Check-in' },
         claimCode: { id: 'claim-1', code: 'ABC123' },
         reversedEventId: null,
@@ -278,13 +279,23 @@ describe(AdminParticipantsService.name, () => {
       source: 'action_redeem',
       kind: 'credit',
     });
-    expect(result.items[0]).toMatchObject({
+    expect(result.items[0]).toEqual({
+      id: 'e1',
+      points: 30,
       xpDelta: 9,
+      kind: PointEventKind.CREDIT,
+      source: PointEventSource.ACTION_REDEEM,
+      redemptionMethod: 'CLAIM_CODE',
+      description: null,
+      action: { id: 'a1', name: 'Check-in' },
       origin: 'UNIQUE_CODE',
       claimCode: { id: 'claim-1', code: 'ABC123' },
       reversalOfPointEventId: null,
       reversalPointEventId: 'reversal-1',
+      createdAt: createdAt.toISOString(),
     });
+    expect(result.items[0]).not.toHaveProperty('reversedEventId');
+    expect(result.items[0]).not.toHaveProperty('reversal');
     expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
