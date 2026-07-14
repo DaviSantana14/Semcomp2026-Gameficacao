@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { PrismaService } from '../prisma/prisma.service';
 
 const userSummarySelect = {
@@ -52,10 +53,18 @@ export class UsersRepository {
     });
   }
 
-  create(data: Pick<User, 'name' | 'cpf' | 'email'>) {
-    return this.prisma.user.create({
-      data,
-    });
+  async create(data: { name: string; cpf: string; email: string }) {
+    try {
+      return await this.prisma.user.create({ data });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new PersistenceUniqueConstraintError({ cause: error });
+      }
+      throw error;
+    }
   }
 
   findActiveByCredentials(cpf: string, email: string) {

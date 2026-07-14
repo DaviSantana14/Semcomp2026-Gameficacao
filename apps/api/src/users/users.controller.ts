@@ -7,14 +7,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import {
-  Controller,
-  Get,
-  NotFoundException,
-  Param,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -69,9 +62,7 @@ export class UsersController {
     },
   })
   async findAll() {
-    const users = await this.usersService.findAll();
-
-    return users.map(toUserResponseDto);
+    return this.usersService.findAll();
   }
 
   @Get(':id')
@@ -106,12 +97,6 @@ export class UsersController {
     },
   })
   async findById(@Param('id') id: string) {
-    const user = await this.usersService.findById(id);
-
-    if (!user) {
-      throw new NotFoundException('Usuário não encontrado.');
-    }
-
-    return toUserResponseDto(user);
+    return this.usersService.findById(id);
   }
 }

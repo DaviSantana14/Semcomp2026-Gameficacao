@@ -1,26 +1,6 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import {
-  PointEventKind,
-  PointEventSource,
-  RedemptionStatus,
-  Prisma,
-} from '@prisma/client';
-import { paginate } from '../common/dto/pagination-response.dto';
+import { Injectable } from '@nestjs/common';
+import { PointEventSource, Prisma, RedemptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateRewardDto } from './dto/create-reward.dto';
-import { UpdateRewardDto } from './dto/update-reward.dto';
-import {
-  AdminRewardsQueryDto,
-  AdminRewardStatusFilter,
-} from './dto/admin-rewards-query.dto';
-import {
-  AdminRedemptionsQueryDto,
-  AdminRedemptionStatusFilter,
-} from './dto/admin-redemptions-query.dto';
 
 const rewardSelect = {
   id: true,
@@ -35,395 +15,245 @@ const rewardSelect = {
 } as const;
 
 const redemptionInclude = {
-  user: {
-    select: {
-      id: true,
-      name: true,
-      email: true,
-    },
-  },
+  user: { select: { id: true, name: true, email: true } },
   reward: true,
 } as const;
 
+type RewardsDatabase = Pick<
+  Prisma.TransactionClient,
+  'reward' | 'rewardRedemption' | 'pointEvent' | 'user'
+>;
+
+export interface RewardWriteInput {
+  name?: string;
+  description?: string | null;
+  costInPoints?: number;
+  stock?: number;
+  imageUrl?: string | null;
+  isActive?: boolean;
+}
+
+export interface RewardPageFilter {
+  page: number;
+  limit: number;
+  search?: string;
+  state?: 'active' | 'inactive' | 'out-of-stock';
+}
+
+export interface RedemptionPageFilter {
+  page: number;
+  limit: number;
+  search?: string;
+  rewardId?: string;
+  status?: RedemptionState;
+}
+
+export type RedemptionState = 'PENDING' | 'DELIVERED' | 'CANCELLED';
+
 @Injectable()
 export class RewardsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  private client: RewardsDatabase;
 
-  create(createRewardDto: CreateRewardDto) {
-    return this.prisma.reward.create({
-      data: {
-        name: createRewardDto.name.trim(),
-        description: normalizeOptionalText(createRewardDto.description),
-        costInPoints: createRewardDto.costInPoints,
-        stock: createRewardDto.stock,
-        imageUrl: normalizeOptionalText(createRewardDto.imageUrl),
-        isActive: createRewardDto.isActive,
-      },
-      select: rewardSelect,
-    });
+  constructor(private prisma: PrismaService) {
+    this.client = prisma;
   }
 
-  findAll() {
-    return this.prisma.reward.findMany({
+  withTransaction<T>(
+    callback: (repository: RewardsRepository) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+  }
+
+  createReward(
+    input: Required<Pick<RewardWriteInput, 'name' | 'costInPoints' | 'stock'>> &
+      RewardWriteInput,
+  ) {
+    return this.client.reward.create({ data: input, select: rewardSelect });
+  }
+
+  findActiveRewards() {
+    return this.client.reward.findMany({
       where: { isActive: true },
       select: rewardSelect,
       orderBy: [{ isActive: 'desc' }, { stock: 'desc' }, { createdAt: 'asc' }],
     });
   }
 
-  async findAdminRewards(query: AdminRewardsQueryDto) {
-    const search = query.search?.trim();
+  async findAdminRewardPage(filter: RewardPageFilter) {
     const where: Prisma.RewardWhereInput = {};
-    if (query.status === AdminRewardStatusFilter.ACTIVE) where.isActive = true;
-    if (query.status === AdminRewardStatusFilter.INACTIVE)
-      where.isActive = false;
-    if (query.status === AdminRewardStatusFilter.OUT_OF_STOCK) {
+    if (filter.state === 'active') where.isActive = true;
+    if (filter.state === 'inactive') where.isActive = false;
+    if (filter.state === 'out-of-stock') {
       where.isActive = true;
       where.stock = 0;
     }
-    if (search)
+    if (filter.search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
+        { name: { contains: filter.search, mode: 'insensitive' } },
+        { description: { contains: filter.search, mode: 'insensitive' } },
       ];
+    }
     const [total, rows] = await Promise.all([
-      this.prisma.reward.count({ where }),
-      this.prisma.reward.findMany({
+      this.client.reward.count({ where }),
+      this.client.reward.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: rewardSelect,
       }),
     ]);
-    const counts = rows.length
-      ? await this.prisma.rewardRedemption.groupBy({
-          by: ['rewardId', 'status'],
-          where: { rewardId: { in: rows.map(({ id }) => id) } },
-          _count: { _all: true },
-        })
-      : [];
-    const countMap = new Map(
-      counts.map((entry) => [
-        `${entry.rewardId}:${entry.status}`,
-        entry._count._all,
-      ]),
-    );
-    return paginate(
-      rows.map((reward) => ({
-        ...reward,
-        redemptionCounts: {
-          PENDING:
-            countMap.get(`${reward.id}:${RedemptionStatus.PENDING}`) ?? 0,
-          DELIVERED:
-            countMap.get(`${reward.id}:${RedemptionStatus.DELIVERED}`) ?? 0,
-          CANCELLED:
-            countMap.get(`${reward.id}:${RedemptionStatus.CANCELLED}`) ?? 0,
-        },
-      })),
-      total,
-      query.page,
-      query.limit,
-    );
+    return { rows, total };
   }
 
-  async findRedemptions(query: AdminRedemptionsQueryDto) {
-    const search = query.search?.trim();
+  async findRewardRedemptionCounts(rewardIds: string[]): Promise<
+    Array<{
+      rewardId: string;
+      status: RedemptionState;
+      _count: { _all: number };
+    }>
+  > {
+    if (!rewardIds.length) return [];
+    const counts: unknown = await this.client.rewardRedemption.groupBy({
+      by: ['rewardId', 'status'],
+      where: { rewardId: { in: rewardIds } },
+      _count: { _all: true },
+    });
+    return counts as Array<{
+      rewardId: string;
+      status: RedemptionState;
+      _count: { _all: number };
+    }>;
+  }
+
+  async findRedemptionPage(filter: RedemptionPageFilter) {
     const where: Prisma.RewardRedemptionWhereInput = {
-      ...(query.status !== AdminRedemptionStatusFilter.ALL && {
-        status: mapRedemptionStatus(query.status),
-      }),
-      ...(query.rewardId && { rewardId: query.rewardId }),
-      ...(search && {
+      ...(filter.status && { status: filter.status }),
+      ...(filter.rewardId && { rewardId: filter.rewardId }),
+      ...(filter.search && {
         user: {
           OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { email: { contains: search, mode: 'insensitive' } },
+            { name: { contains: filter.search, mode: 'insensitive' } },
+            { email: { contains: filter.search, mode: 'insensitive' } },
           ],
         },
       }),
     };
-    const select = {
-      id: true,
-      userId: true,
-      rewardId: true,
-      pointsSpent: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-      user: { select: { id: true, name: true, email: true } },
-      reward: { select: rewardSelect },
-    } as const;
     const [total, rows] = await Promise.all([
-      this.prisma.rewardRedemption.count({ where }),
-      this.prisma.rewardRedemption.findMany({
+      this.client.rewardRedemption.count({ where }),
+      this.client.rewardRedemption.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
-        select,
+        select: {
+          id: true,
+          userId: true,
+          rewardId: true,
+          pointsSpent: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          user: { select: { id: true, name: true, email: true } },
+          reward: { select: rewardSelect },
+        },
       }),
     ]);
-    return paginate(rows, total, query.page, query.limit);
+    return { rows, total };
   }
 
-  findById(id: string) {
-    return this.prisma.reward.findUnique({
+  findRewardById(id: string) {
+    return this.client.reward.findUnique({
       where: { id },
       select: rewardSelect,
     });
   }
 
-  async update(id: string, updateRewardDto: UpdateRewardDto) {
-    const reward = await this.findById(id);
-
-    if (!reward) {
-      throw new NotFoundException('Recompensa não encontrada.');
-    }
-
-    return this.prisma.reward.update({
+  updateReward(id: string, input: RewardWriteInput) {
+    return this.client.reward.update({
       where: { id },
-      data: normalizeRewardInput(updateRewardDto),
+      data: input,
       select: rewardSelect,
     });
   }
 
-  async redeem(rewardId: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const reward = await tx.reward.findUnique({
-        where: { id: rewardId },
-        select: rewardSelect,
-      });
+  debitUserPoints(userId: string, points: number) {
+    return this.client.user.updateMany({
+      where: { id: userId, points: { gte: points } },
+      data: { points: { decrement: points } },
+    });
+  }
 
-      if (!reward) {
-        throw new NotFoundException('Recompensa não encontrada.');
-      }
+  creditUserPoints(userId: string, points: number) {
+    return this.client.user.update({
+      where: { id: userId },
+      data: { points: { increment: points } },
+    });
+  }
 
-      if (!reward.isActive) {
-        throw new BadRequestException('Esta recompensa está inativa.');
-      }
+  decrementRewardStock(rewardId: string) {
+    return this.client.reward.updateMany({
+      where: { id: rewardId, isActive: true, stock: { gt: 0 } },
+      data: { stock: { decrement: 1 } },
+    });
+  }
 
-      if (reward.stock <= 0) {
-        throw new BadRequestException('Esta recompensa está esgotada.');
-      }
+  incrementRewardStock(rewardId: string) {
+    return this.client.reward.update({
+      where: { id: rewardId },
+      data: { stock: { increment: 1 } },
+    });
+  }
 
-      const userUpdate = await tx.user.updateMany({
-        where: {
-          id: userId,
-          points: { gte: reward.costInPoints },
-        },
-        data: {
-          points: { decrement: reward.costInPoints },
-        },
-      });
+  createRedemption(userId: string, rewardId: string, pointsSpent: number) {
+    return this.client.rewardRedemption.create({
+      data: { userId, rewardId, pointsSpent },
+      include: redemptionInclude,
+    });
+  }
 
-      if (userUpdate.count === 0) {
-        throw new BadRequestException(
-          'Você não tem points suficientes para resgatar esta recompensa.',
-        );
-      }
-
-      const rewardUpdate = await tx.reward.updateMany({
-        where: {
-          id: reward.id,
-          isActive: true,
-          stock: { gt: 0 },
-        },
-        data: {
-          stock: { decrement: 1 },
-        },
-      });
-
-      if (rewardUpdate.count === 0) {
-        throw new BadRequestException('Esta recompensa está indisponível.');
-      }
-
-      const redemption = await tx.rewardRedemption.create({
-        data: {
-          userId,
-          rewardId: reward.id,
-          pointsSpent: reward.costInPoints,
-        },
-        include: redemptionInclude,
-      });
-
-      await tx.pointEvent.create({
-        data: {
-          userId,
-          points: -reward.costInPoints,
-          kind: PointEventKind.DEBIT,
-          source: PointEventSource.REWARD_REDEMPTION,
-          description: `Resgate de recompensa: ${reward.name}`,
-        },
-      });
-
-      return redemption;
+  createRewardPointEvent(input: {
+    userId: string;
+    points: number;
+    kind: 'CREDIT' | 'DEBIT';
+    description: string;
+  }) {
+    return this.client.pointEvent.create({
+      data: {
+        ...input,
+        source: PointEventSource.REWARD_REDEMPTION,
+      },
     });
   }
 
   findPendingRedemptions() {
-    return this.prisma.rewardRedemption.findMany({
+    return this.client.rewardRedemption.findMany({
       where: { status: RedemptionStatus.PENDING },
       include: redemptionInclude,
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  async deliverRedemption(redemptionId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const redemption = await tx.rewardRedemption.findUnique({
-        where: { id: redemptionId },
-        include: redemptionInclude,
-      });
-
-      assertPendingRedemption(redemption);
-
-      await transitionPendingRedemption(
-        tx.rewardRedemption,
-        redemptionId,
-        RedemptionStatus.DELIVERED,
-      );
-
-      const delivered = await tx.rewardRedemption.findUnique({
-        where: { id: redemptionId },
-        include: redemptionInclude,
-      });
-
-      if (!delivered) {
-        throw new NotFoundException('Resgate de recompensa não encontrado.');
-      }
-
-      return delivered;
+  findRedemptionById(id: string) {
+    return this.client.rewardRedemption.findUnique({
+      where: { id },
+      include: redemptionInclude,
     });
   }
 
-  async cancelRedemption(redemptionId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const redemption = await tx.rewardRedemption.findUnique({
-        where: { id: redemptionId },
-        include: redemptionInclude,
-      });
-
-      assertPendingRedemption(redemption);
-
-      await transitionPendingRedemption(
-        tx.rewardRedemption,
-        redemptionId,
-        RedemptionStatus.CANCELLED,
-      );
-
-      await tx.user.update({
-        where: { id: redemption.userId },
-        data: { points: { increment: redemption.pointsSpent } },
-      });
-
-      await tx.reward.update({
-        where: { id: redemption.rewardId },
-        data: { stock: { increment: 1 } },
-      });
-
-      await tx.pointEvent.create({
-        data: {
-          userId: redemption.userId,
-          points: redemption.pointsSpent,
-          kind: PointEventKind.CREDIT,
-          source: PointEventSource.REWARD_REDEMPTION,
-          description: `Cancelamento de recompensa: ${redemption.reward.name}`,
-        },
-      });
-
-      const cancelled = await tx.rewardRedemption.findUnique({
-        where: { id: redemptionId },
-        include: redemptionInclude,
-      });
-
-      if (!cancelled) {
-        throw new NotFoundException('Resgate de recompensa não encontrado.');
-      }
-
-      return cancelled;
+  transitionRedemption(id: string, status: RedemptionState) {
+    return this.client.rewardRedemption.updateMany({
+      where: { id, status: RedemptionStatus.PENDING },
+      data: { status },
     });
   }
-}
 
-function mapRedemptionStatus(status: AdminRedemptionStatusFilter) {
-  const statuses: Record<
-    Exclude<AdminRedemptionStatusFilter, AdminRedemptionStatusFilter.ALL>,
-    RedemptionStatus
-  > = {
-    [AdminRedemptionStatusFilter.PENDING]: RedemptionStatus.PENDING,
-    [AdminRedemptionStatusFilter.DELIVERED]: RedemptionStatus.DELIVERED,
-    [AdminRedemptionStatusFilter.CANCELLED]: RedemptionStatus.CANCELLED,
-  };
-  return statuses[
-    status as Exclude<
-      AdminRedemptionStatusFilter,
-      AdminRedemptionStatusFilter.ALL
-    >
-  ];
-}
-
-function normalizeRewardInput(input: CreateRewardDto | UpdateRewardDto) {
-  return {
-    name: input.name?.trim(),
-    description: normalizeNullableText(input.description),
-    costInPoints: input.costInPoints,
-    stock: input.stock,
-    imageUrl: normalizeNullableText(input.imageUrl),
-    isActive: input.isActive,
-  };
-}
-
-function normalizeNullableText(value: string | null | undefined) {
-  if (value == null) {
-    return value;
-  }
-
-  return value.trim();
-}
-
-async function transitionPendingRedemption(
-  rewardRedemption: {
-    updateMany: (args: {
-      where: { id: string; status: RedemptionStatus };
-      data: { status: RedemptionStatus };
-    }) => Promise<{ count: number }>;
-  },
-  redemptionId: string,
-  status: RedemptionStatus,
-) {
-  const result = await rewardRedemption.updateMany({
-    where: { id: redemptionId, status: RedemptionStatus.PENDING },
-    data: { status },
-  });
-
-  if (result.count === 0) {
-    throw new BadRequestException(
-      'Apenas resgates pendentes podem mudar de status.',
-    );
-  }
-}
-
-function normalizeOptionalText(value: string | null | undefined) {
-  if (value == null) {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function assertPendingRedemption<T extends { status: RedemptionStatus } | null>(
-  redemption: T,
-): asserts redemption is Exclude<T, null> {
-  if (!redemption) {
-    throw new NotFoundException('Resgate de recompensa não encontrado.');
-  }
-
-  if (redemption.status !== RedemptionStatus.PENDING) {
-    throw new BadRequestException(
-      'Apenas resgates pendentes podem mudar de status.',
-    );
+  private transactional(tx: Prisma.TransactionClient) {
+    const repository = Object.create(
+      RewardsRepository.prototype,
+    ) as RewardsRepository;
+    repository.prisma = this.prisma;
+    repository.client = tx;
+    return repository;
   }
 }

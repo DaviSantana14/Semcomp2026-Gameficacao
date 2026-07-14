@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AdminDashboardRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getOverview() {
+  async findOverviewData() {
     const [
       total,
       active,
@@ -72,28 +72,20 @@ export class AdminDashboardRepository {
       }),
     ]);
     return {
-      participants: { total, active, inactive },
-      activity: {
-        redemptions: points._count._all,
-        pointsIssued: points._sum.points ?? 0,
-      },
-      codes: {
-        uniqueTotal,
-        uniqueAvailable: available,
-        uniqueUsed: used,
-        reusableTotal,
-        reusableActive,
-      },
-      shop: {
-        rewardsTotal,
-        rewardsActive,
-        outOfStock,
-        pendingRedemptions,
-      },
-      recentPendingRedemptions: recentPendingRedemptions.map((redemption) => ({
-        ...redemption,
-        createdAt: redemption.createdAt.toISOString(),
-      })),
+      total,
+      active,
+      inactive,
+      points,
+      uniqueTotal,
+      used,
+      available,
+      reusableTotal,
+      reusableActive,
+      rewardsTotal,
+      rewardsActive,
+      outOfStock,
+      pendingRedemptions,
+      recentPendingRedemptions,
     };
   }
 }

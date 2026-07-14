@@ -1,29 +1,174 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { paginate } from '../common/dto/pagination-response.dto';
 import { AdminParticipantsRepository } from './admin-participants.repository';
+import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
+import {
+  AdminParticipantRedemptionsQueryDto,
+  AdminParticipantRedemptionStatusFilter,
+} from './dto/admin-participant-redemptions-query.dto';
+import {
+  AdminParticipantsQueryDto,
+  ParticipantStatusFilter,
+} from './dto/admin-participants-query.dto';
+import { UpdateParticipantStatusDto } from './dto/update-participant-status.dto';
 
 @Injectable()
 export class AdminParticipantsService {
   constructor(private readonly repository: AdminParticipantsRepository) {}
 
-  findAll(...args: Parameters<AdminParticipantsRepository['findAll']>) {
-    return this.repository.findAll(...args);
+  async findAll(query: AdminParticipantsQueryDto) {
+    const page = await this.repository.findParticipantPage({
+      page: query.page,
+      limit: query.limit,
+      search: query.search?.trim(),
+      isActive:
+        query.status === undefined
+          ? undefined
+          : query.status === ParticipantStatusFilter.ACTIVE,
+    });
+    return paginate(
+      page.rows.map(mapParticipant),
+      page.total,
+      query.page,
+      query.limit,
+    );
   }
-  updateStatus(
-    ...args: Parameters<AdminParticipantsRepository['updateStatus']>
+
+  async updateStatus(id: string, dto: UpdateParticipantStatusDto) {
+    const result = await this.repository.updateParticipantStatus(
+      id,
+      dto.isActive,
+    );
+    if (result.count === 0) {
+      throw new NotFoundException('Participante não encontrado.');
+    }
+    return this.findOne(id);
+  }
+
+  async findOne(id: string) {
+    const participant = await this.repository.findParticipantById(id);
+    if (!participant) {
+      throw new NotFoundException('Participante não encontrado.');
+    }
+    const counters = await this.repository.findParticipantCounters(id);
+    return {
+      ...mapParticipant(participant),
+      lastLoginAt: participant.lastLoginAt?.toISOString() ?? null,
+      counts: {
+        actionRedemptions: counters.actionRedemptions,
+        claimCodes: counters.claimCodes,
+        movements: counters.movements,
+        rewards: Object.fromEntries(
+          ['PENDING', 'DELIVERED', 'CANCELLED'].map((status) => [
+            status.toLowerCase(),
+            counters.rewards.find((row) => row.status === status)?._count
+              ._all ?? 0,
+          ]),
+        ),
+      },
+    };
+  }
+
+  async findPointEvents(id: string, query: AdminParticipantEventsQueryDto) {
+    await this.assertParticipant(id);
+    const page = await this.repository.findParticipantPointEventPage(id, {
+      page: query.page,
+      limit: query.limit,
+      source:
+        query.source && query.source !== 'all'
+          ? (query.source.toUpperCase() as
+              | 'ACTION_REDEEM'
+              | 'REWARD_REDEMPTION'
+              | 'ADMIN_GRANT'
+              | 'ADMIN_ADJUST')
+          : undefined,
+      kind:
+        query.kind && query.kind !== 'all'
+          ? (query.kind.toUpperCase() as 'CREDIT' | 'DEBIT')
+          : undefined,
+    });
+    return paginate(
+      page.rows.map((row) => ({
+        ...row,
+        xpDelta:
+          row.source === 'ACTION_REDEEM' && row.kind === 'CREDIT'
+            ? row.points
+            : 0,
+        origin:
+          row.source === 'REWARD_REDEMPTION'
+            ? 'REWARD'
+            : row.source !== 'ACTION_REDEEM'
+              ? 'ADMIN'
+              : row.redemptionMethod === 'CLAIM_CODE'
+                ? 'UNIQUE_CODE'
+                : row.redemptionMethod === 'REUSABLE_CODE'
+                  ? 'REUSABLE_CODE'
+                  : 'DIRECT_ACTION',
+        createdAt: row.createdAt.toISOString(),
+      })),
+      page.total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  async findRewardRedemptions(
+    id: string,
+    query: AdminParticipantRedemptionsQueryDto,
   ) {
-    return this.repository.updateStatus(...args);
+    await this.assertParticipant(id);
+    const status =
+      query.status &&
+      query.status !== AdminParticipantRedemptionStatusFilter.ALL
+        ? (
+            {
+              pending: 'PENDING',
+              delivered: 'DELIVERED',
+              cancelled: 'CANCELLED',
+            } as const
+          )[query.status]
+        : undefined;
+    const page = await this.repository.findParticipantRedemptionPage(id, {
+      page: query.page,
+      limit: query.limit,
+      status,
+    });
+    return paginate(
+      page.rows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+      page.total,
+      query.page,
+      query.limit,
+    );
   }
-  findOne(...args: Parameters<AdminParticipantsRepository['findOne']>) {
-    return this.repository.findOne(...args);
+
+  private async assertParticipant(id: string) {
+    if (!(await this.repository.participantExists(id))) {
+      throw new NotFoundException('Participante não encontrado.');
+    }
   }
-  findPointEvents(
-    ...args: Parameters<AdminParticipantsRepository['findPointEvents']>
-  ) {
-    return this.repository.findPointEvents(...args);
-  }
-  findRewardRedemptions(
-    ...args: Parameters<AdminParticipantsRepository['findRewardRedemptions']>
-  ) {
-    return this.repository.findRewardRedemptions(...args);
-  }
+}
+
+function mapParticipant<
+  T extends {
+    createdAt: Date;
+    updatedAt: Date;
+    _count: { pointEvents: number; rewardRedemptions: number };
+  },
+>(row: T) {
+  const { _count, ...participant } = row;
+  return {
+    ...participant,
+    actionRedemptionsCount: _count.pointEvents,
+    pendingRewardRedemptionsCount: _count.rewardRedemptions,
+    lastLoginAt:
+      'lastLoginAt' in row && row.lastLoginAt instanceof Date
+        ? row.lastLoginAt.toISOString()
+        : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }

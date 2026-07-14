@@ -1,17 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PointEventSource, Prisma, UserRole } from '@prisma/client';
-import { paginate } from '../common/dto/pagination-response.dto';
+import { Injectable } from '@nestjs/common';
+import {
+  PointEventSource,
+  Prisma,
+  RedemptionStatus,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
-import {
-  AdminParticipantRedemptionsQueryDto,
-  AdminParticipantRedemptionStatusFilter,
-} from './dto/admin-participant-redemptions-query.dto';
-import {
-  AdminParticipantsQueryDto,
-  ParticipantStatusFilter,
-} from './dto/admin-participants-query.dto';
-import { UpdateParticipantStatusDto } from './dto/update-participant-status.dto';
 
 const participantSelect = {
   id: true,
@@ -28,58 +22,77 @@ const participantSelect = {
   _count: {
     select: {
       pointEvents: { where: { source: PointEventSource.ACTION_REDEEM } },
-      rewardRedemptions: { where: { status: 'PENDING' } },
+      rewardRedemptions: { where: { status: RedemptionStatus.PENDING } },
     },
   },
 } as const;
 
-const participantDetailSelect = participantSelect;
+export interface ParticipantPageFilter {
+  page: number;
+  limit: number;
+  search?: string;
+  isActive?: boolean;
+}
+
+export interface ParticipantEventPageFilter {
+  page: number;
+  limit: number;
+  source?:
+    | 'ACTION_REDEEM'
+    | 'REWARD_REDEMPTION'
+    | 'ADMIN_GRANT'
+    | 'ADMIN_ADJUST';
+  kind?: 'CREDIT' | 'DEBIT';
+}
+
+export interface ParticipantRedemptionPageFilter {
+  page: number;
+  limit: number;
+  status?: 'PENDING' | 'DELIVERED' | 'CANCELLED';
+}
 
 @Injectable()
 export class AdminParticipantsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: AdminParticipantsQueryDto) {
-    const search = query.search?.trim();
+  async findParticipantPage(filter: ParticipantPageFilter) {
     const where: Prisma.UserWhereInput = { role: UserRole.PARTICIPANT };
-    if (query.status)
-      where.isActive = query.status === ParticipantStatusFilter.ACTIVE;
-    if (search)
+    if (filter.isActive !== undefined) where.isActive = filter.isActive;
+    if (filter.search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { cpf: { contains: search } },
+        { name: { contains: filter.search, mode: 'insensitive' } },
+        { email: { contains: filter.search, mode: 'insensitive' } },
+        { cpf: { contains: filter.search } },
       ];
+    }
     const [total, rows] = await Promise.all([
       this.prisma.user.count({ where }),
       this.prisma.user.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: participantSelect,
       }),
     ]);
-    return paginate(rows.map(mapParticipant), total, query.page, query.limit);
+    return { rows, total };
   }
 
-  async updateStatus(id: string, dto: UpdateParticipantStatusDto) {
-    const result = await this.prisma.user.updateMany({
+  updateParticipantStatus(id: string, isActive: boolean) {
+    return this.prisma.user.updateMany({
       where: { id, role: UserRole.PARTICIPANT },
-      data: { isActive: dto.isActive },
+      data: { isActive },
     });
-    if (result.count === 0)
-      throw new NotFoundException('Participante não encontrado.');
-    return this.findOne(id);
   }
 
-  async findOne(id: string) {
-    const participant = await this.prisma.user.findFirst({
+  findParticipantById(id: string) {
+    return this.prisma.user.findFirst({
       where: { id, role: UserRole.PARTICIPANT },
-      select: participantDetailSelect,
+      select: participantSelect,
     });
-    if (!participant)
-      throw new NotFoundException('Participante não encontrado.');
+  }
+
+  async findParticipantCounters(id: string) {
     const [actionRedemptions, claimCodes, movements, rewards] =
       await Promise.all([
         this.prisma.pointEvent.count({
@@ -93,42 +106,31 @@ export class AdminParticipantsRepository {
           _count: { _all: true },
         }),
       ]);
-    return {
-      ...mapParticipant(participant),
-      lastLoginAt: participant.lastLoginAt?.toISOString() ?? null,
-      counts: {
-        actionRedemptions,
-        claimCodes,
-        movements,
-        rewards: Object.fromEntries(
-          ['PENDING', 'DELIVERED', 'CANCELLED'].map((status) => [
-            status.toLowerCase(),
-            rewards.find((row) => row.status === status)?._count._all ?? 0,
-          ]),
-        ),
-      },
-    };
+    return { actionRedemptions, claimCodes, movements, rewards };
   }
 
-  async findPointEvents(id: string, query: AdminParticipantEventsQueryDto) {
-    await this.assertParticipant(id);
+  participantExists(id: string) {
+    return this.prisma.user.findFirst({
+      where: { id, role: UserRole.PARTICIPANT },
+      select: { id: true },
+    });
+  }
+
+  async findParticipantPointEventPage(
+    id: string,
+    filter: ParticipantEventPageFilter,
+  ) {
     const where = {
       userId: id,
-      ...(query.source &&
-        query.source !== 'all' && {
-          source: query.source.toUpperCase() as PointEventSource,
-        }),
-      ...(query.kind &&
-        query.kind !== 'all' && {
-          kind: query.kind.toUpperCase() as import('@prisma/client').PointEventKind,
-        }),
+      ...(filter.source && { source: filter.source }),
+      ...(filter.kind && { kind: filter.kind }),
     };
     const [total, rows] = await Promise.all([
       this.prisma.pointEvent.count({ where }),
       this.prisma.pointEvent.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -143,54 +145,23 @@ export class AdminParticipantsRepository {
         },
       }),
     ]);
-    return paginate(
-      rows.map((row) => ({
-        ...row,
-        xpDelta:
-          row.source === 'ACTION_REDEEM' && row.kind === 'CREDIT'
-            ? row.points
-            : 0,
-        origin:
-          row.source === 'REWARD_REDEMPTION'
-            ? 'REWARD'
-            : row.source !== 'ACTION_REDEEM'
-              ? 'ADMIN'
-              : row.redemptionMethod === 'CLAIM_CODE'
-                ? 'UNIQUE_CODE'
-                : row.redemptionMethod === 'REUSABLE_CODE'
-                  ? 'REUSABLE_CODE'
-                  : 'DIRECT_ACTION',
-        createdAt: row.createdAt.toISOString(),
-      })),
-      total,
-      query.page,
-      query.limit,
-    );
+    return { rows, total };
   }
 
-  async findRewardRedemptions(
+  async findParticipantRedemptionPage(
     id: string,
-    query: AdminParticipantRedemptionsQueryDto,
+    filter: ParticipantRedemptionPageFilter,
   ) {
-    await this.assertParticipant(id);
-    const status =
-      query.status &&
-      query.status !== AdminParticipantRedemptionStatusFilter.ALL
-        ? (
-            {
-              pending: 'PENDING',
-              delivered: 'DELIVERED',
-              cancelled: 'CANCELLED',
-            } as const
-          )[query.status]
-        : undefined;
-    const where = { userId: id, ...(status && { status }) };
+    const where = {
+      userId: id,
+      ...(filter.status && { status: filter.status }),
+    };
     const [total, rows] = await Promise.all([
       this.prisma.rewardRedemption.count({ where }),
       this.prisma.rewardRedemption.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -202,45 +173,6 @@ export class AdminParticipantsRepository {
         },
       }),
     ]);
-    return paginate(
-      rows.map((row) => ({
-        ...row,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      })),
-      total,
-      query.page,
-      query.limit,
-    );
+    return { rows, total };
   }
-
-  private async assertParticipant(id: string) {
-    const participant = await this.prisma.user.findFirst({
-      where: { id, role: UserRole.PARTICIPANT },
-      select: { id: true },
-    });
-    if (!participant)
-      throw new NotFoundException('Participante não encontrado.');
-  }
-}
-
-function mapParticipant<
-  T extends {
-    createdAt: Date;
-    updatedAt: Date;
-    _count: { pointEvents: number; rewardRedemptions: number };
-  },
->(row: T) {
-  const { _count, ...participant } = row;
-  return {
-    ...participant,
-    actionRedemptionsCount: _count.pointEvents,
-    pendingRewardRedemptionsCount: _count.rewardRedemptions,
-    lastLoginAt:
-      'lastLoginAt' in row && row.lastLoginAt instanceof Date
-        ? row.lastLoginAt.toISOString()
-        : null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
 }

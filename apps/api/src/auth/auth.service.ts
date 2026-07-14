@@ -4,8 +4,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UsersService } from '../users/users.service';
@@ -46,10 +46,7 @@ export class AuthService {
 
       return toUserResponseDto(user);
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (error instanceof PersistenceUniqueConstraintError) {
         throw new ConflictException(
           'Já existe um usuário com este CPF ou email.',
         );

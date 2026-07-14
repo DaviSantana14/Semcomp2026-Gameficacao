@@ -1,33 +1,47 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { toUserResponseDto } from './dto/user-response.dto';
 import { UsersRepository } from './users.repository';
+
+export interface CreateUserInput {
+  name: string;
+  cpf: string;
+  email: string;
+}
 
 @Injectable()
 export class UsersService {
   constructor(private readonly repository: UsersRepository) {}
 
-  findAll() {
-    return this.repository.findAll();
+  async findAll() {
+    const users = await this.repository.findAll();
+    return users.map(toUserResponseDto);
   }
-  findById(...args: Parameters<UsersRepository['findById']>) {
-    return this.repository.findById(...args);
+
+  async findById(id: string) {
+    const user = await this.repository.findById(id);
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado.');
+    }
+    return toUserResponseDto(user);
   }
-  findActiveSummaryById(
-    ...args: Parameters<UsersRepository['findActiveSummaryById']>
-  ) {
-    return this.repository.findActiveSummaryById(...args);
+
+  findActiveSummaryById(id: string) {
+    return this.repository.findActiveSummaryById(id);
   }
-  findByCpfOrEmail(...args: Parameters<UsersRepository['findByCpfOrEmail']>) {
-    return this.repository.findByCpfOrEmail(...args);
+
+  findByCpfOrEmail(cpf: string, email: string) {
+    return this.repository.findByCpfOrEmail(cpf, email);
   }
-  create(...args: Parameters<UsersRepository['create']>) {
-    return this.repository.create(...args);
+
+  create(input: CreateUserInput) {
+    return this.repository.create(input);
   }
-  findActiveByCredentials(
-    ...args: Parameters<UsersRepository['findActiveByCredentials']>
-  ) {
-    return this.repository.findActiveByCredentials(...args);
+
+  findActiveByCredentials(cpf: string, email: string) {
+    return this.repository.findActiveByCredentials(cpf, email);
   }
-  updateLastLoginAt(...args: Parameters<UsersRepository['updateLastLoginAt']>) {
-    return this.repository.updateLastLoginAt(...args);
+
+  updateLastLoginAt(id: string) {
+    return this.repository.updateLastLoginAt(id);
   }
 }

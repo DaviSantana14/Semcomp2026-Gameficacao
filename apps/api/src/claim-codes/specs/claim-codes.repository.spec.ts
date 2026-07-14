@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import * as eventCode from '../../common/event-code';
 import { ClaimCodesRepository } from '../claim-codes.repository';
+import { ClaimCodesService } from '../claim-codes.service';
 
 function createRepository() {
   const claimCode = {
@@ -23,8 +24,9 @@ function createRepository() {
     ),
   };
 
+  const persistenceRepository = new ClaimCodesRepository(prisma as never);
   return {
-    repository: new ClaimCodesRepository(prisma as never),
+    repository: new ClaimCodesService(persistenceRepository),
     prisma,
   };
 }

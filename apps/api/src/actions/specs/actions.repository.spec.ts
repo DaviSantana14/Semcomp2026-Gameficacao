@@ -10,6 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { ActionsRepository } from '../actions.repository';
+import { ActionsService } from '../actions.service';
 
 const activeAction = {
   id: 'action-1',
@@ -92,8 +93,9 @@ function createRepository() {
     ),
   };
 
+  const persistenceRepository = new ActionsRepository(prisma as never);
   return {
-    repository: new ActionsRepository(prisma as never),
+    repository: new ActionsService(persistenceRepository),
     prisma,
     tx,
   };

@@ -1,40 +1,234 @@
-import { Injectable } from '@nestjs/common';
-import { RewardsRepository } from './rewards.repository';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { paginate } from '../common/dto/pagination-response.dto';
+import {
+  RedemptionPageFilter,
+  RedemptionState,
+  RewardsRepository,
+  RewardWriteInput,
+} from './rewards.repository';
+import {
+  AdminRedemptionsQueryDto,
+  AdminRedemptionStatusFilter,
+} from './dto/admin-redemptions-query.dto';
+import {
+  AdminRewardsQueryDto,
+  AdminRewardStatusFilter,
+} from './dto/admin-rewards-query.dto';
+import { CreateRewardDto } from './dto/create-reward.dto';
+import { UpdateRewardDto } from './dto/update-reward.dto';
 
 @Injectable()
 export class RewardsService {
   constructor(private readonly repository: RewardsRepository) {}
 
-  create(...args: Parameters<RewardsRepository['create']>) {
-    return this.repository.create(...args);
+  create(dto: CreateRewardDto) {
+    return this.repository.createReward({
+      name: dto.name.trim(),
+      description: normalizeOptionalText(dto.description),
+      costInPoints: dto.costInPoints,
+      stock: dto.stock,
+      imageUrl: normalizeOptionalText(dto.imageUrl),
+      isActive: dto.isActive,
+    });
   }
+
   findAll() {
-    return this.repository.findAll();
+    return this.repository.findActiveRewards();
   }
-  findAdminRewards(...args: Parameters<RewardsRepository['findAdminRewards']>) {
-    return this.repository.findAdminRewards(...args);
+
+  async findAdminRewards(query: AdminRewardsQueryDto) {
+    const state =
+      query.status === AdminRewardStatusFilter.ACTIVE
+        ? 'active'
+        : query.status === AdminRewardStatusFilter.INACTIVE
+          ? 'inactive'
+          : query.status === AdminRewardStatusFilter.OUT_OF_STOCK
+            ? 'out-of-stock'
+            : undefined;
+    const page = await this.repository.findAdminRewardPage({
+      page: query.page,
+      limit: query.limit,
+      search: query.search?.trim(),
+      state,
+    });
+    const counts = await this.repository.findRewardRedemptionCounts(
+      page.rows.map((reward) => reward.id),
+    );
+    const countMap = new Map(
+      counts.map(
+        (entry) =>
+          [`${entry.rewardId}:${entry.status}`, entry._count._all] as const,
+      ),
+    );
+    return paginate(
+      page.rows.map((reward) => ({
+        ...reward,
+        redemptionCounts: {
+          PENDING: countMap.get(`${reward.id}:PENDING`) ?? 0,
+          DELIVERED: countMap.get(`${reward.id}:DELIVERED`) ?? 0,
+          CANCELLED: countMap.get(`${reward.id}:CANCELLED`) ?? 0,
+        },
+      })),
+      page.total,
+      query.page,
+      query.limit,
+    );
   }
-  findRedemptions(...args: Parameters<RewardsRepository['findRedemptions']>) {
-    return this.repository.findRedemptions(...args);
+
+  async findRedemptions(query: AdminRedemptionsQueryDto) {
+    const filter: RedemptionPageFilter = {
+      page: query.page,
+      limit: query.limit,
+      search: query.search?.trim(),
+      rewardId: query.rewardId,
+      status: mapRedemptionStatus(query.status),
+    };
+    const page = await this.repository.findRedemptionPage(filter);
+    return paginate(page.rows, page.total, query.page, query.limit);
   }
-  findById(...args: Parameters<RewardsRepository['findById']>) {
-    return this.repository.findById(...args);
+
+  findById(id: string) {
+    return this.repository.findRewardById(id);
   }
-  update(...args: Parameters<RewardsRepository['update']>) {
-    return this.repository.update(...args);
+
+  async update(id: string, dto: UpdateRewardDto) {
+    if (!(await this.repository.findRewardById(id))) {
+      throw new NotFoundException('Recompensa não encontrada.');
+    }
+    return this.repository.updateReward(id, normalizeRewardInput(dto));
   }
-  redeem(...args: Parameters<RewardsRepository['redeem']>) {
-    return this.repository.redeem(...args);
+
+  redeem(rewardId: string, userId: string) {
+    return this.repository.withTransaction(async (repository) => {
+      const reward = await repository.findRewardById(rewardId);
+      if (!reward) throw new NotFoundException('Recompensa não encontrada.');
+      if (!reward.isActive) {
+        throw new BadRequestException('Esta recompensa está inativa.');
+      }
+      if (reward.stock <= 0) {
+        throw new BadRequestException('Esta recompensa está esgotada.');
+      }
+      if (
+        (await repository.debitUserPoints(userId, reward.costInPoints))
+          .count === 0
+      ) {
+        throw new BadRequestException(
+          'Você não tem points suficientes para resgatar esta recompensa.',
+        );
+      }
+      if ((await repository.decrementRewardStock(reward.id)).count === 0) {
+        throw new BadRequestException('Esta recompensa está indisponível.');
+      }
+      const redemption = await repository.createRedemption(
+        userId,
+        reward.id,
+        reward.costInPoints,
+      );
+      await repository.createRewardPointEvent({
+        userId,
+        points: -reward.costInPoints,
+        kind: 'DEBIT',
+        description: `Resgate de recompensa: ${reward.name}`,
+      });
+      return redemption;
+    });
   }
+
   findPendingRedemptions() {
     return this.repository.findPendingRedemptions();
   }
-  deliverRedemption(
-    ...args: Parameters<RewardsRepository['deliverRedemption']>
+
+  deliverRedemption(redemptionId: string) {
+    return this.repository.withTransaction(async (repository) => {
+      await this.assertPending(repository, redemptionId);
+      await this.transition(repository, redemptionId, 'DELIVERED');
+      const delivered = await repository.findRedemptionById(redemptionId);
+      if (!delivered) {
+        throw new NotFoundException('Resgate de recompensa não encontrado.');
+      }
+      return delivered;
+    });
+  }
+
+  cancelRedemption(redemptionId: string) {
+    return this.repository.withTransaction(async (repository) => {
+      const redemption = await this.assertPending(repository, redemptionId);
+      await this.transition(repository, redemptionId, 'CANCELLED');
+      await repository.creditUserPoints(
+        redemption.userId,
+        redemption.pointsSpent,
+      );
+      await repository.incrementRewardStock(redemption.rewardId);
+      await repository.createRewardPointEvent({
+        userId: redemption.userId,
+        points: redemption.pointsSpent,
+        kind: 'CREDIT',
+        description: `Cancelamento de recompensa: ${redemption.reward.name}`,
+      });
+      const cancelled = await repository.findRedemptionById(redemptionId);
+      if (!cancelled) {
+        throw new NotFoundException('Resgate de recompensa não encontrado.');
+      }
+      return cancelled;
+    });
+  }
+
+  private async assertPending(repository: RewardsRepository, id: string) {
+    const redemption = await repository.findRedemptionById(id);
+    if (!redemption) {
+      throw new NotFoundException('Resgate de recompensa não encontrado.');
+    }
+    if (redemption.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Apenas resgates pendentes podem mudar de status.',
+      );
+    }
+    return redemption;
+  }
+
+  private async transition(
+    repository: RewardsRepository,
+    id: string,
+    status: RedemptionState,
   ) {
-    return this.repository.deliverRedemption(...args);
+    if ((await repository.transitionRedemption(id, status)).count === 0) {
+      throw new BadRequestException(
+        'Apenas resgates pendentes podem mudar de status.',
+      );
+    }
   }
-  cancelRedemption(...args: Parameters<RewardsRepository['cancelRedemption']>) {
-    return this.repository.cancelRedemption(...args);
-  }
+}
+
+function mapRedemptionStatus(status: AdminRedemptionStatusFilter) {
+  if (status === AdminRedemptionStatusFilter.ALL) return undefined;
+  return {
+    [AdminRedemptionStatusFilter.PENDING]: 'PENDING' as const,
+    [AdminRedemptionStatusFilter.DELIVERED]: 'DELIVERED' as const,
+    [AdminRedemptionStatusFilter.CANCELLED]: 'CANCELLED' as const,
+  }[status];
+}
+
+function normalizeRewardInput(input: UpdateRewardDto): RewardWriteInput {
+  return {
+    name: input.name?.trim(),
+    description: normalizeNullableText(input.description),
+    costInPoints: input.costInPoints,
+    stock: input.stock,
+    imageUrl: normalizeNullableText(input.imageUrl),
+    isActive: input.isActive,
+  };
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  return value == null ? value : value.trim();
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  if (value == null) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
 }

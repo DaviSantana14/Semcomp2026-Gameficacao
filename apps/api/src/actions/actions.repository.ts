@@ -1,24 +1,12 @@
+import { Injectable } from '@nestjs/common';
 import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { PointEventKind, PointEventSource, Prisma } from '@prisma/client';
+  ActionType,
+  PointEventKind,
+  PointEventSource,
+  Prisma,
+} from '@prisma/client';
+import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateActionDto } from './dto/create-action.dto';
-import {
-  AdminActionsQueryDto,
-  ActionStatusFilter,
-} from './dto/admin-actions-query.dto';
-import {
-  ReusableCodeRedemptionsQueryDto,
-  ReusableCodesQueryDto,
-} from './dto/reusable-codes-query.dto';
-import { UpdateActionDto } from './dto/update-action.dto';
-import { ReusableCodeStatus } from './dto/reusable-code-history-response.dto';
-import { paginate } from '../common/dto/pagination-response.dto';
-import { isClaimCode, normalizeEventCode } from '../common/event-code';
 
 const actionSummarySelect = {
   id: true,
@@ -39,269 +27,212 @@ const userProgressSelect = {
   level: true,
 } as const;
 
+type ActionsDatabase = Pick<
+  Prisma.TransactionClient,
+  'action' | 'claimCode' | 'pointEvent' | 'user'
+>;
+
+export type ActionSummary = Prisma.ActionGetPayload<{
+  select: typeof actionSummarySelect;
+}>;
+
+export interface ActionWriteInput {
+  name: string;
+  description?: string | null;
+  type: ActionType;
+  code?: string | null;
+  points: number;
+  isActive?: boolean;
+  isCodeActive: boolean;
+}
+
+export type ActionUpdateInput = Partial<ActionWriteInput>;
+
+export interface ActionPageFilter {
+  page: number;
+  limit: number;
+  search?: string;
+  isActive?: boolean;
+  type?: ActionType;
+}
+
+export interface ReusableCodePageFilter {
+  page: number;
+  limit: number;
+  search?: string;
+  actionId?: string;
+  state?: 'active' | 'disabled' | 'blocked';
+}
+
 @Injectable()
 export class ActionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  private client: ActionsDatabase;
 
-  async create(createActionDto: CreateActionDto) {
-    const normalizedCode = normalizeEventCode(createActionDto.code);
+  constructor(private prisma: PrismaService) {
+    this.client = prisma;
+  }
 
-    if (isClaimCode(normalizedCode)) {
-      throw new BadRequestException(
-        'Este formato é reservado para códigos de uso único.',
-      );
-    }
+  withTransaction<T>(
+    callback: (repository: ActionsRepository) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+  }
 
+  async createAction(input: ActionWriteInput) {
     try {
-      return await this.prisma.action.create({
-        data: {
-          name: createActionDto.name,
-          description: createActionDto.description,
-          type: createActionDto.type,
-          code: normalizedCode,
-          points: createActionDto.points,
-          isActive: createActionDto.isActive,
-          isCodeActive: Boolean(normalizedCode),
-        },
+      return await this.client.action.create({
+        data: input,
         select: actionSummarySelect,
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException(
-          'Já existe uma atividade pontuável com este código.',
-        );
-      }
-
-      throw error;
+      this.rethrowUniqueConstraint(error);
     }
   }
 
-  findAll() {
-    return this.prisma.action.findMany({
+  findActions() {
+    return this.client.action.findMany({
       select: actionSummarySelect,
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  findById(id: string) {
-    return this.prisma.action.findUnique({
+  findActionById(id: string) {
+    return this.client.action.findUnique({
       where: { id },
       select: actionSummarySelect,
     });
   }
 
-  async update(id: string, dto: UpdateActionDto) {
-    const current = await this.prisma.action.findUnique({
+  findActionCodeState(id: string) {
+    return this.client.action.findUnique({
       where: { id },
       select: { id: true, code: true, isCodeActive: true },
     });
-    if (!current)
-      throw new NotFoundException('Atividade pontuável não encontrada.');
+  }
 
-    const data: Prisma.ActionUpdateInput = {};
-    for (const field of [
-      'name',
-      'description',
-      'type',
-      'points',
-      'isActive',
-    ] as const) {
-      if (dto[field] !== undefined) data[field] = dto[field] as never;
-    }
-    if (dto.code !== undefined) {
-      const code =
-        dto.code === null ? null : (normalizeEventCode(dto.code) ?? null);
-      if (code && isClaimCode(code)) {
-        throw new BadRequestException(
-          'Este formato é reservado para códigos de uso único.',
-        );
-      }
-      data.code = code;
-      data.isCodeActive = code
-        ? (dto.isCodeActive ?? (current.code ? current.isCodeActive : true))
-        : false;
-    } else if (dto.isCodeActive !== undefined) {
-      data.isCodeActive = current.code ? dto.isCodeActive : false;
-    }
-
+  async updateAction(id: string, input: ActionUpdateInput) {
     try {
-      return await this.prisma.action.update({
+      return await this.client.action.update({
         where: { id },
-        data,
+        data: input,
         select: actionSummarySelect,
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException(
-          'Já existe uma atividade pontuável com este código.',
-        );
-      }
-      throw error;
+      this.rethrowUniqueConstraint(error);
     }
   }
 
-  async findAdminActions(query: AdminActionsQueryDto) {
-    const search = query.search?.trim();
+  async findAdminActionPage(filter: ActionPageFilter) {
     const where: Prisma.ActionWhereInput = {};
-    if (query.status)
-      where.isActive = query.status === ActionStatusFilter.ACTIVE;
-    if (query.type) where.type = query.type;
-    if (search)
+    if (filter.isActive !== undefined) where.isActive = filter.isActive;
+    if (filter.type) where.type = filter.type;
+    if (filter.search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
+        { name: { contains: filter.search, mode: 'insensitive' } },
+        { description: { contains: filter.search, mode: 'insensitive' } },
+        { code: { contains: filter.search, mode: 'insensitive' } },
       ];
+    }
     const [total, rows] = await Promise.all([
-      this.prisma.action.count({ where }),
-      this.prisma.action.findMany({
+      this.client.action.count({ where }),
+      this.client.action.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: actionSummarySelect,
       }),
     ]);
-    const ids = rows.map((row) => row.id);
-    const [claimCounts, redemptionCounts] = ids.length
-      ? await Promise.all([
-          this.prisma.claimCode.groupBy({
-            by: ['actionId', 'isUsed', 'isActive'],
-            where: { actionId: { in: ids } },
-            _count: { _all: true },
-          }),
-          this.prisma.pointEvent.groupBy({
-            by: ['actionId'],
-            where: { actionId: { in: ids }, source: 'ACTION_REDEEM' },
-            _count: { _all: true },
-          }),
-        ])
-      : [[], []];
-    const redemptionMap = new Map(
-      redemptionCounts.map((row) => [row.actionId, row._count._all]),
-    );
-    return paginate(
-      rows.map((row) => ({
-        ...row,
-        claimCodes: {
-          total: claimCounts
-            .filter((count) => count.actionId === row.id)
-            .reduce((sum, count) => sum + count._count._all, 0),
-          used: claimCounts
-            .filter((count) => count.actionId === row.id && count.isUsed)
-            .reduce((sum, count) => sum + count._count._all, 0),
-          available: row.isActive
-            ? claimCounts
-                .filter(
-                  (count) =>
-                    count.actionId === row.id &&
-                    !count.isUsed &&
-                    count.isActive,
-                )
-                .reduce((sum, count) => sum + count._count._all, 0)
-            : 0,
-        },
-        redemptionsCount: redemptionMap.get(row.id) ?? 0,
-      })),
-      total,
-      query.page,
-      query.limit,
-    );
+    return { rows, total };
   }
 
-  async findReusableCodes(query: ReusableCodesQueryDto) {
-    const search = query.search?.trim();
-    const where: Prisma.ActionWhereInput = {
-      code: { not: null },
-    };
-    if (query.actionId) where.id = query.actionId;
-    if (query.status === 'active')
+  async findActionCounters(actionIds: string[]) {
+    if (!actionIds.length) return { claimCounts: [], redemptionCounts: [] };
+    const [claimCounts, redemptionCounts] = await Promise.all([
+      this.client.claimCode.groupBy({
+        by: ['actionId', 'isUsed', 'isActive'],
+        where: { actionId: { in: actionIds } },
+        _count: { _all: true },
+      }),
+      this.client.pointEvent.groupBy({
+        by: ['actionId'],
+        where: { actionId: { in: actionIds }, source: 'ACTION_REDEEM' },
+        _count: { _all: true },
+      }),
+    ]);
+    return { claimCounts, redemptionCounts };
+  }
+
+  async findReusableCodePage(filter: ReusableCodePageFilter) {
+    const where: Prisma.ActionWhereInput = { code: { not: null } };
+    if (filter.actionId) where.id = filter.actionId;
+    if (filter.state === 'active') {
       Object.assign(where, { isActive: true, isCodeActive: true });
-    if (query.status === 'disabled')
-      Object.assign(where, { isCodeActive: false });
-    if (query.status === 'blocked')
+    }
+    if (filter.state === 'disabled') where.isCodeActive = false;
+    if (filter.state === 'blocked') {
       Object.assign(where, { isActive: false, isCodeActive: true });
-    if (search)
+    }
+    if (filter.search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
+        { name: { contains: filter.search, mode: 'insensitive' } },
+        { code: { contains: filter.search, mode: 'insensitive' } },
       ];
+    }
     const [total, rows] = await Promise.all([
-      this.prisma.action.count({ where }),
-      this.prisma.action.findMany({
+      this.client.action.count({ where }),
+      this.client.action.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: actionSummarySelect,
       }),
     ]);
-    const ids = rows.map((row) => row.id);
-    const uses = ids.length
-      ? await this.prisma.pointEvent.groupBy({
-          by: ['actionId'],
-          where: {
-            actionId: { in: ids },
-            source: 'ACTION_REDEEM',
-            redemptionMethod: 'REUSABLE_CODE',
-          },
-          _count: { _all: true },
-          _max: { createdAt: true },
-        })
-      : [];
-    const useMap = new Map(uses.map((row) => [row.actionId, row]));
-    return paginate(
-      rows.map((row) => {
-        const use = useMap.get(row.id);
-        return {
-          id: row.id,
-          name: row.name,
-          type: row.type,
-          code: row.code!,
-          points: row.points,
-          status: !row.isCodeActive
-            ? ReusableCodeStatus.DISABLED
-            : row.isActive
-              ? ReusableCodeStatus.ACTIVE
-              : ReusableCodeStatus.BLOCKED_BY_ACTION,
-          isCodeActive: row.isCodeActive,
-          totalUses: use?._count._all ?? 0,
-          lastUsedAt: use?._max.createdAt?.toISOString() ?? null,
-        };
-      }),
-      total,
-      query.page,
-      query.limit,
-    );
+    return { rows, total };
   }
 
-  async findReusableCodeRedemptions(
-    actionId: string,
-    query: ReusableCodeRedemptionsQueryDto,
-  ) {
-    const action = await this.prisma.action.findUnique({
-      where: { id: actionId },
-      select: { id: true },
+  async findReusableCodeUses(actionIds: string[]): Promise<
+    Array<{
+      actionId: string | null;
+      _count: { _all: number };
+      _max: { createdAt: Date | null };
+    }>
+  > {
+    if (!actionIds.length) return Promise.resolve([]);
+    const uses: unknown = await this.client.pointEvent.groupBy({
+      by: ['actionId'],
+      where: {
+        actionId: { in: actionIds },
+        source: 'ACTION_REDEEM',
+        redemptionMethod: 'REUSABLE_CODE',
+      },
+      _count: { _all: true },
+      _max: { createdAt: true },
     });
-    if (!action)
-      throw new NotFoundException('Atividade pontuável não encontrada.');
+    return uses as Array<{
+      actionId: string | null;
+      _count: { _all: number };
+      _max: { createdAt: Date | null };
+    }>;
+  }
+
+  async findReusableCodeRedemptionPage(
+    actionId: string,
+    page: number,
+    limit: number,
+  ) {
     const where = {
       actionId,
       source: 'ACTION_REDEEM' as const,
       redemptionMethod: 'REUSABLE_CODE' as const,
     };
     const [total, rows] = await Promise.all([
-      this.prisma.pointEvent.count({ where }),
-      this.prisma.pointEvent.findMany({
+      this.client.pointEvent.count({ where }),
+      this.client.pointEvent.findMany({
         where,
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip: (page - 1) * limit,
+        take: limit,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -311,188 +242,83 @@ export class ActionsRepository {
         },
       }),
     ]);
-    return paginate(
-      rows.map((row) => ({
-        id: row.id,
-        points: row.points,
-        createdAt: row.createdAt.toISOString(),
-        participant: row.user,
-      })),
-      total,
-      query.page,
-      query.limit,
-    );
+    return { rows, total };
   }
 
-  async redeemByCode(code: string, userId: string) {
-    const normalizedCode = normalizeEventCode(code);
-
-    if (!normalizedCode) {
-      throw new NotFoundException('Atividade pontuável não encontrada.');
-    }
-
-    if (isClaimCode(normalizedCode)) {
-      return this.redeemClaimCode(normalizedCode, userId);
-    }
-
-    const action = await this.prisma.action.findUnique({
-      where: { code: normalizedCode },
+  findActionIdByCode(code: string) {
+    return this.client.action.findUnique({
+      where: { code },
       select: { id: true },
     });
-
-    if (!action) {
-      throw new NotFoundException('Atividade pontuável não encontrada.');
-    }
-
-    return this.redeemWithMethod(action.id, userId, 'REUSABLE_CODE');
   }
 
-  async redeem(actionId: string, userId: string) {
-    return this.redeemWithMethod(actionId, userId, 'DIRECT');
-  }
-
-  private async redeemWithMethod(
-    actionId: string,
-    userId: string,
-    redemptionMethod: 'DIRECT' | 'REUSABLE_CODE',
-  ) {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        const action = await tx.action.findUnique({
-          where: { id: actionId },
-          select: actionSummarySelect,
-        });
-
-        if (!action) {
-          throw new NotFoundException('Atividade pontuável não encontrada.');
-        }
-
-        if (redemptionMethod === 'REUSABLE_CODE' && !action.isCodeActive) {
-          throw new BadRequestException('Este código está inativo.');
-        }
-        return this.grantAction(tx, action, userId, { redemptionMethod });
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Você já resgatou esta atividade.');
-      }
-
-      throw error;
-    }
-  }
-
-  private async redeemClaimCode(code: string, userId: string) {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        const claimCode = await tx.claimCode.findUnique({
-          where: { code },
-          include: { action: { select: actionSummarySelect } },
-        });
-
-        if (!claimCode) {
-          throw new NotFoundException('Atividade pontuável não encontrada.');
-        }
-
-        if (claimCode.isUsed) {
-          throw new ConflictException('Este código já foi utilizado.');
-        }
-
-        if (!claimCode.isActive) {
-          throw new BadRequestException('Este código está inativo.');
-        }
-
-        if (!claimCode.action.isActive) {
-          throw new BadRequestException(
-            'Esta atividade está inativa e não pode ser resgatada.',
-          );
-        }
-
-        const usedAt = new Date();
-        const consumed = await tx.claimCode.updateMany({
-          where: { id: claimCode.id, isUsed: false, isActive: true },
-          data: { isUsed: true, isActive: false, usedById: userId, usedAt },
-        });
-
-        if (consumed.count !== 1) {
-          const current = await tx.claimCode.findUnique({
-            where: { id: claimCode.id },
-            select: { isUsed: true, isActive: true },
-          });
-          if (current?.isUsed) {
-            throw new ConflictException('Este código já foi utilizado.');
-          }
-          if (current && !current.isActive) {
-            throw new BadRequestException('Este código está inativo.');
-          }
-          throw new ConflictException('Não foi possível consumir este código.');
-        }
-
-        return this.grantAction(tx, claimCode.action, userId, {
-          redemptionMethod: 'CLAIM_CODE',
-          claimCodeId: claimCode.id,
-        });
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Você já resgatou esta atividade.');
-      }
-
-      throw error;
-    }
-  }
-
-  private async grantAction(
-    tx: Prisma.TransactionClient,
-    action: Prisma.ActionGetPayload<{ select: typeof actionSummarySelect }>,
-    userId: string,
-    redemption:
-      | { redemptionMethod: 'DIRECT' | 'REUSABLE_CODE'; claimCodeId?: never }
-      | { redemptionMethod: 'CLAIM_CODE'; claimCodeId: string },
-  ) {
-    if (!action.isActive) {
-      throw new BadRequestException(
-        'Esta atividade está inativa e não pode ser resgatada.',
-      );
-    }
-
-    const redeemedAt = new Date();
-
-    await tx.pointEvent.create({
-      data: {
-        userId,
-        actionId: action.id,
-        points: action.points,
-        kind: PointEventKind.CREDIT,
-        source: PointEventSource.ACTION_REDEEM,
-        redemptionMethod: redemption.redemptionMethod,
-        claimCodeId: redemption.claimCodeId,
-        description: `Resgate da atividade: ${action.name}`,
-        createdAt: redeemedAt,
-      },
+  findClaimCodeForRedemption(code: string) {
+    return this.client.claimCode.findUnique({
+      where: { code },
+      include: { action: { select: actionSummarySelect } },
     });
+  }
 
-    const updatedUser = await tx.user.update({
+  consumeClaimCode(id: string, userId: string, usedAt: Date) {
+    return this.client.claimCode.updateMany({
+      where: { id, isUsed: false, isActive: true },
+      data: { isUsed: true, isActive: false, usedById: userId, usedAt },
+    });
+  }
+
+  findClaimCodeState(id: string) {
+    return this.client.claimCode.findUnique({
+      where: { id },
+      select: { isUsed: true, isActive: true },
+    });
+  }
+
+  async createActionPointEvent(input: {
+    userId: string;
+    actionId: string;
+    points: number;
+    redemptionMethod: 'DIRECT' | 'REUSABLE_CODE' | 'CLAIM_CODE';
+    claimCodeId?: string;
+    description: string;
+    createdAt: Date;
+  }) {
+    try {
+      return await this.client.pointEvent.create({
+        data: {
+          ...input,
+          kind: PointEventKind.CREDIT,
+          source: PointEventSource.ACTION_REDEEM,
+        },
+      });
+    } catch (error) {
+      this.rethrowUniqueConstraint(error);
+    }
+  }
+
+  incrementUserProgress(userId: string, points: number) {
+    return this.client.user.update({
       where: { id: userId },
-      data: {
-        points: { increment: action.points },
-        xp: { increment: action.points },
-      },
+      data: { points: { increment: points }, xp: { increment: points } },
       select: userProgressSelect,
     });
+  }
 
-    return {
-      action,
-      awardedPoints: action.points,
-      currentPoints: updatedUser.points,
-      currentXp: updatedUser.xp,
-      currentLevel: updatedUser.level,
-      redeemedAt,
-    };
+  private transactional(tx: Prisma.TransactionClient) {
+    const repository = Object.create(
+      ActionsRepository.prototype,
+    ) as ActionsRepository;
+    repository.prisma = this.prisma;
+    repository.client = tx;
+    return repository;
+  }
+
+  private rethrowUniqueConstraint(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new PersistenceUniqueConstraintError({ cause: error });
+    }
+    throw error;
   }
 }

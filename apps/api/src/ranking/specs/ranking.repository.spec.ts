@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { PointEventKind, PointEventSource, UserRole } from '@prisma/client';
 import { RankingRepository } from '../ranking.repository';
+import { RankingService } from '../ranking.service';
 
 const baseDate = new Date('2026-05-17T12:00:00.000Z');
 
@@ -30,8 +31,9 @@ function createRepository() {
     },
   };
 
+  const persistenceRepository = new RankingRepository(prisma as never);
   return {
-    repository: new RankingRepository(prisma as never),
+    repository: new RankingService(persistenceRepository),
     prisma,
   };
 }

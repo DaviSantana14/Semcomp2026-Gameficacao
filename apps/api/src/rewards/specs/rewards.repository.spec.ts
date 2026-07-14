@@ -5,6 +5,7 @@ import {
   RedemptionStatus,
 } from '@prisma/client';
 import { RewardsRepository } from '../rewards.repository';
+import { RewardsService } from '../rewards.service';
 
 const activeReward = {
   id: 'reward-1',
@@ -73,8 +74,9 @@ function createRepository() {
     ),
   };
 
+  const persistenceRepository = new RewardsRepository(prisma as never);
   return {
-    repository: new RewardsRepository(prisma as never),
+    repository: new RewardsService(persistenceRepository),
     prisma,
     tx,
   };
