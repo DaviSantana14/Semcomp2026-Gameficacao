@@ -4,7 +4,7 @@ import {
   AuditOperation,
 } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
-import { AuditService } from './audit.service';
+import { AuditService, RecordAuditEventInput } from './audit.service';
 
 describe(AuditService.name, () => {
   const create = jest.fn();
@@ -36,9 +36,7 @@ describe(AuditService.name, () => {
         points: 10,
         isActive: true,
         isCodeActive: false,
-        code: 'SEGREDO',
-        passwordHash: 'proibido',
-      } as never,
+      },
       after: {
         id: 'action-1',
         name: 'Palestra atualizada',
@@ -78,7 +76,9 @@ describe(AuditService.name, () => {
       operation: AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED,
       entityType: AuditEntityType.RECONCILIATION,
       entityId: 'reconciliation-1',
+      participantId: 'participant-1',
       reason: 'Correção automática reconciliada',
+      before: { participantId: 'participant-1', points: 9, xp: 18 },
       after: { participantId: 'participant-1', points: 10, xp: 20 },
     });
 
@@ -101,6 +101,7 @@ describe(AuditService.name, () => {
       entityType: AuditEntityType.CLAIM_CODE_BATCH,
       entityId: 'batch-1',
       reason: 'Geração de lote para atividade',
+      after: { quantity: 2, type: 'SINGLE_USE', actionId: 'action-1' },
       metadata: {
         actionId: 'action-1',
         batchSize: 2,
@@ -113,13 +114,45 @@ describe(AuditService.name, () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         before: undefined,
-        after: undefined,
+        after: {
+          quantity: 2,
+          type: 'SINGLE_USE',
+          actionId: 'action-1',
+        },
         metadata: {
           actionId: 'action-1',
           batchSize: 2,
           claimCodeIds: ['code-1', 'code-2'],
         },
       }),
+    );
+  });
+
+  it('accepts an explicit null previous snapshot for a creation', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.ACTION_CREATED,
+      entityType: AuditEntityType.ACTION,
+      entityId: 'action-1',
+      reason: 'Criação administrativa necessária',
+      before: null,
+      after: {
+        id: 'action-1',
+        name: 'Palestra',
+        description: null,
+        type: 'LECTURE',
+        points: 10,
+        isActive: true,
+        isCodeActive: false,
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ before: undefined }),
     );
   });
 
@@ -137,6 +170,12 @@ describe(AuditService.name, () => {
       before: {
         id: 'code-1',
         isActive: true,
+        isUsed: false,
+        code: 'ABCDEF123456',
+      },
+      after: {
+        id: 'code-1',
+        isActive: false,
         isUsed: false,
         code: 'ABCDEF123456',
       },
@@ -239,10 +278,217 @@ describe(AuditService.name, () => {
         operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
         entityType: AuditEntityType.PARTICIPANT,
         entityId: 'participant-1',
+        participantId: 'participant-1',
         reason: 'Alteração administrativa necessária',
+        before: { isActive: true },
         after: { isActive: false },
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a participant operation without participantId', async () => {
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
+        entityType: AuditEntityType.PARTICIPANT,
+        entityId: 'participant-1',
+        reason: 'Alteração administrativa necessária',
+        before: { isActive: true },
+        after: { isActive: false },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a redemption operation without participantId', async () => {
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.REWARD_REDEMPTION_DELIVERED,
+        entityType: AuditEntityType.REWARD_REDEMPTION,
+        entityId: 'redemption-1',
+        reason: 'Entrega confirmada pelo administrador',
+        before: { id: 'redemption-1', status: 'PENDING' },
+        after: { id: 'redemption-1', status: 'DELIVERED' },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a delivered redemption snapshot without delivery facts', async () => {
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        participantId: 'participant-1',
+        operation: AuditOperation.REWARD_REDEMPTION_DELIVERED,
+        entityType: AuditEntityType.REWARD_REDEMPTION,
+        entityId: 'redemption-1',
+        reason: 'Entrega confirmada pelo administrador',
+        before: {
+          id: 'redemption-1',
+          status: 'PENDING',
+          deliveredAt: null,
+          deliveredByAdminId: null,
+        },
+        after: { id: 'redemption-1', status: 'DELIVERED' },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an operation and entity type mismatch', async () => {
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.ACTION_UPDATED,
+        entityType: AuditEntityType.REWARD,
+        entityId: 'action-1',
+        reason: 'Atualização administrativa necessária',
+        before: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 10,
+          isActive: true,
+          isCodeActive: false,
+        },
+        after: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 20,
+          isActive: true,
+          isCodeActive: false,
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a full entity at an any boundary instead of silently transforming it', async () => {
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.ACTION_UPDATED,
+        entityType: AuditEntityType.ACTION,
+        entityId: 'action-1',
+        reason: 'Atualização administrativa necessária',
+        before: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 10,
+          isActive: true,
+          isCodeActive: false,
+          createdAt: new Date(),
+          passwordHash: 'proibido',
+        },
+        after: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 20,
+          isActive: true,
+          isCodeActive: false,
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('exposes operation-discriminated compile-time contracts', () => {
+    const verifyCompileTimeContracts = () => {
+      const accept = (input: RecordAuditEventInput) => input;
+      // @ts-expect-error participant operations require participantId
+      accept({
+        actor: { actorType: AuditActorType.SYSTEM, requestId: 'request-1' },
+        operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
+        entityType: AuditEntityType.PARTICIPANT,
+        entityId: 'participant-1',
+        reason: 'Alteração administrativa necessária',
+        before: { isActive: true },
+        after: { isActive: false },
+      });
+      // @ts-expect-error operation and entityType must be compatible
+      accept({
+        actor: { actorType: AuditActorType.SYSTEM, requestId: 'request-1' },
+        operation: AuditOperation.ACTION_UPDATED,
+        entityType: AuditEntityType.REWARD,
+        entityId: 'action-1',
+        reason: 'Atualização administrativa necessária',
+        before: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 10,
+          isActive: true,
+          isCodeActive: false,
+        },
+        after: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 20,
+          isActive: true,
+          isCodeActive: false,
+        },
+      });
+      accept({
+        actor: { actorType: AuditActorType.SYSTEM, requestId: 'request-1' },
+        operation: AuditOperation.ACTION_UPDATED,
+        entityType: AuditEntityType.ACTION,
+        entityId: 'action-1',
+        reason: 'Atualização administrativa necessária',
+        before: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 10,
+          isActive: true,
+          isCodeActive: false,
+          // @ts-expect-error full entity fields require explicit transformation
+          createdAt: new Date(),
+        },
+        after: {
+          id: 'action-1',
+          name: 'Palestra',
+          description: null,
+          type: 'LECTURE',
+          points: 20,
+          isActive: true,
+          isCodeActive: false,
+        },
+      });
+    };
+    expect(verifyCompileTimeContracts).toBeDefined();
   });
 });

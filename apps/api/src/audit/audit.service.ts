@@ -69,6 +69,34 @@ export interface RedemptionAuditSnapshot {
   cancelledByAdminId?: string | null;
   stock?: number;
   points?: number;
+  pointEventId?: string;
+}
+
+export interface RedemptionDeliveryBeforeSnapshot {
+  id: string;
+  status: string;
+  deliveredAt: Date | string | null;
+  deliveredByAdminId: string | null;
+}
+
+export interface RedemptionDeliveryAfterSnapshot {
+  id: string;
+  status: string;
+  deliveredAt: Date | string;
+  deliveredByAdminId: string;
+}
+
+export interface RedemptionCancellationBeforeSnapshot {
+  id: string;
+  status: string;
+  stock: number;
+  points: number;
+}
+
+export interface RedemptionCancellationAfterSnapshot extends RedemptionCancellationBeforeSnapshot {
+  cancelledAt: Date | string;
+  cancelledByAdminId: string;
+  pointEventId: string;
 }
 
 export interface BalanceAuditSnapshot {
@@ -78,15 +106,6 @@ export interface BalanceAuditSnapshot {
   pointEventId?: string;
   originalPointEventId?: string;
 }
-
-export type AuditSnapshotSource =
-  | ParticipantStatusSnapshot
-  | ActionAuditSnapshot
-  | ClaimCodeBatchSnapshot
-  | ClaimCodeSnapshotSource
-  | RewardAuditSnapshot
-  | RedemptionAuditSnapshot
-  | BalanceAuditSnapshot;
 
 export interface AuditMetadataSource {
   actionId?: string;
@@ -98,17 +117,427 @@ export interface AuditMetadataSource {
   rewardRedemptionId?: string;
 }
 
-export interface RecordAuditEventInput {
+interface AuditEventBase<
+  Operation extends AuditOperation,
+  EntityType extends AuditEntityType,
+> {
   actor: AdminAuditActor | SystemAuditActor;
-  participantId?: string;
-  operation: AuditOperation;
-  entityType: AuditEntityType;
+  operation: Operation;
+  entityType: EntityType;
   entityId: string;
   reason: string;
-  before?: AuditSnapshotSource | null;
-  after?: AuditSnapshotSource | null;
-  metadata?: AuditMetadataSource | null;
 }
+
+type RequiredParticipant = { participantId: string };
+type OptionalParticipant = { participantId?: string };
+type ForbiddenParticipant = { participantId?: never };
+type NoMetadata = { metadata?: never };
+
+type CreatedEvent<
+  Operation extends AuditOperation,
+  EntityType extends AuditEntityType,
+  Snapshot,
+  Participant = ForbiddenParticipant,
+  Metadata = NoMetadata,
+> = AuditEventBase<Operation, EntityType> &
+  Participant & {
+    before?: null;
+    after: Snapshot;
+  } & Metadata;
+
+type ChangedEvent<
+  Operation extends AuditOperation,
+  EntityType extends AuditEntityType,
+  Snapshot,
+  Participant = ForbiddenParticipant,
+  Metadata = NoMetadata,
+> = AuditEventBase<Operation, EntityType> &
+  Participant & {
+    before: Snapshot;
+    after: Snapshot;
+  } & Metadata;
+
+type BatchMetadata = {
+  metadata?: Pick<
+    AuditMetadataSource,
+    'actionId' | 'batchSize' | 'claimCodeIds'
+  >;
+};
+
+type BalanceMetadata = {
+  metadata?: Pick<
+    AuditMetadataSource,
+    'pointEventId' | 'originalPointEventId' | 'reversalPointEventId'
+  >;
+};
+
+type RedemptionMetadata = {
+  metadata?: Pick<AuditMetadataSource, 'rewardRedemptionId'>;
+};
+
+type RedemptionCancellationMetadata = {
+  metadata?: Pick<AuditMetadataSource, 'rewardRedemptionId' | 'pointEventId'>;
+};
+
+export type RecordAuditEventInput =
+  | ChangedEvent<
+      typeof AuditOperation.PARTICIPANT_STATUS_CHANGED,
+      typeof AuditEntityType.PARTICIPANT,
+      ParticipantStatusSnapshot,
+      RequiredParticipant
+    >
+  | CreatedEvent<
+      typeof AuditOperation.ACTION_CREATED,
+      typeof AuditEntityType.ACTION,
+      ActionAuditSnapshot
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ACTION_UPDATED,
+      typeof AuditEntityType.ACTION,
+      ActionAuditSnapshot
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ACTION_STATUS_CHANGED,
+      typeof AuditEntityType.ACTION,
+      Pick<ActionAuditSnapshot, 'isActive'>
+    >
+  | CreatedEvent<
+      typeof AuditOperation.CLAIM_CODE_BATCH_GENERATED,
+      typeof AuditEntityType.CLAIM_CODE_BATCH,
+      ClaimCodeBatchSnapshot,
+      ForbiddenParticipant,
+      BatchMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+      typeof AuditEntityType.CLAIM_CODE,
+      ClaimCodeSnapshotSource,
+      OptionalParticipant
+    >
+  | CreatedEvent<
+      typeof AuditOperation.REWARD_CREATED,
+      typeof AuditEntityType.REWARD,
+      RewardAuditSnapshot
+    >
+  | ChangedEvent<
+      typeof AuditOperation.REWARD_UPDATED,
+      typeof AuditEntityType.REWARD,
+      RewardAuditSnapshot
+    >
+  | ChangedEvent<
+      typeof AuditOperation.REWARD_STATUS_CHANGED,
+      typeof AuditEntityType.REWARD,
+      Pick<RewardAuditSnapshot, 'isActive'>
+    >
+  | (AuditEventBase<
+      typeof AuditOperation.REWARD_REDEMPTION_DELIVERED,
+      typeof AuditEntityType.REWARD_REDEMPTION
+    > &
+      RequiredParticipant & {
+        before: RedemptionDeliveryBeforeSnapshot;
+        after: RedemptionDeliveryAfterSnapshot;
+      } & RedemptionMetadata)
+  | (AuditEventBase<
+      typeof AuditOperation.REWARD_REDEMPTION_CANCELLED,
+      typeof AuditEntityType.REWARD_REDEMPTION
+    > &
+      RequiredParticipant & {
+        before: RedemptionCancellationBeforeSnapshot;
+        after: RedemptionCancellationAfterSnapshot;
+      } & RedemptionCancellationMetadata)
+  | (AuditEventBase<
+      typeof AuditOperation.PARTICIPANT_BALANCE_ADJUSTED,
+      typeof AuditEntityType.POINT_EVENT
+    > &
+      RequiredParticipant & {
+        before: Pick<BalanceAuditSnapshot, 'participantId' | 'points' | 'xp'>;
+        after: Pick<
+          BalanceAuditSnapshot,
+          'participantId' | 'points' | 'xp' | 'pointEventId'
+        > & { pointEventId: string };
+        metadata?: Pick<AuditMetadataSource, 'pointEventId'>;
+      })
+  | (AuditEventBase<
+      typeof AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED,
+      typeof AuditEntityType.POINT_EVENT
+    > &
+      RequiredParticipant & {
+        before: Pick<
+          BalanceAuditSnapshot,
+          'participantId' | 'points' | 'xp' | 'originalPointEventId'
+        > & { originalPointEventId: string };
+        after: Pick<
+          BalanceAuditSnapshot,
+          | 'participantId'
+          | 'points'
+          | 'xp'
+          | 'pointEventId'
+          | 'originalPointEventId'
+        > & { pointEventId: string; originalPointEventId: string };
+        metadata?: Pick<
+          AuditMetadataSource,
+          'originalPointEventId' | 'reversalPointEventId'
+        >;
+      })
+  | ChangedEvent<
+      typeof AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED,
+      typeof AuditEntityType.RECONCILIATION,
+      BalanceAuditSnapshot,
+      RequiredParticipant,
+      BalanceMetadata
+    >;
+
+type FieldKind =
+  | 'boolean'
+  | 'number'
+  | 'string'
+  | 'stringArray'
+  | 'date'
+  | 'nullableString'
+  | 'nullableDate';
+
+interface ObjectRule {
+  required: Record<string, FieldKind>;
+  optional?: Record<string, FieldKind>;
+}
+
+interface OperationRule {
+  entityType: AuditEntityType;
+  participant: 'required' | 'optional' | 'forbidden';
+  before?: ObjectRule;
+  after?: ObjectRule;
+  metadata?: ObjectRule;
+}
+
+const participantStatusRule: ObjectRule = {
+  required: { isActive: 'boolean' },
+};
+const actionRule: ObjectRule = {
+  required: {
+    id: 'string',
+    name: 'string',
+    description: 'nullableString',
+    type: 'string',
+    points: 'number',
+    isActive: 'boolean',
+    isCodeActive: 'boolean',
+  },
+};
+const activeEntityRule: ObjectRule = {
+  required: { isActive: 'boolean' },
+};
+const claimCodeBatchRule: ObjectRule = {
+  required: { quantity: 'number', type: 'string', actionId: 'string' },
+};
+const claimCodeRule: ObjectRule = {
+  required: {
+    id: 'string',
+    isActive: 'boolean',
+    isUsed: 'boolean',
+    code: 'string',
+  },
+};
+const rewardRule: ObjectRule = {
+  required: {
+    id: 'string',
+    name: 'string',
+    description: 'nullableString',
+    costInPoints: 'number',
+    stock: 'number',
+    isActive: 'boolean',
+  },
+};
+const redemptionDeliveryBeforeRule: ObjectRule = {
+  required: {
+    id: 'string',
+    status: 'string',
+    deliveredAt: 'nullableDate',
+    deliveredByAdminId: 'nullableString',
+  },
+};
+const redemptionDeliveryAfterRule: ObjectRule = {
+  required: {
+    id: 'string',
+    status: 'string',
+    deliveredAt: 'date',
+    deliveredByAdminId: 'string',
+  },
+};
+const redemptionCancellationBeforeRule: ObjectRule = {
+  required: {
+    id: 'string',
+    status: 'string',
+    stock: 'number',
+    points: 'number',
+  },
+};
+const redemptionCancellationAfterRule: ObjectRule = {
+  required: {
+    ...redemptionCancellationBeforeRule.required,
+    cancelledAt: 'date',
+    cancelledByAdminId: 'string',
+    pointEventId: 'string',
+  },
+};
+const balanceRule: ObjectRule = {
+  required: {
+    participantId: 'string',
+    points: 'number',
+    xp: 'number',
+  },
+  optional: {
+    pointEventId: 'string',
+    originalPointEventId: 'string',
+  },
+};
+const batchMetadataRule: ObjectRule = {
+  required: {},
+  optional: {
+    actionId: 'string',
+    batchSize: 'number',
+    claimCodeIds: 'stringArray',
+  },
+};
+const balanceMetadataRule: ObjectRule = {
+  required: {},
+  optional: {
+    pointEventId: 'string',
+    originalPointEventId: 'string',
+    reversalPointEventId: 'string',
+  },
+};
+const redemptionMetadataRule: ObjectRule = {
+  required: {},
+  optional: { rewardRedemptionId: 'string' },
+};
+const redemptionCancellationMetadataRule: ObjectRule = {
+  required: {},
+  optional: { rewardRedemptionId: 'string', pointEventId: 'string' },
+};
+const balanceBeforeRule: ObjectRule = {
+  required: { participantId: 'string', points: 'number', xp: 'number' },
+};
+const balanceAdjustedAfterRule: ObjectRule = {
+  required: {
+    participantId: 'string',
+    points: 'number',
+    xp: 'number',
+    pointEventId: 'string',
+  },
+};
+const balanceReversalBeforeRule: ObjectRule = {
+  required: {
+    participantId: 'string',
+    points: 'number',
+    xp: 'number',
+    originalPointEventId: 'string',
+  },
+};
+const balanceReversalAfterRule: ObjectRule = {
+  required: {
+    participantId: 'string',
+    points: 'number',
+    xp: 'number',
+    pointEventId: 'string',
+    originalPointEventId: 'string',
+  },
+};
+
+const operationRules = {
+  [AuditOperation.PARTICIPANT_STATUS_CHANGED]: {
+    entityType: AuditEntityType.PARTICIPANT,
+    participant: 'required',
+    before: participantStatusRule,
+    after: participantStatusRule,
+  },
+  [AuditOperation.ACTION_CREATED]: {
+    entityType: AuditEntityType.ACTION,
+    participant: 'forbidden',
+    after: actionRule,
+  },
+  [AuditOperation.ACTION_UPDATED]: {
+    entityType: AuditEntityType.ACTION,
+    participant: 'forbidden',
+    before: actionRule,
+    after: actionRule,
+  },
+  [AuditOperation.ACTION_STATUS_CHANGED]: {
+    entityType: AuditEntityType.ACTION,
+    participant: 'forbidden',
+    before: activeEntityRule,
+    after: activeEntityRule,
+  },
+  [AuditOperation.CLAIM_CODE_BATCH_GENERATED]: {
+    entityType: AuditEntityType.CLAIM_CODE_BATCH,
+    participant: 'forbidden',
+    after: claimCodeBatchRule,
+    metadata: batchMetadataRule,
+  },
+  [AuditOperation.CLAIM_CODE_STATUS_CHANGED]: {
+    entityType: AuditEntityType.CLAIM_CODE,
+    participant: 'optional',
+    before: claimCodeRule,
+    after: claimCodeRule,
+  },
+  [AuditOperation.REWARD_CREATED]: {
+    entityType: AuditEntityType.REWARD,
+    participant: 'forbidden',
+    after: rewardRule,
+  },
+  [AuditOperation.REWARD_UPDATED]: {
+    entityType: AuditEntityType.REWARD,
+    participant: 'forbidden',
+    before: rewardRule,
+    after: rewardRule,
+  },
+  [AuditOperation.REWARD_STATUS_CHANGED]: {
+    entityType: AuditEntityType.REWARD,
+    participant: 'forbidden',
+    before: activeEntityRule,
+    after: activeEntityRule,
+  },
+  [AuditOperation.REWARD_REDEMPTION_DELIVERED]: {
+    entityType: AuditEntityType.REWARD_REDEMPTION,
+    participant: 'required',
+    before: redemptionDeliveryBeforeRule,
+    after: redemptionDeliveryAfterRule,
+    metadata: redemptionMetadataRule,
+  },
+  [AuditOperation.REWARD_REDEMPTION_CANCELLED]: {
+    entityType: AuditEntityType.REWARD_REDEMPTION,
+    participant: 'required',
+    before: redemptionCancellationBeforeRule,
+    after: redemptionCancellationAfterRule,
+    metadata: redemptionCancellationMetadataRule,
+  },
+  [AuditOperation.PARTICIPANT_BALANCE_ADJUSTED]: {
+    entityType: AuditEntityType.POINT_EVENT,
+    participant: 'required',
+    before: balanceBeforeRule,
+    after: balanceAdjustedAfterRule,
+    metadata: { required: {}, optional: { pointEventId: 'string' } },
+  },
+  [AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED]: {
+    entityType: AuditEntityType.POINT_EVENT,
+    participant: 'required',
+    before: balanceReversalBeforeRule,
+    after: balanceReversalAfterRule,
+    metadata: {
+      required: {},
+      optional: {
+        originalPointEventId: 'string',
+        reversalPointEventId: 'string',
+      },
+    },
+  },
+  [AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED]: {
+    entityType: AuditEntityType.RECONCILIATION,
+    participant: 'required',
+    before: balanceRule,
+    after: balanceRule,
+    metadata: balanceMetadataRule,
+  },
+} satisfies Record<AuditOperation, OperationRule>;
 
 @Injectable()
 export class AuditService {
@@ -181,6 +610,7 @@ export class AuditService {
 
   private validateContext(input: RecordAuditEventInput) {
     const { actor } = input;
+    const rule = operationRules[input.operation] as OperationRule | undefined;
     const validRequestId =
       typeof actor.requestId === 'string' && actor.requestId.trim().length > 0;
     const validEntity =
@@ -196,14 +626,53 @@ export class AuditService {
       (actor.actorType === AuditActorType.SYSTEM &&
         !('actorAdminId' in actor) &&
         actor.actorAdminId === undefined);
-    if (!validRequestId || !validEntity || !validParticipant || !validActor) {
+    const validContract =
+      rule !== undefined &&
+      input.entityType === rule.entityType &&
+      ((rule.participant === 'required' &&
+        typeof input.participantId === 'string' &&
+        input.participantId.trim().length > 0) ||
+        (rule.participant === 'optional' && validParticipant) ||
+        (rule.participant === 'forbidden' &&
+          input.participantId === undefined));
+    if (
+      !validRequestId ||
+      !validEntity ||
+      !validParticipant ||
+      !validActor ||
+      !validContract
+    ) {
       throw new BadRequestException('Contexto de auditoria incompleto.');
     }
+    validateOptionalObject(
+      input.before,
+      rule.before,
+      'snapshot anterior',
+      true,
+      true,
+      true,
+    );
+    validateOptionalObject(
+      input.after,
+      rule.after,
+      'snapshot posterior',
+      true,
+      true,
+      true,
+    );
+    validateOptionalObject(
+      input.metadata,
+      rule.metadata,
+      'metadata',
+      false,
+      false,
+      false,
+    );
   }
 
   private sanitizeSnapshot(
     operation: AuditOperation,
-    source: AuditSnapshotSource | null | undefined,
+    source: unknown,
   ): AuditJsonValue | undefined {
     if (source === null || source === undefined) return undefined;
     const value = source as unknown as Record<string, unknown>;
@@ -254,6 +723,7 @@ export class AuditService {
           'cancelledByAdminId',
           'stock',
           'points',
+          'pointEventId',
         ]);
       case AuditOperation.PARTICIPANT_BALANCE_ADJUSTED:
       case AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED:
@@ -288,6 +758,74 @@ export class AuditService {
       safe.claimCodeIds = value.claimCodeIds;
     }
     return safe;
+  }
+}
+
+function validateOptionalObject(
+  source: unknown,
+  rule: ObjectRule | undefined,
+  label: string,
+  requiredWhenDeclared: boolean,
+  rejectExtraFields: boolean,
+  allowNullWithoutRule: boolean,
+) {
+  if (source === undefined) {
+    if (rule && requiredWhenDeclared) {
+      throw new BadRequestException(
+        `O ${label} é obrigatório para a operação.`,
+      );
+    }
+    return;
+  }
+  if (source === null && !rule && allowNullWithoutRule) return;
+  if (!rule) {
+    throw new BadRequestException(
+      `O ${label} não é permitido para a operação.`,
+    );
+  }
+  if (source === null || typeof source !== 'object' || Array.isArray(source)) {
+    throw new BadRequestException(`O ${label} é inválido.`);
+  }
+  const value = source as Record<string, unknown>;
+  const allowed = { ...rule.required, ...rule.optional };
+  if (
+    rejectExtraFields &&
+    Object.keys(value).some((key) => !(key in allowed))
+  ) {
+    throw new BadRequestException(`O ${label} contém campos não permitidos.`);
+  }
+  for (const [key, kind] of Object.entries(rule.required)) {
+    if (!(key in value) || !matchesFieldKind(value[key], kind)) {
+      throw new BadRequestException(`O ${label} é inválido.`);
+    }
+  }
+  for (const [key, kind] of Object.entries(rule.optional ?? {})) {
+    if (key in value && !matchesFieldKind(value[key], kind)) {
+      throw new BadRequestException(`O ${label} é inválido.`);
+    }
+  }
+}
+
+function matchesFieldKind(value: unknown, kind: FieldKind) {
+  switch (kind) {
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'string':
+      return typeof value === 'string';
+    case 'stringArray':
+      return (
+        Array.isArray(value) && value.every((item) => typeof item === 'string')
+      );
+    case 'date':
+      return typeof value === 'string' || value instanceof Date;
+    case 'nullableString':
+      return value === null || typeof value === 'string';
+    case 'nullableDate':
+      return (
+        value === null || typeof value === 'string' || value instanceof Date
+      );
   }
 }
 
