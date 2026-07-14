@@ -85,23 +85,7 @@ describe('Admin actions and codes (e2e)', () => {
   });
 
   afterAll(async () => {
-    try {
-      if (!harness) return;
-      await harness.prisma.pointEvent.deleteMany({
-        where: {
-          OR: [{ userId: { in: userIds } }, { actionId: { in: actionIds } }],
-        },
-      });
-      await harness.prisma.claimCode.deleteMany({
-        where: { actionId: { in: actionIds } },
-      });
-      await harness.prisma.action.deleteMany({
-        where: { id: { in: actionIds } },
-      });
-      await harness.prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    } finally {
-      if (harness) await harness.close();
-    }
+    if (harness) await harness.close();
   });
 
   it('creates and edits an action while preserving its redemption snapshot', async () => {

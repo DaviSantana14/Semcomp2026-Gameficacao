@@ -1,0 +1,58 @@
+enum AuditActorType {
+  ADMIN
+  SYSTEM
+}
+
+enum AuditEntityType {
+  PARTICIPANT
+  ACTION
+  CLAIM_CODE_BATCH
+  CLAIM_CODE
+  REWARD
+  REWARD_REDEMPTION
+  POINT_EVENT
+  RECONCILIATION
+}
+
+enum AuditOperation {
+  PARTICIPANT_STATUS_CHANGED
+  ACTION_CREATED
+  ACTION_UPDATED
+  ACTION_STATUS_CHANGED
+  CLAIM_CODE_BATCH_GENERATED
+  CLAIM_CODE_STATUS_CHANGED
+  REWARD_CREATED
+  REWARD_UPDATED
+  REWARD_STATUS_CHANGED
+  REWARD_REDEMPTION_DELIVERED
+  REWARD_REDEMPTION_CANCELLED
+  PARTICIPANT_BALANCE_ADJUSTED
+  PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED
+  RECONCILIATION_ADJUSTMENT_CONFIRMED
+}
+
+model AdminAuditEvent {
+  id            String          @id @default(cuid())
+  actorType     AuditActorType
+  actorAdminId  String?
+  participantId String?
+  operation     AuditOperation
+  entityType    AuditEntityType
+  entityId      String
+  reason        String
+  before        Json?
+  after         Json?
+  metadata      Json?
+  requestId     String
+  createdAt     DateTime        @default(now())
+  actorAdmin    User?           @relation("AuditActor", fields: [actorAdminId], references: [id], onDelete: Restrict)
+  participant   User?           @relation("AuditParticipant", fields: [participantId], references: [id], onDelete: Restrict)
+  pointEvents   PointEvent[]
+
+  @@index([createdAt])
+  @@index([actorAdminId, createdAt])
+  @@index([participantId, createdAt])
+  @@index([operation, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([requestId])
+}

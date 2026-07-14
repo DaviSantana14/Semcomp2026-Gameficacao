@@ -148,27 +148,7 @@ describe('Admin participants (e2e)', () => {
   });
 
   afterAll(async () => {
-    try {
-      if (!harness) return;
-      await harness.prisma.pointEvent.deleteMany({
-        where: { userId: { in: userIds } },
-      });
-      await harness.prisma.rewardRedemption.deleteMany({
-        where: { userId: { in: userIds } },
-      });
-      await harness.prisma.claimCode.deleteMany({
-        where: { id: { in: claimCodeIds } },
-      });
-      await harness.prisma.reward.deleteMany({
-        where: { id: { in: rewardIds } },
-      });
-      await harness.prisma.action.deleteMany({
-        where: { id: { in: actionIds } },
-      });
-      await harness.prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    } finally {
-      if (harness) await harness.close();
-    }
+    if (harness) await harness.close();
   });
 
   it('searches and paginates participants and rejects admin details', async () => {

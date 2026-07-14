@@ -48,23 +48,7 @@ describe('Admin rewards (e2e)', () => {
   });
 
   afterAll(async () => {
-    try {
-      if (!harness) return;
-      await harness.prisma.pointEvent.deleteMany({
-        where: { userId: { in: userIds } },
-      });
-      await harness.prisma.rewardRedemption.deleteMany({
-        where: {
-          OR: [{ userId: { in: userIds } }, { rewardId: { in: rewardIds } }],
-        },
-      });
-      await harness.prisma.reward.deleteMany({
-        where: { id: { in: rewardIds } },
-      });
-      await harness.prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    } finally {
-      if (harness) await harness.close();
-    }
+    if (harness) await harness.close();
   });
 
   it('creates, edits, hides, and preserves inactive rewards for admins', async () => {

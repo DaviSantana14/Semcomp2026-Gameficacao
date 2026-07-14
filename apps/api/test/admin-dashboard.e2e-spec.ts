@@ -161,31 +161,7 @@ describe('Admin dashboard (e2e)', () => {
   });
 
   afterAll(async () => {
-    try {
-      if (!harness) return;
-      await harness.prisma.pointEvent.deleteMany({
-        where: {
-          OR: [{ userId: { in: userIds } }, { actionId: { in: actionIds } }],
-        },
-      });
-      await harness.prisma.rewardRedemption.deleteMany({
-        where: {
-          OR: [{ userId: { in: userIds } }, { rewardId: { in: rewardIds } }],
-        },
-      });
-      await harness.prisma.claimCode.deleteMany({
-        where: { id: { in: claimCodeIds } },
-      });
-      await harness.prisma.reward.deleteMany({
-        where: { id: { in: rewardIds } },
-      });
-      await harness.prisma.action.deleteMany({
-        where: { id: { in: actionIds } },
-      });
-      await harness.prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    } finally {
-      if (harness) await harness.close();
-    }
+    if (harness) await harness.close();
   });
 
   it('reports exact totals without counting admin accounts as participants', async () => {

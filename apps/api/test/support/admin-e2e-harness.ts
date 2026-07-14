@@ -5,6 +5,10 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  assertDisposableTestDatabase,
+  truncateDisposableTestDatabase,
+} from './e2e-database-cleanup';
 
 export type AuthSession = { cookie: string; csrfToken: string };
 
@@ -17,6 +21,7 @@ export class AdminE2eHarness {
   ) {}
 
   static async create(): Promise<AdminE2eHarness> {
+    assertDisposableTestDatabase();
     const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -74,6 +79,10 @@ export class AdminE2eHarness {
   }
 
   async close(): Promise<void> {
-    await this.app.close();
+    try {
+      await truncateDisposableTestDatabase(this.prisma);
+    } finally {
+      await this.app.close();
+    }
   }
 }
