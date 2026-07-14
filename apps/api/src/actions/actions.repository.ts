@@ -73,9 +73,14 @@ export class ActionsRepository {
   }
 
   withTransaction<T>(
-    callback: (repository: ActionsRepository) => Promise<T>,
+    callback: (
+      repository: ActionsRepository,
+      transaction: Prisma.TransactionClient,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+    return this.prisma.$transaction((tx) =>
+      callback(this.transactional(tx), tx),
+    );
   }
 
   async createAction(input: ActionWriteInput) {

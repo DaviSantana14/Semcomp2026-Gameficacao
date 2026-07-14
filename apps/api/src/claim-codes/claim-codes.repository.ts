@@ -35,9 +35,14 @@ export class ClaimCodesRepository {
   }
 
   withTransaction<T>(
-    callback: (repository: ClaimCodesRepository) => Promise<T>,
+    callback: (
+      repository: ClaimCodesRepository,
+      transaction: Prisma.TransactionClient,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+    return this.prisma.$transaction((tx) =>
+      callback(this.transactional(tx), tx),
+    );
   }
 
   findActionForCodeBatch(actionId: string) {

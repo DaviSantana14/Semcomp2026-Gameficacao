@@ -59,9 +59,14 @@ export class RewardsRepository {
   }
 
   withTransaction<T>(
-    callback: (repository: RewardsRepository) => Promise<T>,
+    callback: (
+      repository: RewardsRepository,
+      transaction: Prisma.TransactionClient,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+    return this.prisma.$transaction((tx) =>
+      callback(this.transactional(tx), tx),
+    );
   }
 
   createReward(
