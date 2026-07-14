@@ -1,12 +1,12 @@
 import { UserRole } from '@prisma/client';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { DECORATORS } from '@nestjs/swagger/dist/constants';
-import { ROLES_KEY } from '../auth/roles.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CsrfGuard } from '../auth/csrf.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { AdminActionsController } from './admin-actions.controller';
-import { ActionResponseDto } from './dto/action-response.dto';
+import { ROLES_KEY } from '../../auth/roles.decorator';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { CsrfGuard } from '../../auth/csrf.guard';
+import { RolesGuard } from '../../auth/roles.guard';
+import { AdminActionsController } from '../admin-actions.controller';
+import { ActionResponseDto } from '../dto/action-response.dto';
 
 describe('AdminActionsController', () => {
   const service = {

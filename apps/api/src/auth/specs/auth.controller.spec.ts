@@ -1,5 +1,5 @@
 import type { CookieOptions, Response } from 'express';
-import { AuthController } from './auth.controller';
+import { AuthController } from '../auth.controller';
 
 const user = {
   id: 'user-1',

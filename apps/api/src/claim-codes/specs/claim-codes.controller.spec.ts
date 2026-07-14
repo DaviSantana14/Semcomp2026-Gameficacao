@@ -1,9 +1,9 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { ClaimCodesController } from './claim-codes.controller';
-import { GenerateClaimCodesDto } from './dto/generate-claim-codes.dto';
-import { ClaimCodesQueryDto } from './dto/claim-codes-query.dto';
-import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
+import { ClaimCodesController } from '../claim-codes.controller';
+import { GenerateClaimCodesDto } from '../dto/generate-claim-codes.dto';
+import { ClaimCodesQueryDto } from '../dto/claim-codes-query.dto';
+import { UpdateClaimCodeStatusDto } from '../dto/update-claim-code-status.dto';
 
 describe('ClaimCodesController', () => {
   it('delegates history and status updates', async () => {

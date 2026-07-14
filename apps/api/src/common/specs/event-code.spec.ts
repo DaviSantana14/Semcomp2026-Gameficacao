@@ -5,7 +5,7 @@ import {
   generateClaimCode,
   isClaimCode,
   normalizeEventCode,
-} from './event-code';
+} from '../event-code';
 
 describe('event codes', () => {
   it('normalizes codes by trimming and uppercasing', () => {

@@ -1,4 +1,4 @@
-import { getAuthCookieOptions } from './cookie-options';
+import { getAuthCookieOptions } from '../cookie-options';
 
 describe('getAuthCookieOptions', () => {
   const originalEnv = process.env;

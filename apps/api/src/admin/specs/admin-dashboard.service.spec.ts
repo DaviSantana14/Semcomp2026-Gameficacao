@@ -2,10 +2,10 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Test } from '@nestjs/testing';
 import { PointEventSource, RedemptionStatus, UserRole } from '@prisma/client';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { paginate } from '../common/dto/pagination-response.dto';
-import { PrismaService } from '../prisma/prisma.service';
-import { AdminDashboardService } from './admin-dashboard.service';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate } from '../../common/dto/pagination-response.dto';
+import { AdminDashboardRepository } from '../admin-dashboard.repository';
+import { AdminDashboardService } from '../admin-dashboard.service';
 
 describe('shared pagination', () => {
   it('transforms defaults and numeric query strings', async () => {
@@ -69,7 +69,10 @@ describe(AdminDashboardService.name, () => {
     const module = await Test.createTestingModule({
       providers: [
         AdminDashboardService,
-        { provide: PrismaService, useValue: prisma },
+        {
+          provide: AdminDashboardRepository,
+          useValue: new AdminDashboardRepository(prisma as never),
+        },
       ],
     }).compile();
     service = module.get(AdminDashboardService);

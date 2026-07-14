@@ -1,6 +1,6 @@
 import { RedemptionStatus, UserRole } from '@prisma/client';
-import { ROLES_KEY } from '../auth/roles.decorator';
-import { RewardsController } from './rewards.controller';
+import { ROLES_KEY } from '../../auth/roles.decorator';
+import { RewardsController } from '../rewards.controller';
 
 describe('RewardsController player authorization', () => {
   it.each(['findAll', 'findById'] as const)(

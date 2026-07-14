@@ -4,7 +4,7 @@ import {
   PointEventSource,
   RedemptionStatus,
 } from '@prisma/client';
-import { RewardsService } from './rewards.service';
+import { RewardsRepository } from '../rewards.repository';
 
 const activeReward = {
   id: 'reward-1',
@@ -34,7 +34,7 @@ const pendingRedemption = {
   reward: activeReward,
 };
 
-function createService() {
+function createRepository() {
   const tx = {
     reward: {
       findUnique: jest.fn(),
@@ -74,13 +74,13 @@ function createService() {
   };
 
   return {
-    service: new RewardsService(prisma as never),
+    repository: new RewardsRepository(prisma as never),
     prisma,
     tx,
   };
 }
 
-describe('RewardsService', () => {
+describe('RewardsRepository', () => {
   describe('findAdminRewards', () => {
     it.each([
       ['all', {}],
@@ -90,11 +90,15 @@ describe('RewardsService', () => {
     ])(
       'maps public reward status %s to Prisma filters',
       async (status, expectedWhere) => {
-        const { service, prisma } = createService();
+        const { repository, prisma } = createRepository();
         prisma.reward.count.mockResolvedValue(0);
         prisma.reward.findMany.mockResolvedValue([]);
 
-        await service.findAdminRewards({ page: 1, limit: 20, status } as never);
+        await repository.findAdminRewards({
+          page: 1,
+          limit: 20,
+          status,
+        } as never);
 
         expect(prisma.reward.count).toHaveBeenCalledWith({
           where: expectedWhere,
@@ -103,7 +107,7 @@ describe('RewardsService', () => {
     );
 
     it('searches and paginates the full admin catalog with redemption counts', async () => {
-      const { service, prisma } = createService();
+      const { repository, prisma } = createRepository();
       const inactiveReward = {
         ...activeReward,
         id: 'reward-2',
@@ -127,7 +131,7 @@ describe('RewardsService', () => {
       ]);
 
       await expect(
-        service.findAdminRewards({
+        repository.findAdminRewards({
           page: 2,
           limit: 5,
           status: 'all',
@@ -188,11 +192,15 @@ describe('RewardsService', () => {
     ])(
       'maps public redemption status %s to Prisma status',
       async (status, expectedStatus) => {
-        const { service, prisma } = createService();
+        const { repository, prisma } = createRepository();
         prisma.rewardRedemption.count.mockResolvedValue(0);
         prisma.rewardRedemption.findMany.mockResolvedValue([]);
 
-        await service.findRedemptions({ page: 1, limit: 20, status } as never);
+        await repository.findRedemptions({
+          page: 1,
+          limit: 20,
+          status,
+        } as never);
 
         expect(prisma.rewardRedemption.count).toHaveBeenCalledWith({
           where: expectedStatus ? { status: expectedStatus } : {},
@@ -201,12 +209,12 @@ describe('RewardsService', () => {
     );
 
     it('filters and returns recent redemption snapshots with controlled selects', async () => {
-      const { service, prisma } = createService();
+      const { repository, prisma } = createRepository();
       prisma.rewardRedemption.count.mockResolvedValue(1);
       prisma.rewardRedemption.findMany.mockResolvedValue([pendingRedemption]);
 
       await expect(
-        service.findRedemptions({
+        repository.findRedemptions({
           page: 1,
           limit: 20,
           status: 'pending',
@@ -260,7 +268,7 @@ describe('RewardsService', () => {
   });
   describe('redeem', () => {
     it('debits points and stock without changing xp', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.reward.findUnique.mockResolvedValue(activeReward);
       tx.user.updateMany.mockResolvedValue({ count: 1 });
@@ -268,7 +276,7 @@ describe('RewardsService', () => {
       tx.rewardRedemption.create.mockResolvedValue(pendingRedemption);
       tx.pointEvent.create.mockResolvedValue(undefined);
 
-      const result = await service.redeem('reward-1', 'user-1');
+      const result = await repository.redeem('reward-1', 'user-1');
 
       expect(tx.user.updateMany).toHaveBeenCalledWith({
         where: {
@@ -319,12 +327,12 @@ describe('RewardsService', () => {
     });
 
     it('rejects redeem when the user does not have enough points', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.reward.findUnique.mockResolvedValue(activeReward);
       tx.user.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.redeem('reward-1', 'user-1')).rejects.toThrow(
+      await expect(repository.redeem('reward-1', 'user-1')).rejects.toThrow(
         BadRequestException,
       );
       expect(tx.reward.updateMany).not.toHaveBeenCalled();
@@ -332,26 +340,26 @@ describe('RewardsService', () => {
     });
 
     it('rejects redeem when stock is exhausted concurrently', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.reward.findUnique.mockResolvedValue(activeReward);
       tx.user.updateMany.mockResolvedValue({ count: 1 });
       tx.reward.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.redeem('reward-1', 'user-1')).rejects.toThrow(
+      await expect(repository.redeem('reward-1', 'user-1')).rejects.toThrow(
         BadRequestException,
       );
       expect(tx.rewardRedemption.create).not.toHaveBeenCalled();
     });
 
     it('rejects redeem when reward is deactivated concurrently', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.reward.findUnique.mockResolvedValue(activeReward);
       tx.user.updateMany.mockResolvedValue({ count: 1 });
       tx.reward.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.redeem('reward-1', 'user-1')).rejects.toThrow(
+      await expect(repository.redeem('reward-1', 'user-1')).rejects.toThrow(
         BadRequestException,
       );
       expect(tx.reward.updateMany).toHaveBeenCalledWith({
@@ -371,7 +379,7 @@ describe('RewardsService', () => {
 
   describe('cancelRedemption', () => {
     it('returns points and stock for pending redemptions without changing xp', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
       tx.rewardRedemption.updateMany.mockResolvedValue({ count: 1 });
@@ -385,7 +393,7 @@ describe('RewardsService', () => {
       tx.reward.update.mockResolvedValue(undefined);
       tx.pointEvent.create.mockResolvedValue(undefined);
 
-      await service.cancelRedemption('redemption-1');
+      await repository.cancelRedemption('redemption-1');
 
       expect(tx.rewardRedemption.updateMany).toHaveBeenCalledWith({
         where: { id: 'redemption-1', status: 'PENDING' },
@@ -411,25 +419,25 @@ describe('RewardsService', () => {
     });
 
     it('rejects cancel when redemption is not pending', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.rewardRedemption.findUnique.mockResolvedValue({
         ...pendingRedemption,
         status: 'DELIVERED',
       });
 
-      await expect(service.cancelRedemption('redemption-1')).rejects.toThrow(
+      await expect(repository.cancelRedemption('redemption-1')).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it('does not refund points or stock when cancel loses a status race', async () => {
-      const { service, tx } = createService();
+      const { repository, tx } = createRepository();
 
       tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
       tx.rewardRedemption.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.cancelRedemption('redemption-1')).rejects.toThrow(
+      await expect(repository.cancelRedemption('redemption-1')).rejects.toThrow(
         BadRequestException,
       );
       expect(tx.user.update).not.toHaveBeenCalled();
@@ -439,10 +447,10 @@ describe('RewardsService', () => {
   });
 
   it('creates rewards with normalized optional fields', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.reward.create.mockResolvedValue(activeReward);
 
-    await service.create({
+    await repository.create({
       name: ' Camiseta Semcomp ',
       description: ' ',
       costInPoints: 50,
@@ -475,7 +483,7 @@ describe('RewardsService', () => {
   });
 
   it('explicitly clears optional reward details on update', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.reward.findUnique.mockResolvedValue(activeReward);
     prisma.reward.update.mockResolvedValue({
       ...activeReward,
@@ -483,7 +491,7 @@ describe('RewardsService', () => {
       imageUrl: null,
     });
 
-    await service.update('reward-1', {
+    await repository.update('reward-1', {
       description: '',
       imageUrl: null,
     });
@@ -513,10 +521,10 @@ describe('RewardsService', () => {
   });
 
   it('lists pending redemptions for admin operation', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.rewardRedemption.findMany.mockResolvedValue([pendingRedemption]);
 
-    await expect(service.findPendingRedemptions()).resolves.toEqual([
+    await expect(repository.findPendingRedemptions()).resolves.toEqual([
       pendingRedemption,
     ]);
     expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith({
@@ -536,7 +544,7 @@ describe('RewardsService', () => {
   });
 
   it('marks pending redemptions as delivered', async () => {
-    const { service, tx } = createService();
+    const { repository, tx } = createRepository();
     tx.rewardRedemption.findUnique
       .mockResolvedValueOnce(pendingRedemption)
       .mockResolvedValueOnce({
@@ -546,7 +554,7 @@ describe('RewardsService', () => {
     tx.rewardRedemption.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
-      service.deliverRedemption('redemption-1'),
+      repository.deliverRedemption('redemption-1'),
     ).resolves.toMatchObject({
       status: 'DELIVERED',
     });
@@ -557,21 +565,21 @@ describe('RewardsService', () => {
   });
 
   it('rejects deliver when it loses a status race', async () => {
-    const { service, tx } = createService();
+    const { repository, tx } = createRepository();
     tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
     tx.rewardRedemption.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(service.deliverRedemption('redemption-1')).rejects.toThrow(
+    await expect(repository.deliverRedemption('redemption-1')).rejects.toThrow(
       BadRequestException,
     );
     expect(tx.rewardRedemption.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it('throws NotFoundException when reward does not exist', async () => {
-    const { service, tx } = createService();
+    const { repository, tx } = createRepository();
     tx.reward.findUnique.mockResolvedValue(null);
 
-    await expect(service.redeem('missing', 'user-1')).rejects.toThrow(
+    await expect(repository.redeem('missing', 'user-1')).rejects.toThrow(
       NotFoundException,
     );
   });

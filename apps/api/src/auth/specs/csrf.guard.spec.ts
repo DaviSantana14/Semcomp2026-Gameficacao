@@ -1,5 +1,5 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { CsrfGuard } from './csrf.guard';
+import { CsrfGuard } from '../csrf.guard';
 
 type TestRequest = {
   method: string;

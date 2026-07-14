@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { PointEventKind, PointEventSource, UserRole } from '@prisma/client';
-import { RankingService } from './ranking.service';
+import { RankingRepository } from '../ranking.repository';
 
 const baseDate = new Date('2026-05-17T12:00:00.000Z');
 
@@ -18,7 +18,7 @@ function createUser(
   };
 }
 
-function createService() {
+function createRepository() {
   const prisma = {
     user: {
       findMany: jest.fn(),
@@ -31,18 +31,18 @@ function createService() {
   };
 
   return {
-    service: new RankingService(prisma as never),
+    repository: new RankingRepository(prisma as never),
     prisma,
   };
 }
 
-describe('RankingService', () => {
+describe('RankingRepository', () => {
   afterEach(() => {
     jest.useRealTimers();
   });
 
   it('returns the top participants ordered by xp desc with stable tiebreakers', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
 
     prisma.user.findMany.mockResolvedValue([
       createUser('user-high', 'Grace Hopper', 200),
@@ -63,7 +63,7 @@ describe('RankingService', () => {
       createUser('user-high', 'Grace Hopper', 200),
     );
 
-    const result = await service.getRanking('user-high', {
+    const result = await repository.getRanking('user-high', {
       limit: '3',
       period: 'all',
     });
@@ -94,7 +94,7 @@ describe('RankingService', () => {
   });
 
   it('keeps the current participant visible in general ranking when they have zero xp', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     const currentUser = createUser(
       'user-current',
       'Mary Jackson',
@@ -109,7 +109,7 @@ describe('RankingService', () => {
     prisma.user.findFirst.mockResolvedValue(currentUser);
     prisma.user.count.mockResolvedValue(2);
 
-    const result = await service.getRanking('user-current', {
+    const result = await repository.getRanking('user-current', {
       limit: '10',
       period: 'all',
     });
@@ -133,12 +133,12 @@ describe('RankingService', () => {
   });
 
   it('uses only participant active users for top and current user eligibility', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
 
     prisma.user.findMany.mockResolvedValue([]);
     prisma.user.findFirst.mockResolvedValue(null);
 
-    const result = await service.getRanking('admin-1');
+    const result = await repository.getRanking('admin-1');
 
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -170,7 +170,7 @@ describe('RankingService', () => {
   });
 
   it('returns the current participant position when they are outside the top list', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     const currentUser = createUser(
       'user-current',
       'Mary Jackson',
@@ -185,7 +185,7 @@ describe('RankingService', () => {
     prisma.user.findFirst.mockResolvedValue(currentUser);
     prisma.user.count.mockResolvedValue(8);
 
-    const result = await service.getRanking('user-current', {
+    const result = await repository.getRanking('user-current', {
       limit: '2',
       period: 'all',
     });
@@ -212,43 +212,43 @@ describe('RankingService', () => {
   });
 
   it('returns me as null when the authenticated user is not an eligible participant', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
 
     prisma.user.findMany.mockResolvedValue([
       createUser('user-1', 'Ada Lovelace', 100),
     ]);
     prisma.user.findFirst.mockResolvedValue(null);
 
-    const result = await service.getRanking('admin-1');
+    const result = await repository.getRanking('admin-1');
 
     expect(prisma.user.count).not.toHaveBeenCalled();
     expect(result.me).toBeNull();
   });
 
   it('accepts limit 50 and rejects invalid limits', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
 
     prisma.user.findMany.mockResolvedValue([]);
     prisma.user.findFirst.mockResolvedValue(null);
 
-    await service.getRanking('user-1', { limit: '50', period: 'all' });
+    await repository.getRanking('user-1', { limit: '50', period: 'all' });
 
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 50 }),
     );
     await expect(
-      service.getRanking('user-1', { limit: '0', period: 'all' }),
+      repository.getRanking('user-1', { limit: '0', period: 'all' }),
     ).rejects.toThrow(BadRequestException);
     await expect(
-      service.getRanking('user-1', { limit: '51', period: 'all' }),
+      repository.getRanking('user-1', { limit: '51', period: 'all' }),
     ).rejects.toThrow(BadRequestException);
     await expect(
-      service.getRanking('user-1', { limit: 'abc', period: 'all' }),
+      repository.getRanking('user-1', { limit: 'abc', period: 'all' }),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('returns daily ranking from action redeem credits in the Sao Paulo day', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
 
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-20T15:00:00.000Z'));
@@ -281,7 +281,7 @@ describe('RankingService', () => {
       { userId: 'user-current', _sum: { points: 20 } },
     ]);
 
-    const result = await service.getRanking('user-current', {
+    const result = await repository.getRanking('user-current', {
       limit: '3',
       period: 'daily',
     });
@@ -310,7 +310,7 @@ describe('RankingService', () => {
   });
 
   it('returns an empty period top list while preserving current participant position with zero xp', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
 
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-20T15:00:00.000Z'));
@@ -339,7 +339,7 @@ describe('RankingService', () => {
     );
     prisma.pointEvent.groupBy.mockResolvedValue([]);
 
-    const result = await service.getRanking('user-current', {
+    const result = await repository.getRanking('user-current', {
       limit: '10',
       period: 'daily',
     });
@@ -351,13 +351,13 @@ describe('RankingService', () => {
   });
 
   it('rejects invalid period values', async () => {
-    const { service } = createService();
+    const { repository } = createRepository();
 
     await expect(
-      service.getRanking('user-1', { limit: '10', period: 'monthly' }),
+      repository.getRanking('user-1', { limit: '10', period: 'monthly' }),
     ).rejects.toThrow(BadRequestException);
     await expect(
-      service.getRanking('user-1', { limit: '10', period: 'weekly' }),
+      repository.getRanking('user-1', { limit: '10', period: 'weekly' }),
     ).rejects.toThrow(BadRequestException);
   });
 });

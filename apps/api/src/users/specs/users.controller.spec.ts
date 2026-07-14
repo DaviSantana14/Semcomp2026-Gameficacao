@@ -1,5 +1,5 @@
 import { UserRole } from '@prisma/client';
-import { UsersController } from './users.controller';
+import { UsersController } from '../users.controller';
 
 describe('UsersController', () => {
   it('returns the authenticated user without csrfToken transport data', () => {

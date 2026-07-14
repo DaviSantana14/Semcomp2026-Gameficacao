@@ -3,10 +3,10 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import * as eventCode from '../common/event-code';
-import { ClaimCodesService } from './claim-codes.service';
+import * as eventCode from '../../common/event-code';
+import { ClaimCodesRepository } from '../claim-codes.repository';
 
-function createService() {
+function createRepository() {
   const claimCode = {
     count: jest.fn(),
     findMany: jest.fn(),
@@ -23,10 +23,13 @@ function createService() {
     ),
   };
 
-  return { service: new ClaimCodesService(prisma as never), prisma };
+  return {
+    repository: new ClaimCodesRepository(prisma as never),
+    prisma,
+  };
 }
 
-describe('ClaimCodesService', () => {
+describe('ClaimCodesRepository', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it.each([
@@ -44,7 +47,7 @@ describe('ClaimCodesService', () => {
       'AVAILABLE',
     ],
   ])('derives claim-code status with USED precedence', async (row, status) => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.claimCode.count.mockResolvedValue(1);
     prisma.claimCode.findMany.mockResolvedValue([
       {
@@ -58,15 +61,15 @@ describe('ClaimCodesService', () => {
       },
     ]);
 
-    const result = await service.findAll({ page: 1, limit: 20 });
+    const result = await repository.findAll({ page: 1, limit: 20 });
     expect(result.items[0].status).toBe(status);
   });
 
   it('filters by action, normalizes search and uses stable server pagination with minimal selects', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.claimCode.count.mockResolvedValue(0);
     prisma.claimCode.findMany.mockResolvedValue([]);
-    await service.findAll({
+    await repository.findAll({
       page: 2,
       limit: 10,
       actionId: 'a1',
@@ -101,11 +104,11 @@ describe('ClaimCodesService', () => {
   ] as const)(
     'filters claim codes by %s status',
     async (status, expectedStatusWhere) => {
-      const { service, prisma } = createService();
+      const { repository, prisma } = createRepository();
       prisma.claimCode.count.mockResolvedValue(0);
       prisma.claimCode.findMany.mockResolvedValue([]);
 
-      await service.findAll({ page: 1, limit: 10, status });
+      await repository.findAll({ page: 1, limit: 10, status });
 
       expect(prisma.claimCode.count).toHaveBeenCalledWith({
         where: expectedStatusWhere,
@@ -117,7 +120,7 @@ describe('ClaimCodesService', () => {
     [false, 'DISABLED'],
     [true, 'AVAILABLE'],
   ])('toggles an unused code to %s conditionally', async (isActive, status) => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 1 });
     prisma.claimCode.findUnique.mockResolvedValue({
       id: 'c1',
@@ -126,7 +129,7 @@ describe('ClaimCodesService', () => {
       action: { isActive: true },
     });
     await expect(
-      service.updateStatus('c1', { isActive }),
+      repository.updateStatus('c1', { isActive }),
     ).resolves.toMatchObject({ status });
     expect(prisma.claimCode.updateMany).toHaveBeenCalledWith({
       where: { id: 'c1', isUsed: false },
@@ -135,7 +138,7 @@ describe('ClaimCodesService', () => {
   });
 
   it('allows activation while the action is inactive', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 1 });
     prisma.claimCode.findUnique.mockResolvedValue({
       id: 'c1',
@@ -144,40 +147,40 @@ describe('ClaimCodesService', () => {
       action: { isActive: false },
     });
     await expect(
-      service.updateStatus('c1', { isActive: true }),
+      repository.updateStatus('c1', { isActive: true }),
     ).resolves.toMatchObject({ status: 'BLOCKED_BY_ACTION' });
   });
 
   it('returns 404 when toggled code does not exist', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 0 });
     prisma.claimCode.findUnique.mockResolvedValue(null);
     await expect(
-      service.updateStatus('missing', { isActive: false }),
+      repository.updateStatus('missing', { isActive: false }),
     ).rejects.toThrow(NotFoundException);
   });
 
   it('returns 409 for used code, including a concurrent consumption', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 0 });
     prisma.claimCode.findUnique.mockResolvedValue({ id: 'c1', isUsed: true });
     await expect(
-      service.updateStatus('c1', { isActive: false }),
+      repository.updateStatus('c1', { isActive: false }),
     ).rejects.toThrow(ConflictException);
   });
 
   it('throws when the action does not exist', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue(null);
 
-    await expect(service.generateBatch('missing', 2)).rejects.toThrow(
+    await expect(repository.generateBatch('missing', 2)).rejects.toThrow(
       NotFoundException,
     );
     expect(prisma.claimCode.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it('generates an ordered batch for an active action', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
@@ -193,7 +196,7 @@ describe('ClaimCodesService', () => {
       { code: 'BBBB-BBBB' },
     ]);
 
-    await expect(service.generateBatch('action-1', 3)).resolves.toEqual({
+    await expect(repository.generateBatch('action-1', 3)).resolves.toEqual({
       action: { id: 'action-1', name: 'Credenciamento' },
       quantity: 3,
       codes: ['AAAA-AAAA', 'BBBB-BBBB', 'CCCC-CCCC'],
@@ -214,7 +217,7 @@ describe('ClaimCodesService', () => {
   });
 
   it('creates a batch inside a transaction', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
@@ -224,13 +227,13 @@ describe('ClaimCodesService', () => {
       { code: 'AAAA-AAAA' },
     ]);
 
-    await service.generateBatch('action-1', 1);
+    await repository.generateBatch('action-1', 1);
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('accepts an inactive action without selecting or filtering isActive', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue({
       id: 'inactive-action',
       name: 'Atividade encerrada',
@@ -240,7 +243,9 @@ describe('ClaimCodesService', () => {
       { code: 'AAAA-AAAA' },
     ]);
 
-    await expect(service.generateBatch('inactive-action', 1)).resolves.toEqual({
+    await expect(
+      repository.generateBatch('inactive-action', 1),
+    ).resolves.toEqual({
       action: { id: 'inactive-action', name: 'Atividade encerrada' },
       quantity: 1,
       codes: ['AAAA-AAAA'],
@@ -252,7 +257,7 @@ describe('ClaimCodesService', () => {
   });
 
   it('retries only the remaining quantity after partial collisions', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
@@ -268,7 +273,7 @@ describe('ClaimCodesService', () => {
       .mockResolvedValueOnce([{ code: 'AAAA-AAAA' }])
       .mockResolvedValueOnce([{ code: 'DDDD-DDDD' }, { code: 'EEEE-EEEE' }]);
 
-    const result = await service.generateBatch('action-1', 3);
+    const result = await repository.generateBatch('action-1', 3);
 
     expect(result.quantity).toBe(3);
     expect(result.codes).toEqual(['AAAA-AAAA', 'DDDD-DDDD', 'EEEE-EEEE']);
@@ -284,7 +289,7 @@ describe('ClaimCodesService', () => {
   });
 
   it('fails after five rounds when collisions prevent completion', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
@@ -292,14 +297,14 @@ describe('ClaimCodesService', () => {
     jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
     prisma.claimCode.createManyAndReturn.mockResolvedValue([]);
 
-    await expect(service.generateBatch('action-1', 1)).rejects.toThrow(
+    await expect(repository.generateBatch('action-1', 1)).rejects.toThrow(
       ServiceUnavailableException,
     );
     expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledTimes(5);
   });
 
   it('rolls back partial inserts when retries cannot complete the batch', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     const attemptedCodes: string[] = [];
     const committedCodes: string[] = [];
     let insertCalls = 0;
@@ -333,7 +338,7 @@ describe('ClaimCodesService', () => {
         }),
     );
 
-    await expect(service.generateBatch('action-1', 2)).rejects.toThrow(
+    await expect(repository.generateBatch('action-1', 2)).rejects.toThrow(
       ServiceUnavailableException,
     );
 
@@ -342,7 +347,7 @@ describe('ClaimCodesService', () => {
   });
 
   it('terminates with 503 when a repetitive generator cannot fill multiple candidates', async () => {
-    const { service, prisma } = createService();
+    const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
@@ -357,7 +362,7 @@ describe('ClaimCodesService', () => {
     });
     prisma.claimCode.createManyAndReturn.mockResolvedValue([]);
 
-    await expect(service.generateBatch('action-1', 2)).rejects.toThrow(
+    await expect(repository.generateBatch('action-1', 2)).rejects.toThrow(
       ServiceUnavailableException,
     );
     expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledTimes(5);

@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { UpdateRewardDto } from './update-reward.dto';
+import { UpdateRewardDto } from '../dto/update-reward.dto';
 
 describe('UpdateRewardDto', () => {
   it('accepts explicit values that clear description and image', async () => {

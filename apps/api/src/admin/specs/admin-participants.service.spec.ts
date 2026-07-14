@@ -6,8 +6,8 @@ import {
   RedemptionStatus,
   UserRole,
 } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { AdminParticipantsService } from './admin-participants.service';
+import { AdminParticipantsRepository } from '../admin-participants.repository';
+import { AdminParticipantsService } from '../admin-participants.service';
 
 describe(AdminParticipantsService.name, () => {
   const prisma = {
@@ -34,7 +34,10 @@ describe(AdminParticipantsService.name, () => {
     const module = await Test.createTestingModule({
       providers: [
         AdminParticipantsService,
-        { provide: PrismaService, useValue: prisma },
+        {
+          provide: AdminParticipantsRepository,
+          useValue: new AdminParticipantsRepository(prisma as never),
+        },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);

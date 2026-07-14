@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { AdminParticipantRedemptionsQueryDto } from './admin-participant-redemptions-query.dto';
+import { AdminParticipantRedemptionsQueryDto } from '../dto/admin-participant-redemptions-query.dto';
 
 describe('AdminParticipantRedemptionsQueryDto', () => {
   it.each(['all', 'pending', 'delivered', 'cancelled'])(

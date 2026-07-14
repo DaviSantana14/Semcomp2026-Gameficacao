@@ -1,6 +1,6 @@
 import { UserRole } from '@prisma/client';
-import { ROLES_KEY } from '../auth/roles.decorator';
-import { ActionsController } from './actions.controller';
+import { ROLES_KEY } from '../../auth/roles.decorator';
+import { ActionsController } from '../actions.controller';
 
 describe('ActionsController player authorization', () => {
   const service = {
