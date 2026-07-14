@@ -20,8 +20,9 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
+import type { AuthenticatedRequest } from '../common/request-context';
 import { AuthService } from './auth.service';
 import {
   getAuthCookieOptions,
@@ -34,11 +35,7 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 
-type CsrfRequest = Request & {
-  user: {
-    csrfToken: string;
-  };
-};
+type CsrfRequest = AuthenticatedRequest<{ csrfToken: string }>;
 
 @ApiTags('Auth')
 @Controller('auth')

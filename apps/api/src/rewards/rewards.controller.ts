@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
+import type { AuthenticatedRequest } from '../common/request-context';
 import {
   RewardRedemptionResponseDto,
   toRewardRedemptionResponseDto,
@@ -84,10 +85,7 @@ export class RewardsController {
   })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
-  async redeem(
-    @Param('id') id: string,
-    @Req() request: { user: { id: string } },
-  ) {
+  async redeem(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
     const redemption = await this.rewardsService.redeem(id, request.user.id);
 
     return toRewardRedemptionResponseDto(redemption);

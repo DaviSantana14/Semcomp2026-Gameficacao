@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ActionsModule } from './actions/actions.module';
 import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { ClaimCodesModule } from './claim-codes/claim-codes.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RankingModule } from './ranking/ranking.module';
+import { RequestIdMiddleware } from './common/request-id.middleware';
 import { RewardsModule } from './rewards/rewards.module';
 import { UsersModule } from './users/users.module';
 
@@ -24,4 +25,8 @@ import { UsersModule } from './users/users.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes('*path');
+  }
+}
