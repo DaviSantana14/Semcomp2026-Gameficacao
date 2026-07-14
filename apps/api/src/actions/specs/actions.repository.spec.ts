@@ -58,9 +58,7 @@ function createRepository() {
   };
 
   const tx = {
-    action: {
-      findUnique: jest.fn(),
-    },
+    action,
     claimCode: {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
@@ -93,9 +91,10 @@ function createRepository() {
     ),
   };
 
+  const audit = { record: jest.fn().mockResolvedValue({ id: 'audit-1' }) };
   const persistenceRepository = new ActionsRepository(prisma as never);
   return {
-    repository: new ActionsService(persistenceRepository),
+    repository: new ActionsService(persistenceRepository, audit as never),
     prisma,
     tx,
   };
@@ -232,7 +231,7 @@ describe('ActionsRepository', () => {
 
       expect(prisma.action.update).toHaveBeenCalledWith({
         where: { id: 'action-1' },
-        data: { name: 'Novo nome', code: 'NEW', isCodeActive: true },
+        data: { name: 'Novo nome', code: 'NEW' },
         select: actionSummarySelect,
       });
     });
@@ -250,7 +249,7 @@ describe('ActionsRepository', () => {
 
       expect(prisma.action.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { code: 'NEW', isCodeActive: false },
+          data: { code: 'NEW' },
         }),
       );
     });
@@ -277,7 +276,7 @@ describe('ActionsRepository', () => {
       });
       expect(prisma.action.update).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          data: { code: 'NEW', isCodeActive: false },
+          data: { code: 'NEW' },
         }),
       );
     });

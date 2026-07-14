@@ -4,6 +4,7 @@ import { AdminDashboardRepository } from '../admin-dashboard.repository';
 import { AdminDashboardService } from '../admin-dashboard.service';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
+import { AuditService } from '../../audit/audit.service';
 
 describe('admin service layering', () => {
   it('keeps participant absence as a service HTTP decision', async () => {
@@ -14,6 +15,7 @@ describe('admin service layering', () => {
           provide: AdminParticipantsRepository,
           useValue: { findParticipantById: jest.fn().mockResolvedValue(null) },
         },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     await expect(

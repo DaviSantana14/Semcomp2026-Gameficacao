@@ -245,7 +245,10 @@ describe('Admin participants (e2e)', () => {
   it('invalidates a disabled participant session and allows reactivation', async () => {
     await harness
       .patch(`/admin/participants/${first.id}/status`, adminSession)
-      .send({ isActive: false })
+      .send({
+        isActive: false,
+        reason: 'Desativacao administrativa do participante',
+      })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({ isActive: false }),
@@ -253,7 +256,10 @@ describe('Admin participants (e2e)', () => {
     await harness.get('/users/me', firstSession).expect(401);
     await harness
       .patch(`/admin/participants/${first.id}/status`, adminSession)
-      .send({ isActive: true })
+      .send({
+        isActive: true,
+        reason: 'Reativacao administrativa do participante',
+      })
       .expect(200);
     firstSession = await harness.login(first.cpf, first.email);
   });

@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
+import { AuditService } from '../../audit/audit.service';
 
 describe(AdminParticipantsService.name, () => {
   const prisma = {
@@ -15,6 +16,7 @@ describe(AdminParticipantsService.name, () => {
       count: jest.fn(),
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     pointEvent: { count: jest.fn(), findMany: jest.fn() },
@@ -24,10 +26,14 @@ describe(AdminParticipantsService.name, () => {
       findMany: jest.fn(),
       groupBy: jest.fn(),
     },
+    $transaction: jest.fn(),
   };
   let service: AdminParticipantsService;
   beforeEach(async () => {
     jest.clearAllMocks();
+    prisma.$transaction.mockImplementation(
+      (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+    );
     prisma.pointEvent.count.mockResolvedValue(0);
     prisma.claimCode.count.mockResolvedValue(0);
     prisma.rewardRedemption.groupBy.mockResolvedValue([]);
@@ -38,6 +44,7 @@ describe(AdminParticipantsService.name, () => {
           provide: AdminParticipantsRepository,
           useValue: new AdminParticipantsRepository(prisma as never),
         },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);
@@ -169,44 +176,56 @@ describe(AdminParticipantsService.name, () => {
   });
 
   it('returns 404 when status update targets an admin or missing id', async () => {
-    prisma.user.updateMany.mockResolvedValue({ count: 0 });
+    prisma.user.findFirst.mockResolvedValue(null);
     await expect(
-      service.updateStatus('admin', { isActive: false }),
+      service.updateStatus(
+        'admin',
+        { isActive: false, reason: 'Desativacao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
       where: { id: 'admin', role: UserRole.PARTICIPANT },
-      data: { isActive: false },
+      select: { id: true, isActive: true },
     });
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('updates participant status and returns the refreshed participant', async () => {
     const now = new Date('2026-07-11T12:00:00.000Z');
-    prisma.user.updateMany.mockResolvedValue({ count: 1 });
-    prisma.user.findFirst.mockResolvedValue({
-      id: 'p1',
-      name: 'Ana',
-      cpf: '1',
-      email: 'ana@example.com',
-      points: 5,
-      xp: 10,
-      level: 2,
-      isActive: false,
-      createdAt: now,
-      updatedAt: now,
-      _count: { pointEvents: 2, rewardRedemptions: 1 },
-    });
+    prisma.user.update.mockResolvedValue({ id: 'p1', isActive: false });
+    prisma.user.findFirst
+      .mockResolvedValueOnce({ id: 'p1', isActive: true })
+      .mockResolvedValueOnce({
+        id: 'p1',
+        name: 'Ana',
+        cpf: '1',
+        email: 'ana@example.com',
+        points: 5,
+        xp: 10,
+        level: 2,
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+        _count: { pointEvents: 2, rewardRedemptions: 1 },
+      });
 
     await expect(
-      service.updateStatus('p1', { isActive: false }),
+      service.updateStatus(
+        'p1',
+        { isActive: false, reason: 'Desativacao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
     ).resolves.toMatchObject({
       id: 'p1',
       isActive: false,
       actionRedemptionsCount: 2,
       pendingRewardRedemptionsCount: 1,
     });
-    expect(prisma.user.updateMany).toHaveBeenCalledWith({
-      where: { id: 'p1', role: UserRole.PARTICIPANT },
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
       data: { isActive: false },
+      select: { id: true, isActive: true },
     });
   });
 

@@ -25,6 +25,7 @@ export type SystemAuditActor = {
 };
 
 export interface ParticipantStatusSnapshot {
+  id: string;
   isActive: boolean;
 }
 
@@ -320,7 +321,7 @@ interface OperationRule {
 }
 
 const participantStatusRule: ObjectRule = {
-  required: { isActive: 'boolean' },
+  required: { id: 'string', isActive: 'boolean' },
 };
 const actionRule: ObjectRule = {
   required: {
@@ -696,7 +697,7 @@ export class AuditService {
     const value = source as unknown as Record<string, unknown>;
     switch (operation) {
       case AuditOperation.PARTICIPANT_STATUS_CHANGED:
-        return pickScalarFields(value, ['isActive']);
+        return pickScalarFields(value, ['id', 'isActive']);
       case AuditOperation.ACTION_STATUS_CHANGED:
       case AuditOperation.REWARD_STATUS_CHANGED:
         return pickScalarFields(value, ['id', 'isActive']);

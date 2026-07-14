@@ -35,9 +35,13 @@ describe('AdminActionsController', () => {
     const query = { page: 1, limit: 20 };
     const dto = { points: 25 };
     await controller.findAll(query);
-    await controller.update('action-1', dto);
+    const request = { user: { id: 'admin-1' }, requestId: 'request-1' };
+    await controller.update('action-1', dto as never, request as never);
     expect(service.findAdminActions).toHaveBeenCalledWith(query);
-    expect(service.update).toHaveBeenCalledWith('action-1', dto);
+    expect(service.update).toHaveBeenCalledWith('action-1', dto, {
+      actorAdminId: 'admin-1',
+      requestId: 'request-1',
+    });
   });
 
   it('owns and delegates the legacy administrative action endpoints', async () => {
@@ -47,11 +51,15 @@ describe('AdminActionsController', () => {
       points: 10,
     };
 
-    await controller.create(dto);
+    const request = { user: { id: 'admin-1' }, requestId: 'request-1' };
+    await controller.create(dto as never, request as never);
     await controller.findLegacyActions();
     await controller.findLegacyActionById('action-1');
 
-    expect(service.create).toHaveBeenCalledWith(dto);
+    expect(service.create).toHaveBeenCalledWith(dto, {
+      actorAdminId: 'admin-1',
+      requestId: 'request-1',
+    });
     expect(service.findAll).toHaveBeenCalledWith();
     expect(service.findById).toHaveBeenCalledWith('action-1');
   });

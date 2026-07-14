@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
@@ -46,6 +47,8 @@ import {
   ReusableCodesQueryDto,
 } from './dto/reusable-codes-query.dto';
 import { UpdateActionDto } from './dto/update-action.dto';
+import { getAdminOperationContext } from '../common/request-context';
+import type { AuthenticatedRequest } from '../common/request-context';
 
 @ApiTags('Admin Actions')
 @ApiSecurity('access-token-cookie')
@@ -83,8 +86,13 @@ export class AdminActionsController {
       error: 'Forbidden',
     },
   })
-  async create(@Body() dto: CreateActionDto) {
-    return toActionResponseDto(await this.actions.create(dto));
+  async create(
+    @Body() dto: CreateActionDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return toActionResponseDto(
+      await this.actions.create(dto, getAdminOperationContext(request)),
+    );
   }
 
   @Get('actions')
@@ -162,8 +170,12 @@ export class AdminActionsController {
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   @ApiConflictResponse({ type: HttpErrorResponseDto })
-  update(@Param('id') id: string, @Body() dto: UpdateActionDto) {
-    return this.actions.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateActionDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.actions.update(id, dto, getAdminOperationContext(request));
   }
 
   @Get('admin/reusable-codes')

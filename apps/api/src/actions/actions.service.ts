@@ -23,23 +23,45 @@ import {
   ReusableCodesQueryDto,
 } from './dto/reusable-codes-query.dto';
 import { UpdateActionDto } from './dto/update-action.dto';
+import {
+  AuditActorType,
+  AuditEntityType,
+  AuditOperation,
+} from '../audit/audit.repository';
+import { AuditService } from '../audit/audit.service';
+import { AdminOperationContext } from '../common/request-context';
 
 @Injectable()
 export class ActionsService {
-  constructor(private readonly repository: ActionsRepository) {}
+  constructor(
+    private readonly repository: ActionsRepository,
+    private readonly audit: AuditService,
+  ) {}
 
-  async create(dto: CreateActionDto) {
+  async create(dto: CreateActionDto, context: AdminOperationContext) {
     const code = normalizeEventCode(dto.code);
     this.assertReusableCode(code);
     try {
-      return await this.repository.createAction({
-        name: dto.name,
-        description: dto.description,
-        type: dto.type,
-        code,
-        points: dto.points,
-        isActive: dto.isActive,
-        isCodeActive: Boolean(code),
+      return await this.repository.withTransaction(async (repository) => {
+        const action = await repository.createAction({
+          name: dto.name,
+          description: dto.description,
+          type: dto.type,
+          code,
+          points: dto.points,
+          isActive: dto.isActive,
+          isCodeActive: Boolean(code),
+        });
+        await this.audit.record(repository.auditWriter!, {
+          actor: { actorType: AuditActorType.ADMIN, ...context },
+          operation: AuditOperation.ACTION_CREATED,
+          entityType: AuditEntityType.ACTION,
+          entityId: action.id,
+          reason: dto.reason,
+          before: null,
+          after: toActionAuditSnapshot(action),
+        });
+        return action;
       });
     } catch (error) {
       this.rethrowActionCodeConflict(error);
@@ -54,11 +76,56 @@ export class ActionsService {
     return this.repository.findActionById(id);
   }
 
-  async update(id: string, dto: UpdateActionDto) {
-    const current = await this.repository.findActionCodeState(id);
-    if (!current) {
-      throw new NotFoundException('Atividade pontuável não encontrada.');
+  async update(
+    id: string,
+    dto: UpdateActionDto,
+    context: AdminOperationContext,
+  ) {
+    try {
+      return await this.repository.withTransaction(async (repository) => {
+        const current = await repository.findActionById(id);
+        if (!current) {
+          throw new NotFoundException('Atividade pontuável não encontrada.');
+        }
+        const input = this.buildActionUpdate(dto, current);
+        const effectiveInput = Object.fromEntries(
+          Object.entries(input).filter(
+            ([field, value]) => current[field as keyof ActionSummary] !== value,
+          ),
+        ) as ActionUpdateInput;
+        const changedFields = Object.keys(effectiveInput);
+        if (changedFields.length === 0) return current;
+
+        const updated = await repository.updateAction(id, effectiveInput);
+        if (changedFields.length === 1 && changedFields[0] === 'isActive') {
+          await this.audit.record(repository.auditWriter!, {
+            actor: { actorType: AuditActorType.ADMIN, ...context },
+            operation: AuditOperation.ACTION_STATUS_CHANGED,
+            entityType: AuditEntityType.ACTION,
+            entityId: id,
+            reason: dto.reason,
+            before: { isActive: current.isActive },
+            after: { isActive: updated.isActive },
+          });
+        } else {
+          await this.audit.record(repository.auditWriter!, {
+            actor: { actorType: AuditActorType.ADMIN, ...context },
+            operation: AuditOperation.ACTION_UPDATED,
+            entityType: AuditEntityType.ACTION,
+            entityId: id,
+            reason: dto.reason,
+            before: toActionAuditSnapshot(current),
+            after: toActionAuditSnapshot(updated),
+          });
+        }
+        return updated;
+      });
+    } catch (error) {
+      this.rethrowActionCodeConflict(error);
     }
+  }
+
+  private buildActionUpdate(dto: UpdateActionDto, current: ActionSummary) {
     const input: ActionUpdateInput = {};
     for (const field of [
       'name',
@@ -67,8 +134,9 @@ export class ActionsService {
       'points',
       'isActive',
     ] as const) {
-      if (dto[field] !== undefined)
+      if (dto[field] !== undefined) {
         Object.assign(input, { [field]: dto[field] });
+      }
     }
     if (dto.code !== undefined) {
       const code =
@@ -81,11 +149,7 @@ export class ActionsService {
     } else if (dto.isCodeActive !== undefined) {
       input.isCodeActive = current.code ? dto.isCodeActive : false;
     }
-    try {
-      return await this.repository.updateAction(id, input);
-    } catch (error) {
-      this.rethrowActionCodeConflict(error);
-    }
+    return input;
   }
 
   async findAdminActions(query: AdminActionsQueryDto) {
@@ -339,4 +403,16 @@ export class ActionsService {
     }
     throw error;
   }
+}
+
+function toActionAuditSnapshot(action: ActionSummary) {
+  return {
+    id: action.id,
+    name: action.name,
+    description: action.description,
+    type: action.type,
+    points: action.points,
+    isActive: action.isActive,
+    isCodeActive: action.isCodeActive,
+  };
 }

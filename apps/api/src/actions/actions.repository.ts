@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   ActionType,
   PointEventKind,
@@ -7,6 +7,10 @@ import {
 } from '@prisma/client';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuditRepository,
+  TransactionAuditWriter,
+} from '../audit/audit.repository';
 
 const actionSummarySelect = {
   id: true,
@@ -67,8 +71,12 @@ export interface ReusableCodePageFilter {
 @Injectable()
 export class ActionsRepository {
   private client: ActionsDatabase;
+  auditWriter?: TransactionAuditWriter;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private auditRepository?: AuditRepository,
+  ) {
     this.client = prisma;
   }
 
@@ -313,7 +321,9 @@ export class ActionsRepository {
       ActionsRepository.prototype,
     ) as ActionsRepository;
     repository.prisma = this.prisma;
+    repository.auditRepository = this.auditRepository;
     repository.client = tx;
+    repository.auditWriter = this.auditRepository?.bindTransaction(tx);
     return repository;
   }
 

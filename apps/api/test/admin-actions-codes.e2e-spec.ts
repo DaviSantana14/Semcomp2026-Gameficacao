@@ -97,6 +97,7 @@ describe('Admin actions and codes (e2e)', () => {
         type: ActionType.BONUS,
         points: 23,
         isActive: true,
+        reason: 'Criacao administrativa da atividade',
       })
       .expect(201);
     const id = (created.body as { id: string }).id;
@@ -110,7 +111,12 @@ describe('Admin actions and codes (e2e)', () => {
       );
     await harness
       .patch(`/admin/actions/${id}`, adminSession)
-      .send({ name: `${originalName} edited`, points: 99, isActive: false })
+      .send({
+        name: `${originalName} edited`,
+        points: 99,
+        isActive: false,
+        reason: 'Edicao administrativa da atividade',
+      })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({
@@ -132,14 +138,22 @@ describe('Admin actions and codes (e2e)', () => {
   it('controls action and reusable-code activation independently', async () => {
     await harness
       .patch(`/admin/actions/${reusableActionId}`, adminSession)
-      .send({ isActive: false, isCodeActive: true })
+      .send({
+        isActive: false,
+        isCodeActive: true,
+        reason: 'Desativacao administrativa da atividade',
+      })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({ isActive: false, isCodeActive: true }),
       );
     await harness
       .patch(`/admin/actions/${reusableActionId}`, adminSession)
-      .send({ isActive: true, isCodeActive: false })
+      .send({
+        isActive: true,
+        isCodeActive: false,
+        reason: 'Reativacao administrativa da atividade',
+      })
       .expect(200);
     await harness
       .post('/actions/redeem-code', secondSession)
@@ -147,7 +161,10 @@ describe('Admin actions and codes (e2e)', () => {
       .expect(400);
     await harness
       .patch(`/admin/actions/${reusableActionId}`, adminSession)
-      .send({ isCodeActive: true })
+      .send({
+        isCodeActive: true,
+        reason: 'Reativacao administrativa do codigo',
+      })
       .expect(200);
   });
 
@@ -158,6 +175,7 @@ describe('Admin actions and codes (e2e)', () => {
         name: `Actions generated ${suffix}`,
         type: ActionType.CHECKIN,
         points: 7,
+        reason: 'Criacao administrativa da atividade',
       })
       .expect(201);
     const actionId = (created.body as { id: string }).id;

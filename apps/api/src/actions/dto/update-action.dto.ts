@@ -8,6 +8,8 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
+  MinLength,
   Matches,
 } from 'class-validator';
 import {
@@ -16,6 +18,15 @@ import {
 } from '../../common/event-code';
 
 export class UpdateActionDto {
+  @ApiPropertyOptional({ minLength: 10, maxLength: 500, required: true })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason: string;
+
   @ApiPropertyOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,

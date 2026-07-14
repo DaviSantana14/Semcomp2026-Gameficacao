@@ -11,10 +11,20 @@ import {
   ParticipantStatusFilter,
 } from './dto/admin-participants-query.dto';
 import { UpdateParticipantStatusDto } from './dto/update-participant-status.dto';
+import {
+  AuditActorType,
+  AuditEntityType,
+  AuditOperation,
+} from '../audit/audit.repository';
+import { AuditService } from '../audit/audit.service';
+import { AdminOperationContext } from '../common/request-context';
 
 @Injectable()
 export class AdminParticipantsService {
-  constructor(private readonly repository: AdminParticipantsRepository) {}
+  constructor(
+    private readonly repository: AdminParticipantsRepository,
+    private readonly audit: AuditService,
+  ) {}
 
   async findAll(query: AdminParticipantsQueryDto) {
     const page = await this.repository.findParticipantPage({
@@ -34,14 +44,33 @@ export class AdminParticipantsService {
     );
   }
 
-  async updateStatus(id: string, dto: UpdateParticipantStatusDto) {
-    const result = await this.repository.updateParticipantStatus(
-      id,
-      dto.isActive,
-    );
-    if (result.count === 0) {
-      throw new NotFoundException('Participante não encontrado.');
-    }
+  async updateStatus(
+    id: string,
+    dto: UpdateParticipantStatusDto,
+    context: AdminOperationContext,
+  ) {
+    await this.repository.withTransaction(async (repository) => {
+      const current = await repository.findParticipantStatus(id);
+      if (!current) {
+        throw new NotFoundException('Participante não encontrado.');
+      }
+      if (current.isActive === dto.isActive) return;
+
+      const updated = await repository.updateParticipantStatus(
+        id,
+        dto.isActive,
+      );
+      await this.audit.record(repository.auditWriter!, {
+        actor: { actorType: AuditActorType.ADMIN, ...context },
+        operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
+        entityType: AuditEntityType.PARTICIPANT,
+        entityId: id,
+        participantId: id,
+        reason: dto.reason,
+        before: { id: current.id, isActive: current.isActive },
+        after: { id: updated.id, isActive: updated.isActive },
+      });
+    });
     return this.findOne(id);
   }
 
