@@ -76,6 +76,33 @@ describe('semantic repository transactions', () => {
     expect(prisma.claimCode.findUnique.mock.calls).toHaveLength(0);
     expect(exposedTransaction).toBe(transaction);
   });
+
+  it('binds the claim-code audit writer to the same transaction client', async () => {
+    const transaction = {
+      claimCode: { findUnique: jest.fn() },
+      adminAuditEvent: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+    };
+    const auditRepository = {
+      bindTransaction: jest.fn().mockReturnValue({ create: jest.fn() }),
+    };
+    const repository = new ClaimCodesRepository(
+      prisma as never,
+      auditRepository as never,
+    );
+
+    await repository.withTransaction((transactional) => {
+      expect(transactional.auditWriter).toBeDefined();
+      return Promise.resolve();
+    });
+
+    expect(auditRepository.bindTransaction).toHaveBeenCalledWith(transaction);
+  });
 });
 
 describe(UsersRepository.name, () => {

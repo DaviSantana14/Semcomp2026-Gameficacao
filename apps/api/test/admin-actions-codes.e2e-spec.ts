@@ -1,6 +1,7 @@
 import {
   ActionRedemptionMethod,
   ActionType,
+  AuditEntityType,
   AuditOperation,
   UserRole,
 } from '@prisma/client';
@@ -314,7 +315,10 @@ describe('Admin actions and codes (e2e)', () => {
     actionIds.push(actionId);
     const generated = await harness
       .post(`/admin/actions/${actionId}/claim-codes/generate`, adminSession)
-      .send({ quantity: 2 })
+      .send({
+        quantity: 2,
+        reason: 'Geracao administrativa dos codigos unicos',
+      })
       .expect(201);
     const codes = (generated.body as { codes: string[] }).codes;
     expect(codes).toHaveLength(2);
@@ -324,10 +328,36 @@ describe('Admin actions and codes (e2e)', () => {
     });
     claimCodeIds.push(...rows.map(({ id }) => id));
     expect(rows).toHaveLength(2);
+    const batchEvents = await harness.prisma.adminAuditEvent.findMany({
+      where: {
+        operation: AuditOperation.CLAIM_CODE_BATCH_GENERATED,
+        entityType: AuditEntityType.CLAIM_CODE_BATCH,
+        after: { path: ['actionId'], equals: actionId },
+      },
+    });
+    expect(batchEvents).toHaveLength(1);
+    expect(batchEvents[0]?.after).toEqual({
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      type: ActionType.CHECKIN,
+      actionId,
+    });
+    expect(JSON.stringify(batchEvents[0])).not.toContain(codes[0]);
+    expect(JSON.stringify(batchEvents[0])).not.toContain(codes[1]);
+    const filtered = await harness
+      .get(
+        `/admin/audit-events?entityType=${AuditEntityType.CLAIM_CODE_BATCH}&entityId=${batchEvents[0].entityId}`,
+        adminSession,
+      )
+      .expect(200);
+    expect((filtered.body as Page<{ id: string }>).items).toHaveLength(1);
 
     await harness
       .patch(`/admin/claim-codes/${rows[0].id}/status`, adminSession)
-      .send({ isActive: false })
+      .send({
+        isActive: false,
+        reason: 'Desativacao administrativa do codigo unico',
+      })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({ status: 'DISABLED' }),
@@ -343,8 +373,46 @@ describe('Admin actions and codes (e2e)', () => {
     ).toEqual([rows[0].id]);
     await harness
       .patch(`/admin/claim-codes/${rows[0].id}/status`, adminSession)
-      .send({ isActive: true })
+      .send({
+        isActive: true,
+        reason: 'Reativacao administrativa do codigo unico',
+      })
       .expect(200);
+    const statusEvents = await harness.prisma.adminAuditEvent.findMany({
+      where: {
+        entityType: AuditEntityType.CLAIM_CODE,
+        entityId: rows[0].id,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(statusEvents).toHaveLength(2);
+    expect(statusEvents[0]?.operation).toBe(
+      AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+    );
+    expect(statusEvents[0]?.before).toMatchObject({
+      id: rows[0].id,
+      isActive: true,
+      isUsed: false,
+    });
+    const statusBefore = statusEvents[0]?.before as {
+      maskedCode?: unknown;
+    };
+    expect(typeof statusBefore.maskedCode).toBe('string');
+    expect(statusBefore.maskedCode as string).toContain('*');
+    expect(JSON.stringify(statusEvents)).not.toContain(rows[0].code);
+
+    await harness
+      .patch(`/admin/claim-codes/${rows[0].id}/status`, adminSession)
+      .send({
+        isActive: true,
+        reason: 'Confirmacao administrativa sem mudanca',
+      })
+      .expect(200);
+    expect(
+      await harness.prisma.adminAuditEvent.count({
+        where: { entityId: rows[0].id },
+      }),
+    ).toBe(2);
 
     await harness
       .post('/actions/redeem-code', secondSession)
@@ -371,8 +439,69 @@ describe('Admin actions and codes (e2e)', () => {
     expect(typeof usedItem?.usedAt).toBe('string');
     await harness
       .patch(`/admin/claim-codes/${rows[1].id}/status`, adminSession)
-      .send({ isActive: true })
+      .send({
+        isActive: true,
+        reason: 'Reativacao administrativa de codigo utilizado',
+      })
       .expect(409);
+  });
+
+  it('requires admin authorization and a valid reason for code mutations', async () => {
+    await harness
+      .post(
+        `/admin/actions/${reusableActionId}/claim-codes/generate`,
+        firstSession,
+      )
+      .send({ quantity: 1, reason: 'Geracao nao autorizada de codigos' })
+      .expect(403);
+    await harness
+      .post(
+        `/admin/actions/${reusableActionId}/claim-codes/generate`,
+        adminSession,
+      )
+      .send({ quantity: 1 })
+      .expect(400);
+  });
+
+  it('rolls back generated codes and status changes when audit fails', async () => {
+    const action = await harness.prisma.action.create({
+      data: {
+        name: `Codes rollback ${randomUUID()}`,
+        type: ActionType.BONUS,
+        points: 3,
+      },
+    });
+    actionIds.push(action.id);
+    const existing = await harness.prisma.claimCode.create({
+      data: { actionId: action.id, code: `ROLL-${randomUUID()}`.toUpperCase() },
+    });
+    claimCodeIds.push(existing.id);
+    await installAuditFailureTrigger(harness);
+
+    await harness
+      .post(`/admin/actions/${action.id}/claim-codes/generate`, adminSession)
+      .send({
+        quantity: 3,
+        reason: 'Geracao que deve reverter por falha de auditoria',
+      })
+      .expect(500);
+    expect(
+      await harness.prisma.claimCode.count({ where: { actionId: action.id } }),
+    ).toBe(1);
+
+    await harness
+      .patch(`/admin/claim-codes/${existing.id}/status`, adminSession)
+      .send({
+        isActive: false,
+        reason: 'Status que deve reverter por falha de auditoria',
+      })
+      .expect(500);
+    expect(
+      await harness.prisma.claimCode.findUniqueOrThrow({
+        where: { id: existing.id },
+        select: { isActive: true },
+      }),
+    ).toEqual({ isActive: true });
   });
 
   it('separates reusable-code history from unused legacy actions', async () => {

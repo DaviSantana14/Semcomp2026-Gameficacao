@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuditRepository,
+  TransactionAuditWriter,
+} from '../audit/audit.repository';
 
 const claimCodeHistorySelect = {
   id: true,
@@ -29,8 +33,12 @@ export interface ClaimCodePageFilter {
 @Injectable()
 export class ClaimCodesRepository {
   private client: ClaimCodesDatabase;
+  auditWriter?: TransactionAuditWriter;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private auditRepository?: AuditRepository,
+  ) {
     this.client = prisma;
   }
 
@@ -48,7 +56,7 @@ export class ClaimCodesRepository {
   findActionForCodeBatch(actionId: string) {
     return this.client.action.findUnique({
       where: { id: actionId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, type: true },
     });
   }
 
@@ -114,7 +122,9 @@ export class ClaimCodesRepository {
       ClaimCodesRepository.prototype,
     ) as ClaimCodesRepository;
     repository.prisma = this.prisma;
+    repository.auditRepository = this.auditRepository;
     repository.client = tx;
+    repository.auditWriter = this.auditRepository?.bindTransaction(tx);
     return repository;
   }
 }

@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -28,6 +29,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
+import {
+  getAdminOperationContext,
+  type AuthenticatedRequest,
+} from '../common/request-context';
 import { ClaimCodesService } from './claim-codes.service';
 import { GenerateClaimCodesDto } from './dto/generate-claim-codes.dto';
 import { GeneratedClaimCodesResponseDto } from './dto/generated-claim-codes-response.dto';
@@ -59,8 +64,16 @@ export class ClaimCodesController {
   @ApiOkResponse({ type: ClaimCodeHistoryResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   @ApiConflictResponse({ type: HttpErrorResponseDto })
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateClaimCodeStatusDto) {
-    return this.claimCodesService.updateStatus(id, dto);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateClaimCodeStatusDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.claimCodesService.updateStatus(
+      id,
+      dto,
+      getAdminOperationContext(request),
+    );
   }
 
   @Post('actions/:id/claim-codes/generate')
@@ -78,8 +91,13 @@ export class ClaimCodesController {
   @ApiServiceUnavailableResponse({ type: HttpErrorResponseDto })
   generate(
     @Param('id') id: string,
-    @Body() { quantity }: GenerateClaimCodesDto,
+    @Body() dto: GenerateClaimCodesDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.claimCodesService.generateBatch(id, quantity);
+    return this.claimCodesService.generateBatch(
+      id,
+      dto,
+      getAdminOperationContext(request),
+    );
   }
 }

@@ -165,7 +165,12 @@ describe(AuditService.name, () => {
       entityType: AuditEntityType.CLAIM_CODE_BATCH,
       entityId: 'batch-1',
       reason: 'Geração de lote para atividade',
-      after: { quantity: 2, type: 'SINGLE_USE', actionId: 'action-1' },
+      after: {
+        requestedQuantity: 2,
+        createdQuantity: 2,
+        type: 'SINGLE_USE',
+        actionId: 'action-1',
+      },
       metadata: {
         actionId: 'action-1',
         batchSize: 2,
@@ -179,7 +184,8 @@ describe(AuditService.name, () => {
       expect.objectContaining({
         before: undefined,
         after: {
-          quantity: 2,
+          requestedQuantity: 2,
+          createdQuantity: 2,
           type: 'SINGLE_USE',
           actionId: 'action-1',
         },
@@ -220,7 +226,7 @@ describe(AuditService.name, () => {
     );
   });
 
-  it('masks a claim code value before persistence', async () => {
+  it('persists only a pre-masked claim code representation', async () => {
     await service.record(writer, {
       actor: {
         actorType: AuditActorType.ADMIN,
@@ -235,13 +241,13 @@ describe(AuditService.name, () => {
         id: 'code-1',
         isActive: true,
         isUsed: false,
-        code: 'ABCDEF123456',
+        maskedCode: 'AB********56',
       },
       after: {
         id: 'code-1',
         isActive: false,
         isUsed: false,
-        code: 'ABCDEF123456',
+        maskedCode: 'AB********56',
       },
     });
 

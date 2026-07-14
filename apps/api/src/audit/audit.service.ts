@@ -40,7 +40,8 @@ export interface ActionAuditSnapshot {
 }
 
 export interface ClaimCodeBatchSnapshot {
-  quantity: number;
+  requestedQuantity: number;
+  createdQuantity: number;
   type: string;
   actionId: string;
 }
@@ -49,7 +50,7 @@ export interface ClaimCodeSnapshotSource {
   id: string;
   isActive: boolean;
   isUsed: boolean;
-  code: string;
+  maskedCode: string;
 }
 
 export interface RewardAuditSnapshot {
@@ -303,6 +304,7 @@ type FieldKind =
   | 'number'
   | 'string'
   | 'stringArray'
+  | 'maskedCode'
   | 'date'
   | 'nullableString'
   | 'nullableDate';
@@ -338,14 +340,19 @@ const activeEntityRule: ObjectRule = {
   required: { isActive: 'boolean' },
 };
 const claimCodeBatchRule: ObjectRule = {
-  required: { quantity: 'number', type: 'string', actionId: 'string' },
+  required: {
+    requestedQuantity: 'number',
+    createdQuantity: 'number',
+    type: 'string',
+    actionId: 'string',
+  },
 };
 const claimCodeRule: ObjectRule = {
   required: {
     id: 'string',
     isActive: 'boolean',
     isUsed: 'boolean',
-    code: 'string',
+    maskedCode: 'maskedCode',
   },
 };
 const rewardRule: ObjectRule = {
@@ -713,14 +720,19 @@ export class AuditService {
           'isCodeActive',
         ]);
       case AuditOperation.CLAIM_CODE_BATCH_GENERATED:
-        return pickScalarFields(value, ['quantity', 'type', 'actionId']);
-      case AuditOperation.CLAIM_CODE_STATUS_CHANGED: {
-        const safe = pickScalarFields(value, ['id', 'isActive', 'isUsed']);
-        if (typeof value.code === 'string') {
-          safe.maskedCode = maskCode(value.code);
-        }
-        return safe;
-      }
+        return pickScalarFields(value, [
+          'requestedQuantity',
+          'createdQuantity',
+          'type',
+          'actionId',
+        ]);
+      case AuditOperation.CLAIM_CODE_STATUS_CHANGED:
+        return pickScalarFields(value, [
+          'id',
+          'isActive',
+          'isUsed',
+          'maskedCode',
+        ]);
       case AuditOperation.REWARD_CREATED:
       case AuditOperation.REWARD_UPDATED:
         return pickScalarFields(value, [
@@ -845,6 +857,10 @@ function matchesFieldKind(value: unknown, kind: FieldKind) {
       return (
         Array.isArray(value) && value.every((item) => typeof item === 'string')
       );
+    case 'maskedCode':
+      return (
+        typeof value === 'string' && value.length <= 100 && value.includes('*')
+      );
     case 'date':
       return typeof value === 'string' || value instanceof Date;
     case 'nullableString':
@@ -873,9 +889,4 @@ function pickScalarFields(source: Record<string, unknown>, keys: string[]) {
     }
   }
   return result;
-}
-
-function maskCode(code: string) {
-  if (code.length <= 4) return '*'.repeat(code.length);
-  return `${code.slice(0, 2)}${'*'.repeat(code.length - 4)}${code.slice(-2)}`;
 }
