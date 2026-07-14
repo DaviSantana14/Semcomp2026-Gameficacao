@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   INestApplication,
+  InternalServerErrorException,
   MiddlewareConsumer,
   Module,
   NestModule,
@@ -76,7 +77,7 @@ describe('AppModule middleware registration', () => {
     new AppModule().configure({ apply });
 
     expect(apply).toHaveBeenCalledWith(RequestIdMiddleware);
-    expect(forRoutes).toHaveBeenCalledWith('*path');
+    expect(forRoutes).toHaveBeenCalledWith('{*path}');
   });
 });
 
@@ -100,13 +101,33 @@ class ContextProbeController {
   }
 }
 
+@Controller()
+class RootProbeController {
+  @Get()
+  getRoot() {
+    return { ok: true };
+  }
+}
+
+@Controller('request-context-error-probe')
+class ErrorProbeController {
+  @Get()
+  getError(): never {
+    throw new InternalServerErrorException('Probe failure.');
+  }
+}
+
 @Module({
-  controllers: [ContextProbeController],
+  controllers: [
+    ContextProbeController,
+    RootProbeController,
+    ErrorProbeController,
+  ],
   providers: [ContextProbeService],
 })
 class ContextProbeModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestIdMiddleware).forRoutes('*path');
+    consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
   }
 }
 
@@ -146,5 +167,19 @@ describe('request identifier propagation', () => {
       'actorAdminId',
       'requestId',
     ]);
+  });
+
+  it('returns a generated request identifier for the root route', async () => {
+    const response = await request(app.getHttpServer()).get('/').expect(200);
+
+    expect(isUuid(response.headers['x-request-id'])).toBe(true);
+  });
+
+  it('keeps the generated request identifier on error responses', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/request-context-error-probe')
+      .expect(500);
+
+    expect(isUuid(response.headers['x-request-id'])).toBe(true);
   });
 });
