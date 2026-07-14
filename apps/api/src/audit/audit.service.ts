@@ -103,6 +103,8 @@ export interface BalanceAuditSnapshot {
   participantId: string;
   points: number;
   xp: number;
+  role?: string;
+  isActive?: boolean;
   pointEventId?: string;
   originalPointEventId?: string;
 }
@@ -250,11 +252,19 @@ export type RecordAuditEventInput =
       typeof AuditEntityType.POINT_EVENT
     > &
       RequiredParticipant & {
-        before: Pick<BalanceAuditSnapshot, 'participantId' | 'points' | 'xp'>;
+        before: Pick<
+          BalanceAuditSnapshot,
+          'participantId' | 'points' | 'xp' | 'role' | 'isActive'
+        > & { role: string; isActive: boolean };
         after: Pick<
           BalanceAuditSnapshot,
-          'participantId' | 'points' | 'xp' | 'pointEventId'
-        > & { pointEventId: string };
+          | 'participantId'
+          | 'points'
+          | 'xp'
+          | 'role'
+          | 'isActive'
+          | 'pointEventId'
+        > & { role: string; isActive: boolean; pointEventId: string };
         metadata?: Pick<AuditMetadataSource, 'pointEventId'>;
       })
   | (AuditEventBase<
@@ -415,13 +425,21 @@ const redemptionCancellationMetadataRule: ObjectRule = {
   optional: { rewardRedemptionId: 'string', pointEventId: 'string' },
 };
 const balanceBeforeRule: ObjectRule = {
-  required: { participantId: 'string', points: 'number', xp: 'number' },
+  required: {
+    participantId: 'string',
+    points: 'number',
+    xp: 'number',
+    role: 'string',
+    isActive: 'boolean',
+  },
 };
 const balanceAdjustedAfterRule: ObjectRule = {
   required: {
     participantId: 'string',
     points: 'number',
     xp: 'number',
+    role: 'string',
+    isActive: 'boolean',
     pointEventId: 'string',
   },
 };
@@ -726,6 +744,14 @@ export class AuditService {
           'pointEventId',
         ]);
       case AuditOperation.PARTICIPANT_BALANCE_ADJUSTED:
+        return pickScalarFields(value, [
+          'participantId',
+          'points',
+          'xp',
+          'role',
+          'isActive',
+          'pointEventId',
+        ]);
       case AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED:
       case AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED:
         return pickScalarFields(value, [

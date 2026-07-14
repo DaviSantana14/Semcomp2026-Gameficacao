@@ -135,6 +135,7 @@ export class AdminParticipantsRepository {
         select: {
           id: true,
           points: true,
+          xpDelta: true,
           kind: true,
           source: true,
           redemptionMethod: true,

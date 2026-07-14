@@ -260,6 +260,7 @@ describe(AdminParticipantsService.name, () => {
       {
         id: 'e1',
         points: 30,
+        xpDelta: 9,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
         redemptionMethod: 'CLAIM_CODE',
@@ -276,7 +277,7 @@ describe(AdminParticipantsService.name, () => {
       kind: 'credit',
     });
     expect(result.items[0]).toMatchObject({
-      xpDelta: 30,
+      xpDelta: 9,
       origin: 'UNIQUE_CODE',
       claimCode: { id: 'claim-1', code: 'ABC123' },
     });

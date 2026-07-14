@@ -90,6 +90,70 @@ describe(AuditService.name, () => {
     );
   });
 
+  it('requires and persists the minimal participant authorization facts for adjustments', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.PARTICIPANT_BALANCE_ADJUSTED,
+      entityType: AuditEntityType.POINT_EVENT,
+      entityId: 'event-1',
+      participantId: 'participant-1',
+      reason: 'Correcao operacional confirmada',
+      before: {
+        participantId: 'participant-1',
+        points: 10,
+        xp: 5,
+        role: 'PARTICIPANT',
+        isActive: false,
+      },
+      after: {
+        participantId: 'participant-1',
+        points: 12,
+        xp: 6,
+        role: 'PARTICIPANT',
+        isActive: false,
+        pointEventId: 'event-1',
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        before: {
+          participantId: 'participant-1',
+          points: 10,
+          xp: 5,
+          role: 'PARTICIPANT',
+          isActive: false,
+        },
+      }),
+    );
+
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.PARTICIPANT_BALANCE_ADJUSTED,
+        entityType: AuditEntityType.POINT_EVENT,
+        entityId: 'event-2',
+        participantId: 'participant-1',
+        reason: 'Correcao operacional confirmada',
+        before: { participantId: 'participant-1', points: 10, xp: 5 },
+        after: {
+          participantId: 'participant-1',
+          points: 12,
+          xp: 6,
+          pointEventId: 'event-2',
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('keeps optional snapshots absent and allowlists metadata', async () => {
     await service.record(writer, {
       actor: {

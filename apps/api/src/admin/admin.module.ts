@@ -4,9 +4,16 @@ import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminParticipantsService } from './admin-participants.service';
 import { AdminDashboardRepository } from './admin-dashboard.repository';
 import { AdminParticipantsRepository } from './admin-participants.repository';
+import { AuditModule } from '../audit/audit.module';
+import { AdminAdjustmentsController } from './admin-adjustments.controller';
+import { AdminAdjustmentsRepository } from './admin-adjustments.repository';
+import { AdminAdjustmentsService } from './admin-adjustments.service';
 @Module({
-  controllers: [AdminController],
+  imports: [AuditModule],
+  controllers: [AdminController, AdminAdjustmentsController],
   providers: [
+    AdminAdjustmentsService,
+    AdminAdjustmentsRepository,
     AdminDashboardService,
     AdminParticipantsService,
     AdminDashboardRepository,

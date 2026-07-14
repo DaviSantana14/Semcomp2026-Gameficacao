@@ -90,10 +90,7 @@ export class AdminParticipantsService {
     return paginate(
       page.rows.map((row) => ({
         ...row,
-        xpDelta:
-          row.source === 'ACTION_REDEEM' && row.kind === 'CREDIT'
-            ? row.points
-            : 0,
+        xpDelta: row.xpDelta,
         origin:
           row.source === 'REWARD_REDEMPTION'
             ? 'REWARD'
