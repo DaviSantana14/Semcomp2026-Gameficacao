@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  ActionRedemptionMethod,
   AuditActorType,
   AuditEntityType,
   AuditOperation,
@@ -8,12 +7,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-export {
-  ActionRedemptionMethod,
-  AuditActorType,
-  AuditEntityType,
-  AuditOperation,
-};
+export { AuditActorType, AuditEntityType, AuditOperation };
 export type AuditJsonValue = Prisma.InputJsonValue;
 
 const auditEventSelect = {

@@ -1,9 +1,11 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ActionRedemptionMethod } from '@prisma/client';
 import { ClaimCodesRepository } from '../claim-codes.repository';
 import { ClaimCodesService } from '../claim-codes.service';
-import { AuditService } from '../../audit/audit.service';
+import {
+  AuditService,
+  CLAIM_CODE_REDEMPTION_METHOD,
+} from '../../audit/audit.service';
 import {
   AuditActorType,
   AuditEntityType,
@@ -151,7 +153,7 @@ describe(ClaimCodesService.name, () => {
         after: {
           requestedQuantity: 2,
           createdQuantity: 2,
-          redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
+          redemptionMethod: CLAIM_CODE_REDEMPTION_METHOD,
           actionId: 'action-1',
         },
       }),

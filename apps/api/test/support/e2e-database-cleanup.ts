@@ -1,5 +1,4 @@
-import { PrismaService } from '../../src/prisma/prisma.service';
-import { ensureDatabaseUrl } from '../../src/prisma/database-url';
+import type { PrismaService } from '../../src/prisma/prisma.service';
 
 const disposableDatabaseMarker = /(^|[_-])(test|e2e)([_-]|$)/i;
 
@@ -17,7 +16,7 @@ export function isDisposableTestDatabase(
 export function assertDisposableTestDatabase(
   environment = process.env.NODE_ENV,
   databaseName = process.env.DB_NAME,
-  databaseUrl = ensureDatabaseUrl(),
+  databaseUrl = process.env.DATABASE_URL,
 ): void {
   const effectiveDatabaseName = databaseNameFromUrl(databaseUrl);
   if (
@@ -31,13 +30,21 @@ export function assertDisposableTestDatabase(
   }
 }
 
-export function hasDisposableTestDatabaseConfiguration(): boolean {
-  try {
-    assertDisposableTestDatabase();
-    return true;
-  } catch {
+export function hasDisposableTestDatabaseConfiguration(
+  environment = process.env.NODE_ENV,
+  databaseName = process.env.DB_NAME,
+  databaseUrl = process.env.DATABASE_URL,
+): boolean {
+  if (environment !== 'test' || !databaseName || !databaseUrl) {
     return false;
   }
+  const effectiveDatabaseName = databaseNameFromUrl(databaseUrl);
+  if (databaseName !== effectiveDatabaseName) {
+    throw new Error(
+      'Invalid E2E configuration: DB_NAME and DATABASE_URL must identify the same database.',
+    );
+  }
+  return isDisposableTestDatabase(environment, databaseName);
 }
 
 export async function truncateDisposableTestDatabase(
@@ -61,10 +68,19 @@ export async function truncateDisposableTestDatabase(
   );
 }
 
-function databaseNameFromUrl(databaseUrl: string): string {
+function databaseNameFromUrl(databaseUrl: string | undefined): string {
+  if (!databaseUrl) {
+    throw new Error('Invalid E2E configuration: DATABASE_URL is missing.');
+  }
   try {
-    return decodeURIComponent(new URL(databaseUrl).pathname.replace(/^\//, ''));
+    const databaseName = decodeURIComponent(
+      new URL(databaseUrl).pathname.replace(/^\//, ''),
+    );
+    if (!databaseName) {
+      throw new Error('empty database name');
+    }
+    return databaseName;
   } catch {
-    return '';
+    throw new Error('Invalid E2E configuration: malformed DATABASE_URL.');
   }
 }

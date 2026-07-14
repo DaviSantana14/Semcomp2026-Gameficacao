@@ -199,6 +199,38 @@ describe(AuditService.name, () => {
     );
   });
 
+  it.each([
+    ActionRedemptionMethod.DIRECT,
+    ActionRedemptionMethod.REUSABLE_CODE,
+  ])(
+    'rejects an incompatible claim-code batch redemption method: %s',
+    async (redemptionMethod) => {
+      // Deliberately exercises the runtime boundary with untyped input.
+      const input: any = {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.CLAIM_CODE_BATCH_GENERATED,
+        entityType: AuditEntityType.CLAIM_CODE_BATCH,
+        entityId: 'batch-1',
+        reason: 'Geracao de lote para atividade',
+        after: {
+          requestedQuantity: 2,
+          createdQuantity: 2,
+          redemptionMethod,
+          actionId: 'action-1',
+        },
+      };
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+        service.record(writer, input),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
   it('accepts an explicit null previous snapshot for a creation', async () => {
     await service.record(writer, {
       actor: {
@@ -548,6 +580,20 @@ describe(AuditService.name, () => {
         reason: 'Alteração administrativa necessária',
         before: { isActive: true },
         after: { isActive: false },
+      });
+      accept({
+        actor: { actorType: AuditActorType.SYSTEM, requestId: 'request-1' },
+        operation: AuditOperation.CLAIM_CODE_BATCH_GENERATED,
+        entityType: AuditEntityType.CLAIM_CODE_BATCH,
+        entityId: 'batch-1',
+        reason: 'Geracao de lote para atividade',
+        after: {
+          requestedQuantity: 1,
+          createdQuantity: 1,
+          // @ts-expect-error claim-code batches only support CLAIM_CODE
+          redemptionMethod: ActionRedemptionMethod.DIRECT,
+          actionId: 'action-1',
+        },
       });
       // @ts-expect-error operation and entityType must be compatible
       accept({

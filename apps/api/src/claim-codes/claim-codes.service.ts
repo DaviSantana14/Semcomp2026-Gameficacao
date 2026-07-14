@@ -6,12 +6,14 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
-  ActionRedemptionMethod,
   AuditActorType,
   AuditEntityType,
   AuditOperation,
 } from '../audit/audit.repository';
-import { AuditService } from '../audit/audit.service';
+import {
+  AuditService,
+  CLAIM_CODE_REDEMPTION_METHOD,
+} from '../audit/audit.service';
 import { AdminOperationContext } from '../common/request-context';
 import { maskClaimCode } from '../common/claim-code-mask';
 import { paginate } from '../common/dto/pagination-response.dto';
@@ -79,7 +81,7 @@ export class ClaimCodesService {
         after: {
           requestedQuantity: quantity,
           createdQuantity: insertedCodes.length,
-          redemptionMethod: ActionRedemptionMethod.CLAIM_CODE,
+          redemptionMethod: CLAIM_CODE_REDEMPTION_METHOD,
           actionId: action.id,
         },
       });

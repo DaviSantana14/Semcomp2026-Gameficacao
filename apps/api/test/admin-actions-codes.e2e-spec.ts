@@ -7,6 +7,8 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import request, { Response } from 'supertest';
+import { generateClaimCode } from '../src/common/event-code';
+import { maskClaimCode } from '../src/common/claim-code-mask';
 import { AdminE2eHarness, AuthSession } from './support/admin-e2e-harness';
 import {
   assertDisposableTestDatabase,
@@ -482,7 +484,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
     const code = await harness.prisma.claimCode.create({
       data: {
         actionId: reusableActionId,
-        code: `AUTH-${randomUUID()}`.toUpperCase(),
+        code: generateClaimCode(),
       },
     });
     claimCodeIds.push(code.id);
@@ -514,7 +516,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
       .expect(400);
   });
 
-  it('uses canonical short and long masks without persisting raw codes', async () => {
+  it('uses canonical database-format masks without persisting raw codes', async () => {
     const action = await harness.prisma.action.create({
       data: {
         name: `Mask formats ${randomUUID()}`,
@@ -523,12 +525,15 @@ describeDisposable('Admin actions and codes (e2e)', () => {
       },
     });
     actionIds.push(action.id);
+    const fixtureCodes = new Set<string>();
+    while (fixtureCodes.size < 2) fixtureCodes.add(generateClaimCode());
+    const [firstCode, secondCode] = [...fixtureCodes];
     const codes = await Promise.all([
       harness.prisma.claimCode.create({
-        data: { actionId: action.id, code: 'A1B2' },
+        data: { actionId: action.id, code: firstCode },
       }),
       harness.prisma.claimCode.create({
-        data: { actionId: action.id, code: `AB${randomUUID()}YZ` },
+        data: { actionId: action.id, code: secondCode },
       }),
     ]);
     claimCodeIds.push(...codes.map(({ id }) => id));
@@ -553,8 +558,8 @@ describeDisposable('Admin actions and codes (e2e)', () => {
     const masks = events.map(
       ({ before }) => (before as { maskedCode: string }).maskedCode,
     );
-    expect(masks).toContain('****');
-    expect(masks).toContain(`AB${'*'.repeat(36)}YZ`);
+    expect(masks).toContain(maskClaimCode(firstCode));
+    expect(masks).toContain(maskClaimCode(secondCode));
     const serialized = JSON.stringify(events);
     for (const { code } of codes) expect(serialized).not.toContain(code);
   });
@@ -569,7 +574,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
     });
     actionIds.push(action.id);
     const code = await harness.prisma.claimCode.create({
-      data: { actionId: action.id, code: `RACE-${randomUUID()}`.toUpperCase() },
+      data: { actionId: action.id, code: generateClaimCode() },
     });
     claimCodeIds.push(code.id);
 
@@ -604,7 +609,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
     });
     actionIds.push(action.id);
     const existing = await harness.prisma.claimCode.create({
-      data: { actionId: action.id, code: `ROLL-${randomUUID()}`.toUpperCase() },
+      data: { actionId: action.id, code: generateClaimCode() },
     });
     claimCodeIds.push(existing.id);
     await installAuditFailureTrigger(harness);

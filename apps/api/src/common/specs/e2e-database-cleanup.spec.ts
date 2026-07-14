@@ -1,5 +1,6 @@
 import {
   assertDisposableTestDatabase,
+  hasDisposableTestDatabaseConfiguration,
   isDisposableTestDatabase,
   truncateDisposableTestDatabase,
 } from '../../../test/support/e2e-database-cleanup';
@@ -33,6 +34,39 @@ describe('E2E database cleanup guard', () => {
         'test',
         'semcomp_test',
         'postgresql://user:password@localhost:5432/semcomp',
+      ),
+    ).toThrow(/database_url.*db_name|db_name.*database_url/i);
+  });
+
+  it('skips only absent or explicitly non-test database configuration', () => {
+    expect(
+      hasDisposableTestDatabaseConfiguration(undefined, undefined, undefined),
+    ).toBe(false);
+    expect(
+      hasDisposableTestDatabaseConfiguration(
+        'development',
+        'semcomp_test',
+        'not-a-url',
+      ),
+    ).toBe(false);
+  });
+
+  it('fails preflight clearly for malformed test DATABASE_URL', () => {
+    expect(() =>
+      hasDisposableTestDatabaseConfiguration(
+        'test',
+        'semcomp_test',
+        'not-a-url',
+      ),
+    ).toThrow(/malformed.*database_url|database_url.*malformed/i);
+  });
+
+  it('fails preflight clearly for inconsistent test database names', () => {
+    expect(() =>
+      hasDisposableTestDatabaseConfiguration(
+        'test',
+        'semcomp_test',
+        'postgresql://user:password@localhost:5432/other_test',
       ),
     ).toThrow(/database_url.*db_name|db_name.*database_url/i);
   });

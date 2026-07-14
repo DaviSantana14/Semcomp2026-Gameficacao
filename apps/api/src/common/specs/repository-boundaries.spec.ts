@@ -34,4 +34,14 @@ describe('repository architecture boundaries', () => {
       );
     }
   });
+
+  it('does not expose the Prisma redemption enum through the audit repository', () => {
+    const source = readFileSync(
+      join(sourceRoot, 'audit', 'audit.repository.ts'),
+      'utf8',
+    );
+    expect(source).not.toMatch(
+      /export\s*\{[^}]*ActionRedemptionMethod[^}]*\}/s,
+    );
+  });
 });

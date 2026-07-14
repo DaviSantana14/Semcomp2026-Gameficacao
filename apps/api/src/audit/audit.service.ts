@@ -13,6 +13,8 @@ import {
   ListParticipantAuditEventsDto,
 } from './dto/list-audit-events.dto';
 
+export const CLAIM_CODE_REDEMPTION_METHOD = 'CLAIM_CODE' as const;
+
 export type AdminAuditActor = {
   actorType: typeof AuditActorType.ADMIN;
   actorAdminId: string;
@@ -43,7 +45,7 @@ export interface ActionAuditSnapshot {
 export interface ClaimCodeBatchSnapshot {
   requestedQuantity: number;
   createdQuantity: number;
-  redemptionMethod: string;
+  redemptionMethod: typeof CLAIM_CODE_REDEMPTION_METHOD;
   actionId: string;
 }
 
@@ -305,6 +307,7 @@ type FieldKind =
   | 'number'
   | 'string'
   | 'stringArray'
+  | 'claimCodeRedemptionMethod'
   | 'maskedCode'
   | 'date'
   | 'nullableString'
@@ -344,7 +347,7 @@ const claimCodeBatchRule: ObjectRule = {
   required: {
     requestedQuantity: 'number',
     createdQuantity: 'number',
-    redemptionMethod: 'string',
+    redemptionMethod: 'claimCodeRedemptionMethod',
     actionId: 'string',
   },
 };
@@ -858,6 +861,8 @@ function matchesFieldKind(value: unknown, kind: FieldKind) {
       return (
         Array.isArray(value) && value.every((item) => typeof item === 'string')
       );
+    case 'claimCodeRedemptionMethod':
+      return value === CLAIM_CODE_REDEMPTION_METHOD;
     case 'maskedCode':
       return isCanonicalClaimCodeMask(value);
     case 'date':
