@@ -10,12 +10,8 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  ApiError,
-  fetchCsrfToken,
-  getCsrfToken,
-  redeemActionCode,
-} from "@/lib/api";
+import { redeemActionCode } from "@/features/actions/actions.service";
+import { ApiError } from "@/lib/http/api-error";
 
 const redeemCodeSchema = z.object({
   code: z
@@ -49,13 +45,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
   });
 
   const redeemMutation = useMutation({
-    mutationFn: async ({ code }: RedeemCodeValues) => {
-      if (!getCsrfToken()) {
-        await fetchCsrfToken();
-      }
-
-      return redeemActionCode(code);
-    },
+    mutationFn: ({ code }: RedeemCodeValues) => redeemActionCode(code),
     onSuccess: async (result) => {
       toast.success(`${result.action.name}: +${result.awardedPoints} XP`);
       await queryClient.invalidateQueries({ queryKey: ["me"] });

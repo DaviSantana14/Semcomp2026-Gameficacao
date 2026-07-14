@@ -1,4 +1,5 @@
-import { AdminReward, PaginatedResponse } from "@/lib/api";
+import type { AdminReward } from "@/features/rewards/rewards.types";
+import type { PaginatedResponse } from "@/lib/http/pagination.types";
 
 const paginationError = "Invalid reward options pagination response";
 

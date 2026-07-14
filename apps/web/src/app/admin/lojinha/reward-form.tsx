@@ -12,11 +12,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
+import type {
   AdminReward,
   CreateRewardPayload,
   UpdateRewardDetailsPayload,
-} from "@/lib/api";
+} from "@/features/rewards/rewards.types";
 
 export type RewardFormSubmission =
   | { mode: "create"; payload: CreateRewardPayload }

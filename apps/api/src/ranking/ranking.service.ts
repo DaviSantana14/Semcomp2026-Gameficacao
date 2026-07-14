@@ -1,18 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PointEventKind, PointEventSource, UserRole } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { RankingRepository } from './ranking.repository';
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 const RANKING_TIME_ZONE = 'America/Sao_Paulo';
 const RANKING_PERIODS = ['all', 'daily'] as const;
-
-const rankingUserSelect = {
-  id: true,
-  name: true,
-  xp: true,
-  createdAt: true,
-} as const;
 
 type RankingUser = {
   id: string;
@@ -22,109 +14,37 @@ type RankingUser = {
 };
 
 type RankingPeriod = (typeof RANKING_PERIODS)[number];
-type RankingOptions = {
-  limit?: string;
-  period?: string;
-};
-
-function toRankingEntry(user: RankingUser, position: number) {
-  return {
-    position,
-    name: user.name,
-    xp: user.xp,
-  };
-}
+type RankingOptions = { limit?: string; period?: string };
 
 @Injectable()
 export class RankingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly repository: RankingRepository) {}
 
   async getRanking(userId: string, options: RankingOptions = {}) {
     const period = this.parsePeriod(options.period);
-
-    if (period === 'all') {
-      return this.getGeneralRanking(userId, options.limit);
-    }
-
-    return this.getPeriodRanking(userId, options.limit, period);
+    return period === 'all'
+      ? this.getGeneralRanking(userId, options.limit)
+      : this.getPeriodRanking(userId, options.limit, period);
   }
 
   async getGeneralRanking(userId: string, limitQuery?: string) {
     const limit = this.parseLimit(limitQuery);
-    const eligibilityWhere = {
-      role: UserRole.PARTICIPANT,
-      isActive: true,
-    } as const;
-    const orderBy = [
-      { xp: 'desc' as const },
-      { createdAt: 'asc' as const },
-      { id: 'asc' as const },
-    ];
-
     const [rankingUsers, currentUser] = await Promise.all([
-      this.prisma.user.findMany({
-        where: {
-          ...eligibilityWhere,
-          xp: { gt: 0 },
-        },
-        select: rankingUserSelect,
-        orderBy,
-        take: limit,
-      }),
-      this.prisma.user.findFirst({
-        where: {
-          id: userId,
-          ...eligibilityWhere,
-        },
-        select: rankingUserSelect,
-      }),
+      this.repository.findTopGeneralRanking(limit),
+      this.repository.findEligibleUser(userId),
     ]);
-
     const ranking = rankingUsers.map((user, index) =>
       toRankingEntry(user, index + 1),
     );
-
-    if (!currentUser) {
-      return {
-        ranking,
-        me: null,
-      };
+    if (!currentUser) return { ranking, me: null };
+    const topIndex = rankingUsers.findIndex(
+      (user) => user.id === currentUser.id,
+    );
+    if (topIndex >= 0) {
+      return { ranking, me: toRankingEntry(currentUser, topIndex + 1) };
     }
-
-    const userInTop = rankingUsers.find((user) => user.id === currentUser.id);
-
-    if (userInTop) {
-      return {
-        ranking,
-        me: toRankingEntry(
-          currentUser,
-          rankingUsers.findIndex((user) => user.id === currentUser.id) + 1,
-        ),
-      };
-    }
-
-    const usersBeforeCurrentUser = await this.prisma.user.count({
-      where: {
-        ...eligibilityWhere,
-        OR: [
-          { xp: { gt: currentUser.xp } },
-          {
-            xp: currentUser.xp,
-            createdAt: { lt: currentUser.createdAt },
-          },
-          {
-            xp: currentUser.xp,
-            createdAt: currentUser.createdAt,
-            id: { lt: currentUser.id },
-          },
-        ],
-      },
-    });
-
-    return {
-      ranking,
-      me: toRankingEntry(currentUser, usersBeforeCurrentUser + 1),
-    };
+    const usersBefore = await this.repository.countUsersAhead(currentUser);
+    return { ranking, me: toRankingEntry(currentUser, usersBefore + 1) };
   }
 
   private async getPeriodRanking(
@@ -134,52 +54,25 @@ export class RankingService {
   ) {
     const limit = this.parseLimit(limitQuery);
     const window = getPeriodWindow(period, new Date());
-    const eligibilityWhere = {
-      role: UserRole.PARTICIPANT,
-      isActive: true,
-    } as const;
-
     const [eligibleUsers, eventGroups] = await Promise.all([
-      this.prisma.user.findMany({
-        where: eligibilityWhere,
-        select: rankingUserSelect,
-      }),
-      this.prisma.pointEvent.groupBy({
-        by: ['userId'],
-        where: {
-          kind: PointEventKind.CREDIT,
-          source: PointEventSource.ACTION_REDEEM,
-          createdAt: {
-            gte: window.start,
-            lt: window.end,
-          },
-        },
-        _sum: {
-          points: true,
-        },
-      }),
+      this.repository.findEligibleUsers(),
+      this.repository.findActionCreditTotals(window.start, window.end),
     ]);
-
     const xpByUserId = new Map(
-      eventGroups.map((group) => [group.userId, group._sum.points ?? 0]),
+      eventGroups.map(
+        (group) => [group.userId, group._sum.points ?? 0] as const,
+      ),
     );
-
     const rankedUsers = eligibleUsers
-      .map((user) => ({
-        ...user,
-        xp: xpByUserId.get(user.id) ?? 0,
-      }))
+      .map((user) => ({ ...user, xp: xpByUserId.get(user.id) ?? 0 }))
       .sort(compareRankingUsers);
-    const rankedUsersWithPeriodXp = rankedUsers.filter((user) => user.xp > 0);
-
-    const ranking = rankedUsersWithPeriodXp
+    const ranking = rankedUsers
+      .filter((user) => user.xp > 0)
       .slice(0, limit)
       .map((user, index) => toRankingEntry(user, index + 1));
-
     const currentUserIndex = rankedUsers.findIndex(
       (user) => user.id === userId,
     );
-
     return {
       ranking,
       me:
@@ -190,66 +83,49 @@ export class RankingService {
   }
 
   private parseLimit(limitQuery?: string) {
-    if (limitQuery === undefined || limitQuery === '') {
-      return DEFAULT_LIMIT;
-    }
-
+    if (limitQuery === undefined || limitQuery === '') return DEFAULT_LIMIT;
     const limit = Number(limitQuery);
-
     if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
       throw new BadRequestException(
         `limit deve ser um inteiro entre 1 e ${MAX_LIMIT}.`,
       );
     }
-
     return limit;
   }
 
   private parsePeriod(periodQuery?: string): RankingPeriod {
-    if (periodQuery === undefined || periodQuery === '') {
-      return 'all';
-    }
-
+    if (periodQuery === undefined || periodQuery === '') return 'all';
     if (RANKING_PERIODS.includes(periodQuery as RankingPeriod)) {
       return periodQuery as RankingPeriod;
     }
-
     throw new BadRequestException('period deve ser daily ou all.');
   }
 }
 
-function compareRankingUsers(left: RankingUser, right: RankingUser) {
-  if (left.xp !== right.xp) {
-    return right.xp - left.xp;
-  }
+function toRankingEntry(user: RankingUser, position: number) {
+  return { position, name: user.name, xp: user.xp };
+}
 
+function compareRankingUsers(left: RankingUser, right: RankingUser) {
+  if (left.xp !== right.xp) return right.xp - left.xp;
   const createdAtDifference =
     left.createdAt.getTime() - right.createdAt.getTime();
-
-  if (createdAtDifference !== 0) {
-    return createdAtDifference;
-  }
-
-  return left.id.localeCompare(right.id);
+  return createdAtDifference || left.id.localeCompare(right.id);
 }
 
 function getPeriodWindow(period: 'daily', now: Date) {
-  const startOfToday = getZonedStartOfDayUtc(now, RANKING_TIME_ZONE);
-
-  return {
-    start: startOfToday,
-    end: addUtcDays(startOfToday, 1),
-  };
+  const start = getZonedStartOfDayUtc(now, RANKING_TIME_ZONE);
+  return { start, end: addUtcDays(start, 1) };
 }
 
 function getZonedStartOfDayUtc(date: Date, timeZone: string) {
   const parts = getZonedParts(date, timeZone);
-  const utcApproximation = new Date(
+  const approximation = new Date(
     Date.UTC(parts.year, parts.month - 1, parts.day),
   );
-  const offset = getTimeZoneOffsetInMs(utcApproximation, timeZone);
-
-  return new Date(utcApproximation.getTime() - offset);
+  return new Date(
+    approximation.getTime() - getTimeZoneOffsetInMs(approximation, timeZone),
+  );
 }
 
 function getZonedParts(date: Date, timeZone: string) {
@@ -259,7 +135,6 @@ function getZonedParts(date: Date, timeZone: string) {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(date);
-
   return {
     year: Number(parts.find((part) => part.type === 'year')?.value),
     month: Number(parts.find((part) => part.type === 'month')?.value),
@@ -278,22 +153,21 @@ function getTimeZoneOffsetInMs(date: Date, timeZone: string) {
     second: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(date);
-
   const values = Object.fromEntries(
     parts
       .filter((part) => part.type !== 'literal')
       .map((part) => [part.type, Number(part.value)]),
   );
-  const zonedTime = Date.UTC(
-    values.year,
-    values.month - 1,
-    values.day,
-    values.hour,
-    values.minute,
-    values.second,
+  return (
+    Date.UTC(
+      values.year,
+      values.month - 1,
+      values.day,
+      values.hour,
+      values.minute,
+      values.second,
+    ) - date.getTime()
   );
-
-  return zonedTime - date.getTime();
 }
 
 function addUtcDays(date: Date, days: number) {

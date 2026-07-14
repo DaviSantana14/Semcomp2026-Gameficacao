@@ -1,78 +1,47 @@
-import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { toUserResponseDto } from './dto/user-response.dto';
+import { UsersRepository } from './users.repository';
 
-const userSummarySelect = {
-  id: true,
-  name: true,
-  cpf: true,
-  email: true,
-  role: true,
-  points: true,
-  xp: true,
-  level: true,
-  isActive: true,
-  lastLoginAt: true,
-  createdAt: true,
-} as const;
+export interface CreateUserInput {
+  name: string;
+  cpf: string;
+  email: string;
+}
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly repository: UsersRepository) {}
 
-  findAll() {
-    return this.prisma.user.findMany({
-      select: userSummarySelect,
-      orderBy: { createdAt: 'asc' },
-    });
+  async findAll() {
+    const users = await this.repository.findAll();
+    return users.map(toUserResponseDto);
   }
 
-  findById(id: string) {
-    return this.prisma.user.findUnique({
-      where: { id },
-      select: userSummarySelect,
-    });
+  async findById(id: string) {
+    const user = await this.repository.findById(id);
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado.');
+    }
+    return toUserResponseDto(user);
   }
 
   findActiveSummaryById(id: string) {
-    return this.prisma.user.findFirst({
-      where: {
-        id,
-        isActive: true,
-      },
-      select: userSummarySelect,
-    });
+    return this.repository.findActiveSummaryById(id);
   }
 
   findByCpfOrEmail(cpf: string, email: string) {
-    return this.prisma.user.findFirst({
-      where: {
-        OR: [{ cpf }, { email }],
-      },
-    });
+    return this.repository.findByCpfOrEmail(cpf, email);
   }
 
-  create(data: Pick<User, 'name' | 'cpf' | 'email'>) {
-    return this.prisma.user.create({
-      data,
-    });
+  create(input: CreateUserInput) {
+    return this.repository.create(input);
   }
 
   findActiveByCredentials(cpf: string, email: string) {
-    return this.prisma.user.findFirst({
-      where: {
-        cpf,
-        email,
-        isActive: true,
-      },
-    });
+    return this.repository.findActiveByCredentials(cpf, email);
   }
 
   updateLastLoginAt(id: string) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { lastLoginAt: new Date() },
-      select: userSummarySelect,
-    });
+    return this.repository.updateLastLoginAt(id);
   }
 }

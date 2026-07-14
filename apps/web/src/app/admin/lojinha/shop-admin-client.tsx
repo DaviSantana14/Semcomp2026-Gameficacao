@@ -16,15 +16,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  AdminReward,
-  AdminRewardsFilters,
-  ApiError,
   createReward,
   fetchAdminRewards,
-  fetchCsrfToken,
-  getCsrfToken,
   updateReward,
-} from "@/lib/api";
+} from "@/features/rewards/rewards.service";
+import type {
+  AdminReward,
+  AdminRewardsFilters,
+} from "@/features/rewards/rewards.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { RedemptionHistory } from "./redemption-history";
@@ -69,7 +69,6 @@ export function ShopAdminClient() {
   });
   const save = useMutation({
     mutationFn: async (submission: RewardFormSubmission) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return submission.mode === "edit"
         ? updateReward(submission.rewardId, submission.payload)
         : createReward(submission.payload);
@@ -89,7 +88,6 @@ export function ShopAdminClient() {
   });
   const toggle = useMutation({
     mutationFn: async (reward: AdminReward) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return updateReward(reward.id, { isActive: !reward.isActive });
     },
     onSuccess: async (_, reward) => {

@@ -23,7 +23,8 @@ import {
 import { LogoutButton } from "@/components/logout-button";
 import { Progress } from "@/components/ui/progress";
 import { useMe } from "@/hooks/use-auth";
-import { ApiError, fetchCsrfToken, type User } from "@/lib/api";
+import type { User } from "@/features/users/users.types";
+import { ApiError } from "@/lib/http/api-error";
 import { RedeemCodeDialog } from "./redeem-code-dialog";
 
 function getInitials(name: string) {
@@ -80,10 +81,6 @@ export function HomeClient() {
 function ParticipantHome({ user }: { user: User }) {
   const router = useRouter();
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
-
-  useEffect(() => {
-    void fetchCsrfToken().catch(() => undefined);
-  }, []);
 
   const progress = getLevelProgress(user.xp);
 

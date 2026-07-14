@@ -8,7 +8,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useMe } from "@/hooks/use-auth";
-import { ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/http/api-error";
 import { cn } from "@/lib/utils";
 import { AdminLoading } from "./admin-loading";
 

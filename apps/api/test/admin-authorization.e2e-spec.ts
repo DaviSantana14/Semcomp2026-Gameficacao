@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { generateClaimCode } from '../src/common/event-code';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 type AuthSession = {
@@ -32,6 +33,8 @@ describe('Player flow authorization matrix (e2e)', () => {
   let directActionId: string;
   let codedActionId: string;
   let rewardId: string;
+  let claimCodeId: string | undefined;
+  let pendingRedemptionId: string | undefined;
   let reusableCode: string;
 
   beforeAll(async () => {
@@ -103,6 +106,24 @@ describe('Player flow authorization matrix (e2e)', () => {
     codedActionId = codedAction.id;
     rewardId = reward.id;
 
+    const [claimCode, pendingRedemption] = await Promise.all([
+      prisma.claimCode.create({
+        data: {
+          code: generateClaimCode(),
+          actionId: directAction.id,
+        },
+      }),
+      prisma.rewardRedemption.create({
+        data: {
+          userId: participant.id,
+          rewardId: reward.id,
+          pointsSpent: reward.costInPoints,
+        },
+      }),
+    ]);
+    claimCodeId = claimCode.id;
+    pendingRedemptionId = pendingRedemption.id;
+
     adminSession = await login(admin.cpf, admin.email);
     participantSession = await login(participant.cpf, participant.email);
   });
@@ -114,6 +135,9 @@ describe('Player flow authorization matrix (e2e)', () => {
     await prisma.rewardRedemption.deleteMany({
       where: { userId: { in: [adminId, participantId] } },
     });
+    if (claimCodeId) {
+      await prisma.claimCode.deleteMany({ where: { id: claimCodeId } });
+    }
     await prisma.reward.deleteMany({ where: { id: rewardId } });
     await prisma.action.deleteMany({
       where: { id: { in: [directActionId, codedActionId] } },
@@ -154,17 +178,89 @@ describe('Player flow authorization matrix (e2e)', () => {
       .expect(200);
   });
 
-  it('returns 403 when a participant attempts an admin route', async () => {
+  it.each([
+    '/admin/dashboard',
+    '/admin/participants',
+    '/admin/actions',
+    '/admin/claim-codes',
+    '/admin/rewards',
+    '/admin/redemptions',
+  ])('returns 403 when a participant accesses %s', async (path) => {
     await request(app.getHttpServer())
-      .post('/actions')
+      .get(path)
       .set('Cookie', participantSession.cookie)
-      .set('X-CSRF-Token', participantSession.csrfToken)
+      .expect(403);
+  });
+
+  it('rejects participant admin mutations without changing persisted state', async () => {
+    if (!claimCodeId || !pendingRedemptionId) {
+      throw new Error('Authorization fixtures were not initialized.');
+    }
+    const before = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: participantId } }),
+      prisma.action.findUniqueOrThrow({ where: { id: codedActionId } }),
+      prisma.claimCode.findUniqueOrThrow({ where: { id: claimCodeId } }),
+      prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
+      prisma.rewardRedemption.findUniqueOrThrow({
+        where: { id: pendingRedemptionId },
+      }),
+    ]);
+
+    await postAsParticipant('/actions')
       .send({
         name: 'Unauthorized action',
         type: ActionType.DYNAMIC,
         points: 1,
       })
       .expect(403);
+    await patchAsParticipant(`/admin/actions/${codedActionId}`)
+      .send({ points: 999 })
+      .expect(403);
+    await patchAsParticipant(`/admin/participants/${participantId}/status`)
+      .send({ isActive: false })
+      .expect(403);
+    await postAsParticipant(
+      `/admin/actions/${directActionId}/claim-codes/generate`,
+    )
+      .send({ quantity: 1 })
+      .expect(403);
+    await patchAsParticipant(`/admin/claim-codes/${claimCodeId}/status`)
+      .send({ isActive: false })
+      .expect(403);
+    await postAsParticipant('/rewards')
+      .send({
+        name: 'Unauthorized reward',
+        costInPoints: 1,
+        stock: 1,
+        isActive: true,
+      })
+      .expect(403);
+    await patchAsParticipant(`/rewards/${rewardId}`)
+      .send({ stock: 999 })
+      .expect(403);
+    await patchAsParticipant(
+      `/admin/redemptions/${pendingRedemptionId}/cancel`,
+    ).expect(403);
+    await patchAsParticipant(
+      `/admin/redemptions/${pendingRedemptionId}/deliver`,
+    ).expect(403);
+
+    const after = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: participantId } }),
+      prisma.action.findUniqueOrThrow({ where: { id: codedActionId } }),
+      prisma.claimCode.findUniqueOrThrow({ where: { id: claimCodeId } }),
+      prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
+      prisma.rewardRedemption.findUniqueOrThrow({
+        where: { id: pendingRedemptionId },
+      }),
+    ]);
+    expect(after).toEqual(before);
+    expect(
+      await prisma.action.count({ where: { name: 'Unauthorized action' } }),
+    ).toBe(0);
+    expect(
+      await prisma.reward.count({ where: { name: 'Unauthorized reward' } }),
+    ).toBe(0);
   });
 
   it.each([
@@ -191,6 +287,20 @@ describe('Player flow authorization matrix (e2e)', () => {
       .post(path)
       .set('Cookie', adminSession.cookie)
       .set('X-CSRF-Token', adminSession.csrfToken);
+  }
+
+  function postAsParticipant(path: string) {
+    return request(app.getHttpServer())
+      .post(path)
+      .set('Cookie', participantSession.cookie)
+      .set('X-CSRF-Token', participantSession.csrfToken);
+  }
+
+  function patchAsParticipant(path: string) {
+    return request(app.getHttpServer())
+      .patch(path)
+      .set('Cookie', participantSession.cookie)
+      .set('X-CSRF-Token', participantSession.csrfToken);
   }
 
   function getRanking(session: AuthSession) {

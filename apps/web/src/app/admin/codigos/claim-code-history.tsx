@@ -5,14 +5,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  AdminClaimCode,
-  ApiError,
   fetchAdminActions,
   fetchAdminClaimCodes,
-  fetchCsrfToken,
-  getCsrfToken,
   updateClaimCodeStatus,
-} from "@/lib/api";
+} from "@/features/actions/actions.service";
+import type { AdminClaimCode } from "@/features/actions/actions.types";
+import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 const status = {
@@ -53,7 +51,6 @@ export function ClaimCodeHistory() {
   });
   const toggle = useMutation({
     mutationFn: async (c: AdminClaimCode) => {
-      if (!getCsrfToken()) await fetchCsrfToken();
       return updateClaimCodeStatus(c.id, !c.isActive);
     },
     onMutate: (c) => setPendingIds((ids) => new Set(ids).add(c.id)),
