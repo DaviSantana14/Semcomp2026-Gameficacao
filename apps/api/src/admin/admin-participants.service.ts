@@ -91,6 +91,8 @@ export class AdminParticipantsService {
       page.rows.map((row) => ({
         ...row,
         xpDelta: row.xpDelta,
+        reversalOfPointEventId: row.reversedEventId,
+        reversalPointEventId: row.reversal?.id ?? null,
         origin:
           row.source === 'REWARD_REDEMPTION'
             ? 'REWARD'

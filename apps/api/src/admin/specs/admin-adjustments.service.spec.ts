@@ -64,10 +64,12 @@ describe(AdminAdjustmentsService.name, () => {
     findByIdempotencyKey: jest.fn(),
     createPointEvent: jest.fn(),
     updateParticipantBalance: jest.fn(),
+    lockPointEvent: jest.fn(),
   };
   const repository = {
     withTransaction: jest.fn(),
     findByIdempotencyKey: jest.fn(),
+    findReversalByOriginalId: jest.fn(),
   };
   const audit = { record: jest.fn() };
   let service: AdminAdjustmentsService;
@@ -274,5 +276,269 @@ describe(AdminAdjustmentsService.name, () => {
       dto.pointsDelta,
       dto.xpDelta,
     );
+  });
+
+  describe('reverse', () => {
+    const reverseDto = {
+      reason: 'Estorno administrativo confirmado',
+      idempotencyKey: 'cb42fb8e-5f2c-4e57-986c-29ed456c842c',
+    };
+    const original = {
+      ...pointEvent,
+      auditEvent: { ...auditEvent },
+      reversedEventId: null,
+      reversal: null,
+    };
+    const reversalAudit = {
+      ...auditEvent,
+      id: 'audit-reversal',
+      operation: AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED,
+      reason: reverseDto.reason,
+      before: {
+        participantId: participant.id,
+        points: 100,
+        xp: 50,
+        originalPointEventId: original.id,
+      },
+      after: {
+        participantId: participant.id,
+        points: 90,
+        xp: 45,
+        pointEventId: 'reversal-1',
+        originalPointEventId: original.id,
+      },
+    };
+    const reversal = {
+      ...pointEvent,
+      id: 'reversal-1',
+      points: -10,
+      xpDelta: -5,
+      kind: PointEventKind.DEBIT,
+      source: PointEventSource.ADMIN_ADJUST,
+      idempotencyKey: reverseDto.idempotencyKey,
+      reversedEventId: original.id,
+      description: reverseDto.reason,
+      auditEvent: reversalAudit,
+    };
+
+    beforeEach(() => {
+      transaction.lockPointEvent.mockResolvedValue(original);
+      transaction.lockParticipant.mockResolvedValue(participant);
+      transaction.findByIdempotencyKey.mockResolvedValue(null);
+      transaction.updateParticipantBalance.mockResolvedValue({
+        id: participant.id,
+        points: 90,
+        xp: 45,
+        level: participant.level,
+      });
+      transaction.createPointEvent.mockResolvedValue(reversal);
+      audit.record.mockResolvedValue(reversalAudit);
+      repository.findReversalByOriginalId.mockResolvedValue(null);
+    });
+
+    it('rejects a missing event without writes', async () => {
+      transaction.lockPointEvent.mockResolvedValue(null);
+      await expect(
+        service.reverse('missing', reverseDto, actor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(transaction.lockParticipant).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      PointEventSource.ACTION_REDEEM,
+      PointEventSource.REWARD_REDEMPTION,
+    ])('rejects non-administrative source %s', async (source) => {
+      transaction.lockPointEvent.mockResolvedValue({ ...original, source });
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction.lockParticipant).not.toHaveBeenCalled();
+    });
+
+    it('rejects an administrative-looking event without adjustment audit', async () => {
+      transaction.lockPointEvent.mockResolvedValue({
+        ...original,
+        auditEvent: null,
+      });
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects reversing a reversal', async () => {
+      transaction.lockPointEvent.mockResolvedValue({
+        ...original,
+        reversedEventId: 'older-event',
+      });
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects an original that already has a reversal', async () => {
+      transaction.lockPointEvent.mockResolvedValue({
+        ...original,
+        reversal: { id: 'existing-reversal' },
+      });
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects when the target is no longer a participant', async () => {
+      transaction.lockParticipant.mockResolvedValue(null);
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reversal that would make either balance negative', async () => {
+      transaction.lockParticipant.mockResolvedValue({
+        ...participant,
+        points: 5,
+        xp: 4,
+      });
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('appends exact opposite deltas and records minimized audit data', async () => {
+      const result = await service.reverse(original.id, reverseDto, actor);
+      const stringMatcher: unknown = expect.any(String);
+
+      expect(transaction.updateParticipantBalance).toHaveBeenCalledWith(
+        participant.id,
+        -10,
+        -5,
+      );
+      expect(transaction.createPointEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: participant.id,
+          points: -10,
+          xpDelta: -5,
+          kind: PointEventKind.DEBIT,
+          source: PointEventSource.ADMIN_ADJUST,
+          actorAdminId: actor.actorAdminId,
+          idempotencyKey: reverseDto.idempotencyKey,
+          reversedEventId: original.id,
+          description: reverseDto.reason,
+          auditEventId: reversalAudit.id,
+        }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(transaction.auditWriter, {
+        actor: { actorType: AuditActorType.ADMIN, ...actor },
+        operation: AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED,
+        entityType: AuditEntityType.POINT_EVENT,
+        entityId: stringMatcher,
+        participantId: participant.id,
+        reason: reverseDto.reason,
+        before: {
+          participantId: participant.id,
+          points: 100,
+          xp: 50,
+          originalPointEventId: original.id,
+        },
+        after: {
+          participantId: participant.id,
+          points: 90,
+          xp: 45,
+          pointEventId: stringMatcher,
+          originalPointEventId: original.id,
+        },
+        metadata: {
+          originalPointEventId: original.id,
+          reversalPointEventId: stringMatcher,
+        },
+      });
+      expect(result).toMatchObject({
+        before: { points: 100, xp: 50 },
+        after: { points: 90, xp: 45 },
+        pointEvent: { id: reversal.id, reversalOfPointEventId: original.id },
+        replayed: false,
+      });
+    });
+
+    it('returns an identical content-aware replay without writes', async () => {
+      transaction.findByIdempotencyKey.mockResolvedValue(reversal);
+
+      const result = await service.reverse(original.id, reverseDto, actor);
+
+      expect(result).toMatchObject({
+        pointEvent: { id: reversal.id, reversalOfPointEventId: original.id },
+        replayed: true,
+      });
+      expect(transaction.updateParticipantBalance).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { reason: 'Outro estorno administrativo valido' },
+      { originalId: 'another-original' },
+      { actorAdminId: 'admin-2' },
+    ])('rejects conflicting reversal key content %#', async (change) => {
+      transaction.findByIdempotencyKey.mockResolvedValue(reversal);
+      await expect(
+        service.reverse(
+          change.originalId ?? original.id,
+          { ...reverseDto, ...(change.reason && { reason: change.reason }) },
+          {
+            ...actor,
+            ...(change.actorAdminId && { actorAdminId: change.actorAdminId }),
+          },
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('maps a concurrent same-key winner to replay', async () => {
+      repository.withTransaction.mockRejectedValue(
+        new PersistenceUniqueConstraintError(),
+      );
+      repository.findByIdempotencyKey.mockResolvedValue(reversal);
+
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).resolves.toMatchObject({
+        replayed: true,
+        pointEvent: { id: reversal.id },
+      });
+    });
+
+    it('maps a concurrent different-key reversal to conflict', async () => {
+      repository.withTransaction.mockRejectedValue(
+        new PersistenceUniqueConstraintError(),
+      );
+      repository.findByIdempotencyKey.mockResolvedValue(null);
+      repository.findReversalByOriginalId.mockResolvedValue(reversal);
+
+      await expect(
+        service.reverse(
+          original.id,
+          {
+            ...reverseDto,
+            idempotencyKey: '78419fa3-2792-47ae-b15e-fc9ea9d1fd27',
+          },
+          actor,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('propagates audit failure so the transaction can roll back all writes', async () => {
+      const failure = new Error('reversal audit failed');
+      audit.record.mockRejectedValue(failure);
+
+      await expect(
+        service.reverse(original.id, reverseDto, actor),
+      ).rejects.toBe(failure);
+      expect(transaction.updateParticipantBalance).toHaveBeenCalledWith(
+        participant.id,
+        -10,
+        -5,
+      );
+      expect(transaction.createPointEvent).not.toHaveBeenCalled();
+    });
   });
 });

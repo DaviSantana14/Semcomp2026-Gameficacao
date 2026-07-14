@@ -24,7 +24,9 @@ const idempotentEventSelect = {
   actorAdminId: true,
   idempotencyKey: true,
   description: true,
+  reversedEventId: true,
   createdAt: true,
+  reversal: { select: { id: true } },
   auditEvent: {
     select: {
       id: true,
@@ -67,11 +69,13 @@ export interface CreateAdjustmentPointEventInput {
   idempotencyKey: string;
   auditEventId: string;
   description: string;
+  reversedEventId?: string;
 }
 
 export interface AdminAdjustmentTransaction {
   auditWriter: TransactionAuditWriter;
   lockParticipant(id: string): Promise<LockedParticipant | null>;
+  lockPointEvent(id: string): Promise<IdempotentAdjustmentEvent | null>;
   findByIdempotencyKey(key: string): Promise<IdempotentAdjustmentEvent | null>;
   createPointEvent(
     input: CreateAdjustmentPointEventInput,
@@ -102,6 +106,17 @@ class BoundAdminAdjustmentTransaction implements AdminAdjustmentTransaction {
       FOR UPDATE
     `;
     return rows[0] ?? null;
+  }
+
+  async lockPointEvent(id: string) {
+    const rows = await this.client.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "PointEvent" WHERE "id" = ${id} FOR UPDATE
+    `;
+    if (!rows[0]) return null;
+    return this.client.pointEvent.findUnique({
+      where: { id },
+      select: idempotentEventSelect,
+    });
   }
 
   findByIdempotencyKey(key: string) {
@@ -164,13 +179,30 @@ export class AdminAdjustmentsRepository {
     });
   }
 
+  findReversalByOriginalId(originalId: string) {
+    return this.prisma.pointEvent.findUnique({
+      where: { reversedEventId: originalId },
+      select: idempotentEventSelect,
+    });
+  }
+
   private rethrowExpectedUniqueConstraint(error: unknown): never {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
+      error.code === 'P2002' &&
+      isExpectedPointEventUniqueTarget(error.meta?.target)
     ) {
       throw new PersistenceUniqueConstraintError({ cause: error });
     }
     throw error;
   }
+}
+
+function isExpectedPointEventUniqueTarget(target: unknown) {
+  const names = Array.isArray(target) ? target : [target];
+  return names.some(
+    (name) =>
+      typeof name === 'string' &&
+      (name.includes('idempotencyKey') || name.includes('reversedEventId')),
+  );
 }

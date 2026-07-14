@@ -268,6 +268,8 @@ describe(AdminParticipantsService.name, () => {
         createdAt: new Date(),
         action: { id: 'a1', name: 'Check-in' },
         claimCode: { id: 'claim-1', code: 'ABC123' },
+        reversedEventId: null,
+        reversal: { id: 'reversal-1' },
       },
     ]);
     const result = await service.findPointEvents('p1', {
@@ -280,6 +282,8 @@ describe(AdminParticipantsService.name, () => {
       xpDelta: 9,
       origin: 'UNIQUE_CODE',
       claimCode: { id: 'claim-1', code: 'ABC123' },
+      reversalOfPointEventId: null,
+      reversalPointEventId: 'reversal-1',
     });
     expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -11,6 +11,20 @@ type AdjustmentResponse = {
   replayed: boolean;
 };
 
+type ReversalResponse = AdjustmentResponse & {
+  pointEvent: AdjustmentResponse['pointEvent'] & {
+    reversalOfPointEventId: string;
+  };
+};
+
+type PointEventHistoryResponse = {
+  items: Array<{
+    id: string;
+    reversalOfPointEventId: string | null;
+    reversalPointEventId: string | null;
+  }>;
+};
+
 describe('Admin adjustments (e2e)', () => {
   let harness: AdminE2eHarness;
   let adminSession: AuthSession;
@@ -100,7 +114,6 @@ describe('Admin adjustments (e2e)', () => {
       auditEvent: { id: firstBody.auditEvent.id },
       replayed: true,
     });
-
     const persisted = await harness.prisma.user.findUniqueOrThrow({
       where: { id: participant.id },
       select: { points: true, xp: true, level: true },
@@ -283,5 +296,177 @@ describe('Admin adjustments (e2e)', () => {
         idempotencyKey: randomUUID(),
       })
       .expect(403);
+  });
+
+  it('reverses an adjustment once, preserves the original and replays stably', async () => {
+    const suffix = randomUUID();
+    const target = await harness.prisma.user.create({
+      data: {
+        name: `Reversal target ${suffix}`,
+        cpf: harness.uniqueCpf(suffix, 5),
+        email: `reversal-${suffix}@example.test`,
+        points: 40,
+        xp: 20,
+      },
+    });
+    const adjustment = await harness
+      .post(`/admin/participants/${target.id}/adjustments`, adminSession)
+      .send({
+        pointsDelta: 10,
+        xpDelta: 5,
+        reason: 'Credito administrativo para posterior estorno',
+        idempotencyKey: randomUUID(),
+      })
+      .expect(201);
+    const original = adjustment.body as AdjustmentResponse;
+    const body = {
+      reason: 'Estorno administrativo integral confirmado',
+      idempotencyKey: randomUUID(),
+    };
+
+    const first = await harness
+      .post(
+        `/admin/point-events/${original.pointEvent.id}/reverse`,
+        adminSession,
+      )
+      .send(body)
+      .expect(201);
+    const replay = await harness
+      .post(
+        `/admin/point-events/${original.pointEvent.id}/reverse`,
+        adminSession,
+      )
+      .send(body)
+      .expect(201);
+    const firstBody = first.body as ReversalResponse;
+    const replayBody = replay.body as ReversalResponse;
+
+    expect(firstBody).toMatchObject({
+      before: { points: 50, xp: 25 },
+      after: { points: 40, xp: 20 },
+      pointEvent: {
+        pointsDelta: -10,
+        xpDelta: -5,
+        source: PointEventSource.ADMIN_ADJUST,
+        reversalOfPointEventId: original.pointEvent.id,
+      },
+      replayed: false,
+    });
+    expect(replayBody).toMatchObject({
+      before: firstBody.before,
+      after: firstBody.after,
+      pointEvent: { id: firstBody.pointEvent.id },
+      auditEvent: { id: firstBody.auditEvent.id },
+      replayed: true,
+    });
+    await harness
+      .post(
+        `/admin/point-events/${original.pointEvent.id}/reverse`,
+        adminSession,
+      )
+      .send({ ...body, reason: 'Conteudo diferente para a mesma chave' })
+      .expect(409);
+    await harness
+      .post(
+        `/admin/point-events/${firstBody.pointEvent.id}/reverse`,
+        adminSession,
+      )
+      .send({
+        reason: 'Tentativa proibida de estornar uma compensacao',
+        idempotencyKey: randomUUID(),
+      })
+      .expect(409);
+    await expect(
+      harness.prisma.user.findUniqueOrThrow({ where: { id: target.id } }),
+    ).resolves.toMatchObject({ points: 40, xp: 20 });
+    await expect(
+      harness.prisma.pointEvent.findUniqueOrThrow({
+        where: { id: original.pointEvent.id },
+      }),
+    ).resolves.toMatchObject({ points: 10, xpDelta: 5, reversedEventId: null });
+
+    const history = await harness
+      .get(`/admin/participants/${target.id}/point-events`, adminSession)
+      .expect(200);
+    const historyBody = history.body as PointEventHistoryResponse;
+    expect(historyBody.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: original.pointEvent.id,
+          reversalPointEventId: firstBody.pointEvent.id,
+          reversalOfPointEventId: null,
+        }),
+        expect.objectContaining({
+          id: firstBody.pointEvent.id,
+          reversalPointEventId: null,
+          reversalOfPointEventId: original.pointEvent.id,
+        }),
+      ]),
+    );
+  });
+
+  it('allows only one effective reversal under concurrent different keys', async () => {
+    const suffix = randomUUID();
+    const target = await harness.prisma.user.create({
+      data: {
+        name: `Concurrent reversal ${suffix}`,
+        cpf: harness.uniqueCpf(suffix, 6),
+        email: `concurrent-reversal-${suffix}@example.test`,
+        points: 30,
+        xp: 10,
+      },
+    });
+    const adjustment = await harness
+      .post(`/admin/participants/${target.id}/adjustments`, adminSession)
+      .send({
+        pointsDelta: 4,
+        xpDelta: 2,
+        reason: 'Credito para validar estorno concorrente',
+        idempotencyKey: randomUUID(),
+      })
+      .expect(201);
+    const originalId = (adjustment.body as AdjustmentResponse).pointEvent.id;
+    const responses = await Promise.all([
+      harness
+        .post(`/admin/point-events/${originalId}/reverse`, adminSession)
+        .send({
+          reason: 'Primeira tentativa concorrente de estorno',
+          idempotencyKey: randomUUID(),
+        }),
+      harness
+        .post(`/admin/point-events/${originalId}/reverse`, adminSession)
+        .send({
+          reason: 'Segunda tentativa concorrente de estorno',
+          idempotencyKey: randomUUID(),
+        }),
+    ]);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([201, 409]);
+    expect(
+      await harness.prisma.pointEvent.count({
+        where: { reversedEventId: originalId },
+      }),
+    ).toBe(1);
+    await expect(
+      harness.prisma.user.findUniqueOrThrow({ where: { id: target.id } }),
+    ).resolves.toMatchObject({ points: 30, xp: 10 });
+  });
+
+  it('rejects a reward movement and a reversal as ineligible', async () => {
+    const rewardEvent = await harness.prisma.pointEvent.create({
+      data: {
+        userId: participant.id,
+        points: -1,
+        kind: 'DEBIT',
+        source: PointEventSource.REWARD_REDEMPTION,
+      },
+    });
+    await harness
+      .post(`/admin/point-events/${rewardEvent.id}/reverse`, adminSession)
+      .send({
+        reason: 'Tentativa de estorno de origem nao administrativa',
+        idempotencyKey: randomUUID(),
+      })
+      .expect(409);
   });
 });

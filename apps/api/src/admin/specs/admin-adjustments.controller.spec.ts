@@ -7,7 +7,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { AdminAdjustmentsController } from '../admin-adjustments.controller';
 
 describe(AdminAdjustmentsController.name, () => {
-  const service = { adjust: jest.fn() };
+  const service = { adjust: jest.fn(), reverse: jest.fn() };
   const controller = new AdminAdjustmentsController(service as never);
 
   beforeEach(() => jest.clearAllMocks());
@@ -38,5 +38,22 @@ describe(AdminAdjustmentsController.name, () => {
     expect(Reflect.getMetadata(ROLES_KEY, AdminAdjustmentsController)).toEqual([
       UserRole.ADMIN,
     ]);
+  });
+
+  it('passes the event, DTO and trusted admin context for reversal', async () => {
+    const dto = {
+      reason: 'Estorno administrativo confirmado',
+      idempotencyKey: '1d61fd98-1470-4ed2-95b9-1ae6fe310b18',
+    };
+    const request = { user: { id: 'admin-1' }, requestId: 'request-1' };
+    service.reverse.mockResolvedValue({ replayed: false });
+
+    await expect(
+      controller.reverse('event-1', dto, request as never),
+    ).resolves.toEqual({ replayed: false });
+    expect(service.reverse).toHaveBeenCalledWith('event-1', dto, {
+      actorAdminId: 'admin-1',
+      requestId: 'request-1',
+    });
   });
 });

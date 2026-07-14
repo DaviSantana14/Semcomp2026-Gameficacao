@@ -13,5 +13,7 @@ export class AdminParticipantEventResponseDto {
   description!: string | null;
   origin!: string;
   claimCode!: { id: string; code: string } | null;
+  reversalOfPointEventId!: string | null;
+  reversalPointEventId!: string | null;
   createdAt!: string;
 }

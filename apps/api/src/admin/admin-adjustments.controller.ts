@@ -18,6 +18,7 @@ import type { AuthenticatedRequest } from '../common/request-context';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { AdminAdjustmentsService } from './admin-adjustments.service';
 import { CreateParticipantAdjustmentDto } from './dto/create-participant-adjustment.dto';
+import { ReversePointEventDto } from './dto/reverse-point-event.dto';
 
 @ApiTags('Admin Adjustments')
 @ApiSecurity('access-token-cookie')
@@ -39,5 +40,17 @@ export class AdminAdjustmentsController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.service.adjust(id, dto, getAdminOperationContext(request));
+  }
+
+  @Post('point-events/:id/reverse')
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
+  reverse(
+    @Param('id') id: string,
+    @Body() dto: ReversePointEventDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.service.reverse(id, dto, getAdminOperationContext(request));
   }
 }
