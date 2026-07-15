@@ -1,0 +1,76 @@
+import type {
+  AuditActorType,
+  AuditEntityType,
+  AuditOperation,
+} from "@/features/audit/audit.types";
+
+export const actorLabels: Record<AuditActorType, string> = {
+  ADMIN: "Administrador",
+  SYSTEM: "Sistema",
+};
+
+export const entityLabels: Record<AuditEntityType, string> = {
+  PARTICIPANT: "Participante",
+  ACTION: "Atividade",
+  CLAIM_CODE_BATCH: "Lote de códigos",
+  CLAIM_CODE: "Código de resgate",
+  REWARD: "Recompensa",
+  REWARD_REDEMPTION: "Resgate de recompensa",
+  POINT_EVENT: "Evento de pontos/XP",
+  RECONCILIATION: "Reconciliação",
+};
+
+export const operationLabels: Record<AuditOperation, string> = {
+  PARTICIPANT_STATUS_CHANGED: "Status do participante alterado",
+  ACTION_CREATED: "Atividade criada",
+  ACTION_UPDATED: "Atividade editada",
+  ACTION_STATUS_CHANGED: "Status da atividade alterado",
+  CLAIM_CODE_BATCH_GENERATED: "Lote de códigos gerado",
+  CLAIM_CODE_STATUS_CHANGED: "Status do código alterado",
+  REWARD_CREATED: "Recompensa criada",
+  REWARD_UPDATED: "Recompensa editada",
+  REWARD_STATUS_CHANGED: "Status da recompensa alterado",
+  REWARD_REDEMPTION_DELIVERED: "Resgate entregue",
+  REWARD_REDEMPTION_CANCELLED: "Resgate cancelado",
+  PARTICIPANT_BALANCE_ADJUSTED: "Saldo do participante ajustado",
+  PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED: "Ajuste de saldo estornado",
+  RECONCILIATION_ADJUSTMENT_CONFIRMED: "Correção de reconciliação confirmada",
+};
+
+export const snapshotFieldLabels: Record<string, string> = {
+  id: "Identificador",
+  isActive: "Ativo",
+  isUsed: "Utilizado",
+  name: "Nome",
+  description: "Descrição",
+  type: "Tipo",
+  points: "Pontos",
+  xp: "XP",
+  role: "Perfil",
+  isCodeActive: "Código ativo",
+  requestedQuantity: "Quantidade solicitada",
+  createdQuantity: "Quantidade criada",
+  redemptionMethod: "Método de resgate",
+  actionId: "Atividade",
+  maskedCode: "Código mascarado",
+  costInPoints: "Custo em pontos",
+  stock: "Estoque",
+  status: "Status",
+  deliveredAt: "Entregue em",
+  cancelledAt: "Cancelado em",
+  deliveredByAdminId: "Entregue por",
+  cancelledByAdminId: "Cancelado por",
+  pointEventId: "Evento de pontos",
+  originalPointEventId: "Evento original",
+  participantId: "Participante",
+  storedPoints: "Pontos armazenados",
+  storedXp: "XP armazenado",
+  ledgerPoints: "Pontos no histórico",
+  ledgerXp: "XP no histórico",
+  pointsDifference: "Diferença de pontos",
+  xpDifference: "Diferença de XP",
+  batchSize: "Tamanho do lote",
+  claimCodeIds: "Códigos do lote",
+  reversalPointEventId: "Evento de estorno",
+  rewardRedemptionId: "Resgate de recompensa",
+};

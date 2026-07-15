@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, KeyRound, LayoutDashboard, ShoppingBag, Trophy, UsersRound, Zap } from "lucide-react";
+import { Boxes, ClipboardList, KeyRound, LayoutDashboard, ShoppingBag, Trophy, UsersRound, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -18,6 +18,7 @@ const ADMIN_AREAS = [
   { href: "/admin/atividades", label: "Atividades", icon: Zap },
   { href: "/admin/codigos", label: "Códigos", icon: KeyRound },
   { href: "/admin/lojinha", label: "Lojinha", icon: ShoppingBag },
+  { href: "/admin/auditoria", label: "Auditoria", icon: ClipboardList },
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {
