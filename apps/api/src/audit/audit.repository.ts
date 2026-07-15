@@ -80,32 +80,44 @@ class BoundTransactionAuditWriter implements TransactionAuditWriter {
   constructor(private readonly client: AuditDatabase) {}
 
   async create(data: AuditWriteData) {
+    const safeData =
+      data.entityType === AuditEntityType.CLAIM_CODE
+        ? {
+            ...data,
+            ...(data.before !== undefined && {
+              before: this.removeInvalidMaskedCode(data.before),
+            }),
+            ...(data.after !== undefined && {
+              after: this.removeInvalidMaskedCode(data.after),
+            }),
+          }
+        : data;
     const [actor, participant, entityDisplayName] = await Promise.all([
-      data.actorType === AuditActorType.ADMIN && data.actorAdminId
+      safeData.actorType === AuditActorType.ADMIN && safeData.actorAdminId
         ? this.client.user.findUnique({
-            where: { id: data.actorAdminId },
+            where: { id: safeData.actorAdminId },
             select: { name: true, email: true },
           })
         : Promise.resolve(null),
-      data.participantId
+      safeData.participantId
         ? this.client.user.findUnique({
-            where: { id: data.participantId },
+            where: { id: safeData.participantId },
             select: { name: true, email: true },
           })
         : Promise.resolve(null),
-      this.resolveEntityDisplayName(data),
+      this.resolveEntityDisplayName(safeData),
     ]);
 
     return this.client.adminAuditEvent.create({
       data: {
-        ...data,
+        ...safeData,
         actorDisplayName:
-          data.actorType === AuditActorType.SYSTEM
+          safeData.actorType === AuditActorType.SYSTEM
             ? 'Sistema'
-            : (actor?.name ?? `Administrador ${data.actorAdminId}`),
+            : (actor?.name ?? `Administrador ${safeData.actorAdminId}`),
         actorDisplayEmail: actor?.email ?? null,
-        participantDisplayName: data.participantId
-          ? (participant?.name ?? `Participante ${data.participantId}`)
+        participantDisplayName: safeData.participantId
+          ? (participant?.name ?? `Participante ${safeData.participantId}`)
           : null,
         participantDisplayEmail: participant?.email ?? null,
         entityDisplayName,
@@ -165,6 +177,18 @@ class BoundTransactionAuditWriter implements TransactionAuditWriter {
       return null;
     const maskedCode = (value as { maskedCode?: unknown }).maskedCode;
     return isCanonicalClaimCodeMask(maskedCode) ? maskedCode : null;
+  }
+
+  private removeInvalidMaskedCode(value: Prisma.InputJsonValue) {
+    if (!value || Array.isArray(value) || typeof value !== 'object')
+      return value;
+    const maskedCode = (value as { maskedCode?: unknown }).maskedCode;
+    if (maskedCode === undefined || isCanonicalClaimCodeMask(maskedCode)) {
+      return value;
+    }
+    return Object.fromEntries(
+      Object.entries(value).filter(([key]) => key !== 'maskedCode'),
+    );
   }
 }
 

@@ -225,6 +225,64 @@ describe(AuditRepository.name, () => {
     );
   });
 
+  it('drops an invalid raw claim code mask and never persists a mocked CPF', async () => {
+    const rawCode = 'AB1234YZ';
+    const cpf = '52998224725';
+    const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
+      Promise.resolve(data),
+    );
+    const findUnique = jest.fn().mockResolvedValue({
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      cpf,
+    });
+    const transaction = {
+      adminAuditEvent: { create },
+      user: { findUnique },
+      action: { findUnique: jest.fn() },
+      reward: { findUnique: jest.fn() },
+      rewardRedemption: { findUnique: jest.fn() },
+    };
+    const repository = new AuditRepository({} as never);
+
+    await repository.bindTransaction(transaction as never).create({
+      actorType: AuditActorType.ADMIN,
+      actorAdminId: 'admin-1',
+      participantId: 'participant-1',
+      operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+      entityType: AuditEntityType.CLAIM_CODE,
+      entityId: 'claim-unsafe',
+      reason: 'Desativação administrativa necessária',
+      before: {
+        id: 'claim-unsafe',
+        isActive: true,
+        isUsed: false,
+        maskedCode: rawCode,
+      },
+      after: {
+        id: 'claim-unsafe',
+        isActive: false,
+        isUsed: false,
+        maskedCode: rawCode,
+      },
+      requestId: 'request-1',
+    });
+
+    expect(findUnique).toHaveBeenNthCalledWith(1, {
+      where: { id: 'admin-1' },
+      select: { name: true, email: true },
+    });
+    expect(findUnique).toHaveBeenNthCalledWith(2, {
+      where: { id: 'participant-1' },
+      select: { name: true, email: true },
+    });
+    expect(create.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({ entityDisplayName: 'Código claim-unsafe' }),
+    );
+    expect(JSON.stringify(create.mock.calls[0][0].data)).not.toContain(rawCode);
+    expect(JSON.stringify(create.mock.calls[0][0].data)).not.toContain(cpf);
+  });
+
   it('binds writes to the exact transaction client without opening a transaction', async () => {
     const rootCreate = jest.fn();
     const transactionCreate = jest.fn().mockResolvedValue({ id: 'audit-1' });
