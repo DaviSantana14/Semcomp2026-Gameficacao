@@ -207,7 +207,9 @@ export class RewardsService {
     context: AdminOperationContext,
   ) {
     return this.repository.withTransaction(async (repository) => {
-      const redemption = await this.assertPending(repository, redemptionId);
+      const redemption = this.assertPending(
+        await repository.lockRedemptionState(redemptionId),
+      );
       const transitionedAt = new Date();
       await this.transition(
         repository,
@@ -251,7 +253,9 @@ export class RewardsService {
     context: AdminOperationContext,
   ) {
     return this.repository.withTransaction(async (repository) => {
-      const redemption = await this.assertPending(repository, redemptionId);
+      const redemption = this.assertPending(
+        await repository.lockCancellationState(redemptionId),
+      );
       const transitionedAt = new Date();
       await this.transition(
         repository,
@@ -304,8 +308,9 @@ export class RewardsService {
     });
   }
 
-  private async assertPending(repository: RewardsRepository, id: string) {
-    const redemption = await repository.findRedemptionById(id);
+  private assertPending<T extends { status: RedemptionState }>(
+    redemption: T | null,
+  ): T {
     if (!redemption) {
       throw new NotFoundException('Resgate de recompensa não encontrado.');
     }

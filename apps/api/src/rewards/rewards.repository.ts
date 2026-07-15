@@ -38,8 +38,25 @@ const redemptionInclude = {
 
 type RewardsDatabase = Pick<
   Prisma.TransactionClient,
-  'reward' | 'rewardRedemption' | 'pointEvent' | 'user'
+  'reward' | 'rewardRedemption' | 'pointEvent' | 'user' | '$queryRaw'
 >;
+
+export type LockedRedemptionState = {
+  id: string;
+  userId: string;
+  rewardId: string;
+  pointsSpent: number;
+  status: RedemptionState;
+  deliveredAt: Date | null;
+  deliveredByAdminId: string | null;
+  cancelledAt: Date | null;
+  cancelledByAdminId: string | null;
+};
+
+export type LockedCancellationState = LockedRedemptionState & {
+  user: { id: string; points: number };
+  reward: { id: string; name: string; stock: number };
+};
 
 export interface RewardWriteInput {
   name?: string;
@@ -271,6 +288,45 @@ export class RewardsRepository {
       where: { id },
       include: redemptionInclude,
     });
+  }
+
+  async lockRedemptionState(id: string) {
+    const rows = await this.client.$queryRaw<LockedRedemptionState[]>`
+      SELECT "id", "userId", "rewardId", "pointsSpent", "status",
+             "deliveredAt", "deliveredByAdminId", "cancelledAt",
+             "cancelledByAdminId"
+      FROM "RewardRedemption"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `;
+    return rows[0] ?? null;
+  }
+
+  async lockCancellationState(
+    id: string,
+  ): Promise<LockedCancellationState | null> {
+    const redemption = await this.lockRedemptionState(id);
+    if (!redemption) return null;
+
+    // Shared purchase/cancellation rows are always locked User -> Reward.
+    const users = await this.client.$queryRaw<
+      Array<{ id: string; points: number }>
+    >`
+      SELECT "id", "points"
+      FROM "User"
+      WHERE "id" = ${redemption.userId}
+      FOR UPDATE
+    `;
+    const rewards = await this.client.$queryRaw<
+      Array<{ id: string; name: string; stock: number }>
+    >`
+      SELECT "id", "name", "stock"
+      FROM "Reward"
+      WHERE "id" = ${redemption.rewardId}
+      FOR UPDATE
+    `;
+    if (!users[0] || !rewards[0]) return null;
+    return { ...redemption, user: users[0], reward: rewards[0] };
   }
 
   transitionRedemption(

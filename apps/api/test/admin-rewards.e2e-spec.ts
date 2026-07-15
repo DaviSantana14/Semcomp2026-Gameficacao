@@ -1,4 +1,4 @@
-import { RedemptionStatus, UserRole } from '@prisma/client';
+import { AuditOperation, RedemptionStatus, UserRole } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { Response } from 'supertest';
 import { AdminE2eHarness, AuthSession } from './support/admin-e2e-harness';
@@ -86,6 +86,48 @@ describe('Admin rewards (e2e)', () => {
         }),
       );
 
+    await harness
+      .patch(`/rewards/${rewardId}`, adminSession)
+      .send({
+        reason: 'Reativacao aprovada para validar auditoria de status',
+        isActive: true,
+      })
+      .expect(200);
+    await harness
+      .patch(`/rewards/${rewardId}`, adminSession)
+      .send({
+        reason: 'Desativacao aprovada para validar auditoria de status',
+        isActive: false,
+      })
+      .expect(200);
+
+    const [updateAudit, statusAudits] = await Promise.all([
+      harness.prisma.adminAuditEvent.findFirstOrThrow({
+        where: { entityId: rewardId, operation: AuditOperation.REWARD_UPDATED },
+        orderBy: { createdAt: 'desc' },
+      }),
+      harness.prisma.adminAuditEvent.findMany({
+        where: {
+          entityId: rewardId,
+          operation: AuditOperation.REWARD_STATUS_CHANGED,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    expect(updateAudit).toMatchObject({
+      actorAdminId: adminId,
+      reason: 'Atualizacao aprovada para o catalogo administrativo',
+    });
+    expect(updateAudit.before).toMatchObject({ stock: 3, isActive: true });
+    expect(updateAudit.after).toMatchObject({ stock: 4, isActive: false });
+    expect(statusAudits).toHaveLength(2);
+    expect(
+      statusAudits.map(({ before, after }) => ({ before, after })),
+    ).toEqual([
+      { before: { isActive: false }, after: { isActive: true } },
+      { before: { isActive: true }, after: { isActive: false } },
+    ]);
+
     const catalog = await harness
       .get('/rewards', participantSession)
       .expect(200);
@@ -163,11 +205,33 @@ describe('Admin rewards (e2e)', () => {
     expect(cancelled.status).toBe(RedemptionStatus.CANCELLED);
     expect(cancelled.cancelledAt).toBeInstanceOf(Date);
     expect(cancelled.cancelledByAdminId).toBe(adminId);
-    await expect(
-      harness.prisma.pointEvent.count({
-        where: { rewardRedemptionId: redemptionId, points: 40 },
-      }),
-    ).resolves.toBe(1);
+    const refunds = await harness.prisma.pointEvent.findMany({
+      where: { rewardRedemptionId: redemptionId, points: 40 },
+    });
+    expect(refunds).toHaveLength(1);
+    const cancelAudit = await harness.prisma.adminAuditEvent.findFirstOrThrow({
+      where: {
+        entityId: redemptionId,
+        operation: AuditOperation.REWARD_REDEMPTION_CANCELLED,
+      },
+    });
+    expect(cancelAudit.before).toMatchObject({
+      id: redemptionId,
+      status: RedemptionStatus.PENDING,
+      stock: 1,
+      points: before.points - 40,
+    });
+    expect(cancelAudit.after).toMatchObject({
+      id: redemptionId,
+      status: RedemptionStatus.CANCELLED,
+      stock: 2,
+      points: before.points,
+      pointEventId: refunds[0].id,
+    });
+    expect(cancelAudit.metadata).toMatchObject({
+      rewardRedemptionId: redemptionId,
+      pointEventId: refunds[0].id,
+    });
     await harness
       .patch(`/admin/redemptions/${redemptionId}/cancel`, adminSession)
       .send({ reason: 'Cancelamento repetido para validar conflito terminal' })
@@ -197,6 +261,30 @@ describe('Admin rewards (e2e)', () => {
     expect(delivered.status).toBe(RedemptionStatus.DELIVERED);
     expect(delivered.deliveredAt).toBeInstanceOf(Date);
     expect(delivered.deliveredByAdminId).toBe(adminId);
+    const deliveryAudit = await harness.prisma.adminAuditEvent.findFirstOrThrow(
+      {
+        where: {
+          entityId: redemptionId,
+          operation: AuditOperation.REWARD_REDEMPTION_DELIVERED,
+        },
+      },
+    );
+    expect(deliveryAudit.before).toMatchObject({
+      id: redemptionId,
+      status: RedemptionStatus.PENDING,
+      deliveredAt: null,
+      deliveredByAdminId: null,
+    });
+    expect(deliveryAudit.after).toMatchObject({
+      id: redemptionId,
+      status: RedemptionStatus.DELIVERED,
+      deliveredByAdminId: adminId,
+    });
+    await expect(
+      harness.prisma.pointEvent.count({
+        where: { rewardRedemptionId: redemptionId, points: { gt: 0 } },
+      }),
+    ).resolves.toBe(0);
     await harness
       .patch(`/admin/redemptions/${redemptionId}/deliver`, adminSession)
       .send({ reason: 'Entrega repetida para validar conflito terminal' })

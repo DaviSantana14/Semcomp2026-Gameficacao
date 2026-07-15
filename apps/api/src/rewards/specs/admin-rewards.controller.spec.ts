@@ -10,6 +10,7 @@ import { AdminRedemptionsQueryDto } from '../dto/admin-redemptions-query.dto';
 import { AdminRewardsPageResponseDto } from '../dto/admin-reward-response.dto';
 import { RedemptionTransitionDto } from '../dto/redemption-transition.dto';
 import { toRewardRedemptionResponseDto } from '../dto/reward-redemption-response.dto';
+import { HttpErrorResponseDto } from '../../common/dto/http-error-response.dto';
 
 describe('AdminRewardsController', () => {
   it('guards the whole controller as admin', () => {
@@ -90,6 +91,22 @@ describe('AdminRewardsController', () => {
       context,
     );
   });
+
+  it.each(['deliverRedemption', 'cancelRedemption'] as const)(
+    'documents conflict responses for %s races',
+    (method) => {
+      const handler = Object.getOwnPropertyDescriptor(
+        AdminRewardsController.prototype,
+        method,
+      )?.value as object;
+      const responses = Reflect.getMetadata(
+        DECORATORS.API_RESPONSE,
+        handler,
+      ) as Record<number, { type?: unknown }>;
+
+      expect(responses[409].type).toBe(HttpErrorResponseDto);
+    },
+  );
 });
 
 describe('RedemptionTransitionDto', () => {

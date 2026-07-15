@@ -12,6 +12,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
@@ -110,6 +111,7 @@ export class AdminRewardsController {
   })
   @ApiOkResponse({ type: RewardRedemptionResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   async deliverRedemption(
     @Param('id') id: string,
@@ -133,6 +135,7 @@ export class AdminRewardsController {
   })
   @ApiOkResponse({ type: RewardRedemptionResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   async cancelRedemption(
     @Param('id') id: string,

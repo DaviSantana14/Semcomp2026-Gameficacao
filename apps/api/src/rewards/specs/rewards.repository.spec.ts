@@ -48,6 +48,18 @@ const pendingRedemption = {
 
 function createRepository() {
   const tx = {
+    $queryRaw: jest.fn((strings: TemplateStringsArray) => {
+      const sql = strings.join('?');
+      if (sql.includes('"RewardRedemption"')) {
+        return Promise.resolve([pendingRedemption]);
+      }
+      if (sql.includes('"User"')) {
+        return Promise.resolve([{ id: 'user-1', points: 100 }]);
+      }
+      return Promise.resolve([
+        { id: 'reward-1', name: 'Camiseta Semcomp', stock: 3 },
+      ]);
+    }),
     reward: {
       create: jest.fn(),
       findUnique: jest.fn(),
@@ -90,6 +102,7 @@ function createRepository() {
   const persistenceRepository = new RewardsRepository(prisma as never);
   return {
     repository: new RewardsService(persistenceRepository, audit as never),
+    persistenceRepository,
     prisma,
     tx,
     audit,
@@ -97,6 +110,52 @@ function createRepository() {
 }
 
 describe('RewardsRepository', () => {
+  it('locks cancellation state in a stable parameterized order', async () => {
+    const { persistenceRepository, tx } = createRepository();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 'redemption-1',
+          userId: 'user-1',
+          rewardId: 'reward-1',
+          pointsSpent: 50,
+          status: 'PENDING',
+          deliveredAt: null,
+          deliveredByAdminId: null,
+          cancelledAt: null,
+          cancelledByAdminId: null,
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 'user-1', points: 100 }])
+      .mockResolvedValueOnce([
+        { id: 'reward-1', name: 'Camiseta Semcomp', stock: 3 },
+      ]);
+
+    await persistenceRepository.withTransaction(async (repository) => {
+      await expect(
+        repository.lockCancellationState('redemption-1'),
+      ).resolves.toMatchObject({
+        user: { id: 'user-1', points: 100 },
+        reward: { id: 'reward-1', stock: 3 },
+      });
+    });
+
+    const rawCalls = tx.$queryRaw.mock.calls as unknown as Array<
+      [TemplateStringsArray, string]
+    >;
+    expect(rawCalls).toHaveLength(3);
+    expect(rawCalls.map(([sql]) => sql.join('?'))).toEqual([
+      expect.stringMatching(/FROM "RewardRedemption"[\s\S]*FOR UPDATE/),
+      expect.stringMatching(/FROM "User"[\s\S]*FOR UPDATE/),
+      expect.stringMatching(/FROM "Reward"[\s\S]*FOR UPDATE/),
+    ]);
+    expect(rawCalls.map(([, id]) => id)).toEqual([
+      'redemption-1',
+      'user-1',
+      'reward-1',
+    ]);
+  });
+
   describe('findAdminRewards', () => {
     it.each([
       ['all', {}],
@@ -428,10 +487,9 @@ describe('RewardsRepository', () => {
     it('rejects cancel when redemption is not pending', async () => {
       const { repository, tx } = createRepository();
 
-      tx.rewardRedemption.findUnique.mockResolvedValue({
-        ...pendingRedemption,
-        status: 'DELIVERED',
-      });
+      tx.$queryRaw.mockResolvedValueOnce([
+        { ...pendingRedemption, status: 'DELIVERED' },
+      ]);
 
       await expect(
         repository.cancelRedemption(
@@ -561,12 +619,10 @@ describe('RewardsRepository', () => {
 
   it('marks pending redemptions as delivered', async () => {
     const { repository, tx } = createRepository();
-    tx.rewardRedemption.findUnique
-      .mockResolvedValueOnce(pendingRedemption)
-      .mockResolvedValueOnce({
-        ...pendingRedemption,
-        status: 'DELIVERED',
-      });
+    tx.rewardRedemption.findUnique.mockResolvedValue({
+      ...pendingRedemption,
+      status: 'DELIVERED',
+    });
     tx.rewardRedemption.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
@@ -600,7 +656,7 @@ describe('RewardsRepository', () => {
         { actorAdminId: 'admin-1', requestId: 'request-1' },
       ),
     ).rejects.toThrow(ConflictException);
-    expect(tx.rewardRedemption.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.rewardRedemption.findUnique).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundException when reward does not exist', async () => {
