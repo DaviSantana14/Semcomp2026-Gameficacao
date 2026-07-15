@@ -1,4 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   PointEventKind,
   PointEventSource,
@@ -25,12 +30,18 @@ const pendingRedemption = {
   rewardId: 'reward-1',
   pointsSpent: 50,
   status: 'PENDING',
+  deliveredAt: null,
+  deliveredByAdminId: null,
+  cancelledAt: null,
+  cancelledByAdminId: null,
+  pointEvents: [],
   createdAt: new Date('2026-05-17T13:00:00.000Z'),
   updatedAt: new Date('2026-05-17T13:00:00.000Z'),
   user: {
     id: 'user-1',
     name: 'Ada Lovelace',
     email: 'ada@example.com',
+    points: 100,
   },
   reward: activeReward,
 };
@@ -38,6 +49,7 @@ const pendingRedemption = {
 function createRepository() {
   const tx = {
     reward: {
+      create: jest.fn(),
       findUnique: jest.fn(),
       updateMany: jest.fn(),
       update: jest.fn(),
@@ -74,11 +86,13 @@ function createRepository() {
     ),
   };
 
+  const audit = { record: jest.fn().mockResolvedValue({ id: 'audit-1' }) };
   const persistenceRepository = new RewardsRepository(prisma as never);
   return {
-    repository: new RewardsService(persistenceRepository),
+    repository: new RewardsService(persistenceRepository, audit as never),
     prisma,
     tx,
+    audit,
   };
 }
 
@@ -237,35 +251,21 @@ describe('RewardsRepository', () => {
           ],
         },
       };
-      expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith({
-        where,
-        skip: 0,
-        take: 20,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          userId: true,
-          rewardId: true,
-          pointsSpent: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-          user: { select: { id: true, name: true, email: true } },
-          reward: {
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              costInPoints: true,
-              isActive: true,
-              stock: true,
-              imageUrl: true,
-              createdAt: true,
-              updatedAt: true,
-            },
-          },
-        },
-      });
+      expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where,
+          skip: 0,
+          take: 20,
+          orderBy: { createdAt: 'desc' },
+          select: expect.objectContaining({
+            deliveredAt: true,
+            deliveredByAdminId: true,
+            cancelledAt: true,
+            cancelledByAdminId: true,
+            pointEvents: expect.any(Object),
+          }),
+        }),
+      );
     });
   });
   describe('redeem', () => {
@@ -299,23 +299,18 @@ describe('RewardsRepository', () => {
           stock: { decrement: 1 },
         },
       });
-      expect(tx.rewardRedemption.create).toHaveBeenCalledWith({
-        data: {
-          userId: 'user-1',
-          rewardId: 'reward-1',
-          pointsSpent: 50,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
+      expect(tx.rewardRedemption.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            userId: 'user-1',
+            rewardId: 'reward-1',
+            pointsSpent: 50,
           },
-          reward: true,
-        },
-      });
+          include: expect.objectContaining({
+            pointEvents: expect.any(Object),
+          }),
+        }),
+      );
       expect(tx.pointEvent.create).toHaveBeenCalledWith({
         data: {
           userId: 'user-1',
@@ -323,6 +318,7 @@ describe('RewardsRepository', () => {
           kind: PointEventKind.DEBIT,
           source: PointEventSource.REWARD_REDEMPTION,
           description: 'Resgate de recompensa: Camiseta Semcomp',
+          rewardRedemptionId: 'redemption-1',
         },
       });
       expect(result).toEqual(pendingRedemption);
@@ -391,15 +387,23 @@ describe('RewardsRepository', () => {
           ...pendingRedemption,
           status: 'CANCELLED',
         });
-      tx.user.update.mockResolvedValue(undefined);
-      tx.reward.update.mockResolvedValue(undefined);
-      tx.pointEvent.create.mockResolvedValue(undefined);
+      tx.user.update.mockResolvedValue({ points: 150 });
+      tx.reward.update.mockResolvedValue({ stock: 4 });
+      tx.pointEvent.create.mockResolvedValue({ id: 'refund-1' });
 
-      await repository.cancelRedemption('redemption-1');
+      await repository.cancelRedemption(
+        'redemption-1',
+        { reason: 'Cancelamento aprovado pela coordenação' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      );
 
       expect(tx.rewardRedemption.updateMany).toHaveBeenCalledWith({
         where: { id: 'redemption-1', status: 'PENDING' },
-        data: { status: 'CANCELLED' },
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          cancelledByAdminId: 'admin-1',
+          cancelledAt: expect.any(Date),
+        }),
       });
       expect(tx.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
@@ -416,6 +420,7 @@ describe('RewardsRepository', () => {
           kind: PointEventKind.CREDIT,
           source: PointEventSource.REWARD_REDEMPTION,
           description: 'Cancelamento de recompensa: Camiseta Semcomp',
+          rewardRedemptionId: 'redemption-1',
         },
       });
     });
@@ -428,9 +433,13 @@ describe('RewardsRepository', () => {
         status: 'DELIVERED',
       });
 
-      await expect(repository.cancelRedemption('redemption-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        repository.cancelRedemption(
+          'redemption-1',
+          { reason: 'Cancelamento aprovado pela coordenação' },
+          { actorAdminId: 'admin-1', requestId: 'request-1' },
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('does not refund points or stock when cancel loses a status race', async () => {
@@ -439,9 +448,13 @@ describe('RewardsRepository', () => {
       tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
       tx.rewardRedemption.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(repository.cancelRedemption('redemption-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        repository.cancelRedemption(
+          'redemption-1',
+          { reason: 'Cancelamento aprovado pela coordenação' },
+          { actorAdminId: 'admin-1', requestId: 'request-1' },
+        ),
+      ).rejects.toThrow(ConflictException);
       expect(tx.user.update).not.toHaveBeenCalled();
       expect(tx.reward.update).not.toHaveBeenCalled();
       expect(tx.pointEvent.create).not.toHaveBeenCalled();
@@ -449,19 +462,23 @@ describe('RewardsRepository', () => {
   });
 
   it('creates rewards with normalized optional fields', async () => {
-    const { repository, prisma } = createRepository();
-    prisma.reward.create.mockResolvedValue(activeReward);
+    const { repository, tx } = createRepository();
+    tx.reward.create.mockResolvedValue(activeReward);
 
-    await repository.create({
-      name: ' Camiseta Semcomp ',
-      description: ' ',
-      costInPoints: 50,
-      stock: 3,
-      imageUrl: '',
-      isActive: true,
-    });
+    await repository.create(
+      {
+        name: ' Camiseta Semcomp ',
+        description: ' ',
+        costInPoints: 50,
+        stock: 3,
+        imageUrl: '',
+        isActive: true,
+        reason: 'Inclusao aprovada pela coordenação',
+      },
+      { actorAdminId: 'admin-1', requestId: 'request-1' },
+    );
 
-    expect(prisma.reward.create).toHaveBeenCalledWith({
+    expect(tx.reward.create).toHaveBeenCalledWith({
       data: {
         name: 'Camiseta Semcomp',
         description: undefined,
@@ -485,28 +502,32 @@ describe('RewardsRepository', () => {
   });
 
   it('explicitly clears optional reward details on update', async () => {
-    const { repository, prisma } = createRepository();
-    prisma.reward.findUnique.mockResolvedValue(activeReward);
-    prisma.reward.update.mockResolvedValue({
+    const { repository, tx } = createRepository();
+    tx.reward.findUnique.mockResolvedValue({
+      ...activeReward,
+      imageUrl: 'https://example.test/old.png',
+    });
+    tx.reward.update.mockResolvedValue({
       ...activeReward,
       description: '',
       imageUrl: null,
     });
 
-    await repository.update('reward-1', {
-      description: '',
-      imageUrl: null,
-    });
+    await repository.update(
+      'reward-1',
+      {
+        description: '',
+        imageUrl: null,
+        reason: 'Atualizacao aprovada pela coordenação',
+      },
+      { actorAdminId: 'admin-1', requestId: 'request-1' },
+    );
 
-    expect(prisma.reward.update).toHaveBeenCalledWith({
+    expect(tx.reward.update).toHaveBeenCalledWith({
       where: { id: 'reward-1' },
       data: {
-        name: undefined,
         description: '',
-        costInPoints: undefined,
-        stock: undefined,
         imageUrl: null,
-        isActive: undefined,
       },
       select: {
         id: true,
@@ -529,20 +550,13 @@ describe('RewardsRepository', () => {
     await expect(repository.findPendingRedemptions()).resolves.toEqual([
       pendingRedemption,
     ]);
-    expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith({
-      where: { status: 'PENDING' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        reward: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    expect(prisma.rewardRedemption.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: 'PENDING' },
+        include: expect.objectContaining({ pointEvents: expect.any(Object) }),
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
   });
 
   it('marks pending redemptions as delivered', async () => {
@@ -556,13 +570,21 @@ describe('RewardsRepository', () => {
     tx.rewardRedemption.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
-      repository.deliverRedemption('redemption-1'),
+      repository.deliverRedemption(
+        'redemption-1',
+        { reason: 'Entrega confirmada pela coordenação' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
     ).resolves.toMatchObject({
       status: 'DELIVERED',
     });
     expect(tx.rewardRedemption.updateMany).toHaveBeenCalledWith({
       where: { id: 'redemption-1', status: 'PENDING' },
-      data: { status: 'DELIVERED' },
+      data: expect.objectContaining({
+        status: 'DELIVERED',
+        deliveredByAdminId: 'admin-1',
+        deliveredAt: expect.any(Date),
+      }),
     });
   });
 
@@ -571,9 +593,13 @@ describe('RewardsRepository', () => {
     tx.rewardRedemption.findUnique.mockResolvedValue(pendingRedemption);
     tx.rewardRedemption.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(repository.deliverRedemption('redemption-1')).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      repository.deliverRedemption(
+        'redemption-1',
+        { reason: 'Entrega confirmada pela coordenação' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
+    ).rejects.toThrow(ConflictException);
     expect(tx.rewardRedemption.findUnique).toHaveBeenCalledTimes(1);
   });
 

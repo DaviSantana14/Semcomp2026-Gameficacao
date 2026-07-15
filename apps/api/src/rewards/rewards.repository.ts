@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PointEventSource, Prisma, RedemptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuditRepository,
+  TransactionAuditWriter,
+} from '../audit/audit.repository';
 
 const rewardSelect = {
   id: true,
@@ -15,8 +19,21 @@ const rewardSelect = {
 } as const;
 
 const redemptionInclude = {
-  user: { select: { id: true, name: true, email: true } },
-  reward: true,
+  user: { select: { id: true, name: true, email: true, points: true } },
+  reward: { select: rewardSelect },
+  pointEvents: {
+    select: {
+      id: true,
+      points: true,
+      xpDelta: true,
+      kind: true,
+      source: true,
+      rewardRedemptionId: true,
+      description: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
 } as const;
 
 type RewardsDatabase = Pick<
@@ -53,8 +70,12 @@ export type RedemptionState = 'PENDING' | 'DELIVERED' | 'CANCELLED';
 @Injectable()
 export class RewardsRepository {
   private client: RewardsDatabase;
+  auditWriter?: TransactionAuditWriter;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private auditRepository?: AuditRepository,
+  ) {
     this.client = prisma;
   }
 
@@ -159,8 +180,13 @@ export class RewardsRepository {
           status: true,
           createdAt: true,
           updatedAt: true,
+          deliveredAt: true,
+          deliveredByAdminId: true,
+          cancelledAt: true,
+          cancelledByAdminId: true,
           user: { select: { id: true, name: true, email: true } },
           reward: { select: rewardSelect },
+          pointEvents: redemptionInclude.pointEvents,
         },
       }),
     ]);
@@ -222,6 +248,7 @@ export class RewardsRepository {
     points: number;
     kind: 'CREDIT' | 'DEBIT';
     description: string;
+    rewardRedemptionId: string;
   }) {
     return this.client.pointEvent.create({
       data: {
@@ -246,10 +273,20 @@ export class RewardsRepository {
     });
   }
 
-  transitionRedemption(id: string, status: RedemptionState) {
+  transitionRedemption(
+    id: string,
+    status: RedemptionState,
+    adminId: string,
+    transitionedAt: Date,
+  ) {
     return this.client.rewardRedemption.updateMany({
       where: { id, status: RedemptionStatus.PENDING },
-      data: { status },
+      data: {
+        status,
+        ...(status === 'DELIVERED'
+          ? { deliveredAt: transitionedAt, deliveredByAdminId: adminId }
+          : { cancelledAt: transitionedAt, cancelledByAdminId: adminId }),
+      },
     });
   }
 
@@ -258,7 +295,9 @@ export class RewardsRepository {
       RewardsRepository.prototype,
     ) as RewardsRepository;
     repository.prisma = this.prisma;
+    repository.auditRepository = this.auditRepository;
     repository.client = tx;
+    repository.auditWriter = this.auditRepository?.bindTransaction(tx);
     return repository;
   }
 }

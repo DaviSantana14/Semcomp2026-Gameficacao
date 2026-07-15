@@ -1,5 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { RedemptionStatus } from '@prisma/client';
+import {
+  PointEventKind,
+  PointEventSource,
+  RedemptionStatus,
+} from '@prisma/client';
 import {
   RewardResponseDto,
   RewardResponseSource,
@@ -23,6 +27,36 @@ class RedemptionUserResponseDto {
   }
 }
 
+export class RedemptionPointEventResponseDto {
+  @ApiProperty()
+  id: string;
+  @ApiProperty()
+  points: number;
+  @ApiProperty()
+  xpDelta: number;
+  @ApiProperty({ enum: PointEventKind })
+  kind: PointEventKind;
+  @ApiProperty({ enum: PointEventSource })
+  source: PointEventSource;
+  @ApiProperty({ nullable: true })
+  rewardRedemptionId: string | null;
+  @ApiProperty({ nullable: true })
+  description: string | null;
+  @ApiProperty()
+  createdAt: Date;
+
+  constructor(data: RedemptionPointEventResponseSource) {
+    this.id = data.id;
+    this.points = data.points;
+    this.xpDelta = data.xpDelta;
+    this.kind = data.kind;
+    this.source = data.source;
+    this.rewardRedemptionId = data.rewardRedemptionId;
+    this.description = data.description;
+    this.createdAt = data.createdAt;
+  }
+}
+
 export class RewardRedemptionResponseDto {
   @ApiProperty({ example: 'clxredemption123' })
   id: string;
@@ -38,6 +72,21 @@ export class RewardRedemptionResponseDto {
 
   @ApiProperty({ enum: RedemptionStatus, example: RedemptionStatus.PENDING })
   status: RedemptionStatus;
+
+  @ApiProperty({ nullable: true, example: '2026-05-17T14:00:00.000Z' })
+  deliveredAt: Date | null;
+
+  @ApiProperty({ nullable: true, example: 'clxadmin123' })
+  deliveredByAdminId: string | null;
+
+  @ApiProperty({ nullable: true, example: '2026-05-17T14:00:00.000Z' })
+  cancelledAt: Date | null;
+
+  @ApiProperty({ nullable: true, example: 'clxadmin123' })
+  cancelledByAdminId: string | null;
+
+  @ApiProperty({ isArray: true, type: RedemptionPointEventResponseDto })
+  pointEvents: RedemptionPointEventResponseDto[];
 
   @ApiProperty({ type: RedemptionUserResponseDto })
   user: RedemptionUserResponseDto;
@@ -57,6 +106,13 @@ export class RewardRedemptionResponseDto {
     this.rewardId = data.rewardId;
     this.pointsSpent = data.pointsSpent;
     this.status = data.status;
+    this.deliveredAt = data.deliveredAt ?? null;
+    this.deliveredByAdminId = data.deliveredByAdminId ?? null;
+    this.cancelledAt = data.cancelledAt ?? null;
+    this.cancelledByAdminId = data.cancelledByAdminId ?? null;
+    this.pointEvents = (data.pointEvents ?? []).map(
+      (event) => new RedemptionPointEventResponseDto(event),
+    );
     this.user = new RedemptionUserResponseDto(data.user);
     this.reward = toRewardResponseDto(data.reward);
     this.createdAt = data.createdAt;
@@ -76,10 +132,26 @@ export type RewardRedemptionResponseSource = {
   rewardId: string;
   pointsSpent: number;
   status: RedemptionStatus;
+  deliveredAt: Date | null;
+  deliveredByAdminId: string | null;
+  cancelledAt: Date | null;
+  cancelledByAdminId: string | null;
+  pointEvents: RedemptionPointEventResponseSource[];
   user: RedemptionUserResponseSource;
   reward: RewardResponseSource;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type RedemptionPointEventResponseSource = {
+  id: string;
+  points: number;
+  xpDelta: number;
+  kind: PointEventKind;
+  source: PointEventSource;
+  rewardRedemptionId: string | null;
+  description: string | null;
+  createdAt: Date;
 };
 
 export function toRewardRedemptionResponseDto(

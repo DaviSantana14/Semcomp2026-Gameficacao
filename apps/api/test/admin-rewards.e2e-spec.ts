@@ -12,6 +12,7 @@ describe('Admin rewards (e2e)', () => {
   let harness: AdminE2eHarness;
   let adminSession: AuthSession;
   let participantSession: AuthSession;
+  let adminId: string;
   let participantId: string;
   const userIds: string[] = [];
   const rewardIds: string[] = [];
@@ -39,6 +40,7 @@ describe('Admin rewards (e2e)', () => {
       }),
     ]);
     userIds.push(admin.id, participant.id);
+    adminId = admin.id;
     participantId = participant.id;
     adminSession = await harness.login(admin.cpf, admin.email);
     participantSession = await harness.login(
@@ -56,6 +58,7 @@ describe('Admin rewards (e2e)', () => {
     const created = await harness
       .post('/rewards', adminSession)
       .send({
+        reason: 'Criacao aprovada para o catalogo administrativo',
         name: `Rewards managed ${suffix}`,
         costInPoints: 40,
         stock: 3,
@@ -67,7 +70,12 @@ describe('Admin rewards (e2e)', () => {
 
     await harness
       .patch(`/rewards/${rewardId}`, adminSession)
-      .send({ costInPoints: 45, stock: 4, isActive: false })
+      .send({
+        reason: 'Atualizacao aprovada para o catalogo administrativo',
+        costInPoints: 45,
+        stock: 4,
+        isActive: false,
+      })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({
@@ -118,13 +126,30 @@ describe('Admin rewards (e2e)', () => {
     expect(afterRedeem.points).toBe(before.points - 40);
     expect(afterRedeem.xp).toBe(before.xp);
     expect(rewardAfterRedeem.stock).toBe(1);
+    const debit = await harness.prisma.pointEvent.findFirstOrThrow({
+      where: { rewardRedemptionId: redemptionId, points: -40 },
+    });
+    expect(debit.source).toBe('REWARD_REDEMPTION');
 
-    await harness
-      .patch(`/admin/redemptions/${redemptionId}/cancel`, adminSession)
-      .expect(200)
-      .expect(({ body }: Response) =>
-        expect(body).toMatchObject({ status: RedemptionStatus.CANCELLED }),
-      );
+    const [firstCancel, secondCancel] = await Promise.all([
+      harness
+        .patch(`/admin/redemptions/${redemptionId}/cancel`, adminSession)
+        .send({
+          reason: 'Cancelamento aprovado por indisponibilidade operacional',
+        }),
+      harness
+        .patch(`/admin/redemptions/${redemptionId}/cancel`, adminSession)
+        .send({
+          reason: 'Cancelamento aprovado por indisponibilidade operacional',
+        }),
+    ]);
+    const cancellationStatuses = [firstCancel.status, secondCancel.status];
+    expect(
+      cancellationStatuses.filter((status) => status === 200),
+    ).toHaveLength(1);
+    expect(
+      cancellationStatuses.some((status) => status === 400 || status === 409),
+    ).toBe(true);
     const [afterCancel, rewardAfterCancel, cancelled] = await Promise.all([
       harness.prisma.user.findUniqueOrThrow({ where: { id: participantId } }),
       harness.prisma.reward.findUniqueOrThrow({ where: { id: rewardId } }),
@@ -136,11 +161,20 @@ describe('Admin rewards (e2e)', () => {
     expect(afterCancel.xp).toBe(before.xp);
     expect(rewardAfterCancel.stock).toBe(2);
     expect(cancelled.status).toBe(RedemptionStatus.CANCELLED);
+    expect(cancelled.cancelledAt).toBeInstanceOf(Date);
+    expect(cancelled.cancelledByAdminId).toBe(adminId);
+    await expect(
+      harness.prisma.pointEvent.count({
+        where: { rewardRedemptionId: redemptionId, points: 40 },
+      }),
+    ).resolves.toBe(1);
     await harness
       .patch(`/admin/redemptions/${redemptionId}/cancel`, adminSession)
+      .send({ reason: 'Cancelamento repetido para validar conflito terminal' })
       .expect(400);
     await harness
       .patch(`/admin/redemptions/${redemptionId}/deliver`, adminSession)
+      .send({ reason: 'Entrega invalida depois do cancelamento confirmado' })
       .expect(400);
   });
 
@@ -152,6 +186,7 @@ describe('Admin rewards (e2e)', () => {
     const redemptionId = (response.body as { id: string }).id;
     await harness
       .patch(`/admin/redemptions/${redemptionId}/deliver`, adminSession)
+      .send({ reason: 'Entrega confirmada presencialmente pela coordenação' })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({ status: RedemptionStatus.DELIVERED }),
@@ -160,11 +195,15 @@ describe('Admin rewards (e2e)', () => {
       where: { id: redemptionId },
     });
     expect(delivered.status).toBe(RedemptionStatus.DELIVERED);
+    expect(delivered.deliveredAt).toBeInstanceOf(Date);
+    expect(delivered.deliveredByAdminId).toBe(adminId);
     await harness
       .patch(`/admin/redemptions/${redemptionId}/deliver`, adminSession)
+      .send({ reason: 'Entrega repetida para validar conflito terminal' })
       .expect(400);
     await harness
       .patch(`/admin/redemptions/${redemptionId}/cancel`, adminSession)
+      .send({ reason: 'Cancelamento invalido depois da entrega confirmada' })
       .expect(400);
   });
 
