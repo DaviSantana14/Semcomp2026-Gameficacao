@@ -27,6 +27,14 @@ export interface ReconciliationRow {
   lastEventAt: Date | null;
 }
 
+type RawReconciliationRow = Omit<
+  ReconciliationRow,
+  'ledgerPoints' | 'ledgerXp'
+> & {
+  ledgerPoints: bigint;
+  ledgerXp: bigint;
+};
+
 const compensationEventSelect = {
   id: true,
   userId: true,
@@ -108,22 +116,22 @@ class BoundReconciliationTransaction implements ReconciliationTransaction {
     if (!participant) return null;
     const ledger = await this.client.$queryRaw<
       Array<{
-        ledgerPoints: number;
-        ledgerXp: number;
+        ledgerPoints: bigint;
+        ledgerXp: bigint;
         lastEventAt: Date | null;
       }>
     >(Prisma.sql`
       SELECT
-        COALESCE(SUM(pe."points"), 0)::integer AS "ledgerPoints",
-        COALESCE(SUM(pe."xpDelta"), 0)::integer AS "ledgerXp",
+        COALESCE(SUM(pe."points"), 0) AS "ledgerPoints",
+        COALESCE(SUM(pe."xpDelta"), 0) AS "ledgerXp",
         MAX(pe."createdAt") AS "lastEventAt"
       FROM "PointEvent" pe
       WHERE pe."userId" = ${id}
     `);
     return {
       ...participant,
-      ledgerPoints: ledger[0]?.ledgerPoints ?? 0,
-      ledgerXp: ledger[0]?.ledgerXp ?? 0,
+      ledgerPoints: toSafeInteger(ledger[0]?.ledgerPoints ?? 0n),
+      ledgerXp: toSafeInteger(ledger[0]?.ledgerXp ?? 0n),
       lastEventAt: ledger[0]?.lastEventAt ?? null,
     };
   }
@@ -198,7 +206,7 @@ export class AdminReconciliationRepository {
         FROM reconciliation
         ${predicates}
       `),
-      this.prisma.$queryRaw<ReconciliationRow[]>(Prisma.sql`
+      this.prisma.$queryRaw<RawReconciliationRow[]>(Prisma.sql`
         ${common}
         SELECT
           "participantId",
@@ -216,7 +224,10 @@ export class AdminReconciliationRepository {
         OFFSET ${(filter.page - 1) * filter.limit}
       `),
     ]);
-    return { total: Number(countRows[0]?.total ?? 0), rows };
+    return {
+      total: toSafeInteger(countRows[0]?.total ?? 0n),
+      rows: rows.map(mapReconciliationRow),
+    };
   }
 
   async countDivergent() {
@@ -227,11 +238,11 @@ export class AdminReconciliationRepository {
       WHERE "storedPoints" <> "ledgerPoints"
          OR "storedXp" <> "ledgerXp"
     `);
-    return Number(rows[0]?.total ?? 0);
+    return toSafeInteger(rows[0]?.total ?? 0n);
   }
 
   async findByParticipantId(id: string) {
-    const rows = await this.prisma.$queryRaw<ReconciliationRow[]>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<RawReconciliationRow[]>(Prisma.sql`
       ${this.reconciliationRelation()}
       SELECT
         "participantId",
@@ -246,7 +257,7 @@ export class AdminReconciliationRepository {
       WHERE "participantId" = ${id}
       LIMIT 1
     `);
-    return rows[0] ?? null;
+    return rows[0] ? mapReconciliationRow(rows[0]) : null;
   }
 
   private reconciliationRelation() {
@@ -254,8 +265,8 @@ export class AdminReconciliationRepository {
       WITH ledger AS (
         SELECT
           pe."userId",
-          SUM(pe."points")::integer AS "ledgerPoints",
-          SUM(pe."xpDelta")::integer AS "ledgerXp",
+          SUM(pe."points") AS "ledgerPoints",
+          SUM(pe."xpDelta") AS "ledgerXp",
           MAX(pe."createdAt") AS "lastEventAt"
         FROM "PointEvent" pe
         GROUP BY pe."userId"
@@ -268,8 +279,8 @@ export class AdminReconciliationRepository {
           u."cpf" AS cpf,
           u."points" AS "storedPoints",
           u."xp" AS "storedXp",
-          COALESCE(ledger."ledgerPoints", 0)::integer AS "ledgerPoints",
-          COALESCE(ledger."ledgerXp", 0)::integer AS "ledgerXp",
+          COALESCE(ledger."ledgerPoints", 0) AS "ledgerPoints",
+          COALESCE(ledger."ledgerXp", 0) AS "ledgerXp",
           ledger."lastEventAt" AS "lastEventAt",
           u."createdAt" AS "participantCreatedAt"
         FROM "User" u
@@ -296,4 +307,22 @@ export class AdminReconciliationRepository {
       ? Prisma.sql`WHERE ${Prisma.join(clauses, ' AND ')}`
       : Prisma.empty;
   }
+}
+
+function mapReconciliationRow(row: RawReconciliationRow): ReconciliationRow {
+  return {
+    ...row,
+    ledgerPoints: toSafeInteger(row.ledgerPoints),
+    ledgerXp: toSafeInteger(row.ledgerXp),
+  };
+}
+
+function toSafeInteger(value: bigint | number): number {
+  const converted = Number(value);
+  if (!Number.isSafeInteger(converted)) {
+    throw new RangeError(
+      'O total agregado excede o limite seguro da aplicação.',
+    );
+  }
+  return converted;
 }

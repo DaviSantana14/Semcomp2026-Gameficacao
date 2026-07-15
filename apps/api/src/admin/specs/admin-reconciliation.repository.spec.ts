@@ -18,7 +18,18 @@ describe(AdminReconciliationRepository.name, () => {
   it('uses database aggregation, LEFT JOIN/COALESCE, full ledger and stable pagination', async () => {
     prisma.$queryRaw
       .mockResolvedValueOnce([{ total: 3n }])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([
+        {
+          participantId: 'p1',
+          name: 'Ana',
+          email: 'ana@example.test',
+          storedPoints: 0,
+          storedXp: 0,
+          ledgerPoints: 2_147_483_648n,
+          ledgerXp: -2_147_483_649n,
+          lastEventAt: null,
+        },
+      ]);
 
     await expect(
       repository.findPage({
@@ -27,7 +38,15 @@ describe(AdminReconciliationRepository.name, () => {
         search: "ana' OR true --",
         divergentOnly: true,
       }),
-    ).resolves.toEqual({ total: 3, rows: [] });
+    ).resolves.toEqual({
+      total: 3,
+      rows: [
+        expect.objectContaining({
+          ledgerPoints: 2_147_483_648,
+          ledgerXp: -2_147_483_649,
+        }),
+      ],
+    });
 
     const queries = prisma.$queryRaw.mock.calls.map(([query]) =>
       sqlText(query as Prisma.Sql),
@@ -37,6 +56,7 @@ describe(AdminReconciliationRepository.name, () => {
     expect(queries.join('\n')).toMatch(/MAX\(pe\."createdAt"\)/);
     expect(queries.join('\n')).toMatch(/LEFT JOIN ledger/);
     expect(queries.join('\n')).toMatch(/COALESCE/);
+    expect(queries.join('\n')).not.toMatch(/::integer/);
     expect(queries.join('\n')).not.toMatch(/pe\."source"/);
     expect(queries[1]).toMatch(/cpf ILIKE/);
     expect(queries[1]).toMatch(
@@ -63,9 +83,27 @@ describe(AdminReconciliationRepository.name, () => {
   });
 
   it('returns participant detail from the same aggregated relation', async () => {
-    prisma.$queryRaw.mockResolvedValue([{ participantId: 'p1' }]);
+    prisma.$queryRaw.mockResolvedValue([
+      {
+        participantId: 'p1',
+        name: 'Ana',
+        email: 'ana@example.test',
+        storedPoints: 1,
+        storedXp: 2,
+        ledgerPoints: 2_147_483_648n,
+        ledgerXp: -3n,
+        lastEventAt: null,
+      },
+    ]);
     await expect(repository.findByParticipantId('p1')).resolves.toEqual({
       participantId: 'p1',
+      name: 'Ana',
+      email: 'ana@example.test',
+      storedPoints: 1,
+      storedXp: 2,
+      ledgerPoints: 2_147_483_648,
+      ledgerXp: -3,
+      lastEventAt: null,
     });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const query = prisma.$queryRaw.mock.calls[0][0] as Prisma.Sql;
@@ -81,7 +119,11 @@ describe(AdminReconciliationRepository.name, () => {
           { participantId: 'p1', storedPoints: 10, storedXp: 8 },
         ])
         .mockResolvedValueOnce([
-          { ledgerPoints: 7, ledgerXp: 6, lastEventAt: null },
+          {
+            ledgerPoints: -2_147_483_649n,
+            ledgerXp: 2_147_483_648n,
+            lastEventAt: null,
+          },
         ]),
       pointEvent: { findUnique: jest.fn(), create: jest.fn() },
       adminAuditEvent: { create: jest.fn() },
@@ -94,8 +136,8 @@ describe(AdminReconciliationRepository.name, () => {
       await expect(transaction.lockReconciliation('p1')).resolves.toMatchObject(
         {
           participantId: 'p1',
-          ledgerPoints: 7,
-          ledgerXp: 6,
+          ledgerPoints: -2_147_483_649,
+          ledgerXp: 2_147_483_648,
         },
       );
     });
@@ -107,6 +149,25 @@ describe(AdminReconciliationRepository.name, () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(sqlText(tx.$queryRaw.mock.calls[1][0] as Prisma.Sql)).toMatch(
       /SUM\(.*"points"/,
+    );
+  });
+
+  it('rejects aggregate values outside the JavaScript safe integer range', async () => {
+    prisma.$queryRaw.mockResolvedValue([
+      {
+        participantId: 'p1',
+        name: 'Ana',
+        email: 'ana@example.test',
+        storedPoints: 0,
+        storedXp: 0,
+        ledgerPoints: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+        ledgerXp: 0n,
+        lastEventAt: null,
+      },
+    ]);
+
+    await expect(repository.findByParticipantId('p1')).rejects.toThrow(
+      'O total agregado excede o limite seguro da aplicação.',
     );
   });
 });

@@ -81,8 +81,11 @@ export class AdminReconciliationService {
           entityId: participantId,
           participantId,
           reason: input.reason,
-          before,
-          after: { ...after, pointEventId },
+          before: reconciliationAuditSnapshot(before),
+          after: {
+            ...reconciliationAuditSnapshot(after),
+            pointEventId,
+          },
           metadata: { pointEventId },
         });
         const pointEvent = await transaction.createPointEvent({
@@ -238,6 +241,18 @@ function reconciliationSnapshot(row: {
 function pointEventKind(pointsDelta: number, xpDelta: number) {
   const direction = pointsDelta === 0 ? xpDelta : pointsDelta;
   return direction < 0 ? PointEventKind.DEBIT : PointEventKind.CREDIT;
+}
+
+function reconciliationAuditSnapshot(snapshot: ReconciliationSnapshot) {
+  return {
+    participantId: snapshot.participantId,
+    storedPoints: snapshot.storedPoints,
+    storedXp: snapshot.storedXp,
+    ledgerPoints: snapshot.ledgerPoints,
+    ledgerXp: snapshot.ledgerXp,
+    pointsDifference: snapshot.pointsDifference,
+    xpDifference: snapshot.xpDifference,
+  };
 }
 
 function readReconciliationSnapshot(value: unknown): ReconciliationSnapshot {

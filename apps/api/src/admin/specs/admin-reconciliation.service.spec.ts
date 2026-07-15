@@ -6,6 +6,7 @@ import {
   PointEventSource,
 } from '@prisma/client';
 import { Test } from '@nestjs/testing';
+import { TransactionAuditWriter } from '../../audit/audit.repository';
 import { AuditService } from '../../audit/audit.service';
 import {
   AdminReconciliationRepository,
@@ -90,6 +91,54 @@ describe(AdminReconciliationService.name, () => {
       },
       replayed: false,
     });
+  });
+
+  it('persists safe snapshots through the real AuditService for opposite-signed compensation', async () => {
+    const transaction = reconciliationTransaction({
+      ledgerPoints: 15,
+      ledgerXp: 6,
+    });
+    const createAudit: jest.MockedFunction<TransactionAuditWriter['create']> =
+      jest.fn().mockResolvedValue(auditEvent());
+    transaction.auditWriter = { create: createAudit };
+    repository.withTransaction.mockImplementation(
+      (callback: (value: ReconciliationTransaction) => Promise<unknown>) =>
+        callback(transaction as never),
+    );
+    transaction.createPointEvent.mockResolvedValue(
+      pointEvent({ points: -5, xpDelta: 4, kind: PointEventKind.DEBIT }),
+    );
+    service = new AdminReconciliationService(
+      repository as never,
+      new AuditService({ findPage: jest.fn() } as never),
+    );
+
+    await expect(
+      service.confirm('participant-1', confirmation(), {
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      }),
+    ).resolves.toMatchObject({
+      before: { pointsDifference: -5, xpDifference: 4 },
+      pointEvent: { pointsDelta: -5, xpDelta: 4, kind: PointEventKind.DEBIT },
+    });
+    const persisted = createAudit.mock.calls[0]?.[0];
+    expect(persisted).toBeDefined();
+    expect(persisted?.before).toEqual(
+      expect.objectContaining({ pointsDifference: -5, xpDifference: 4 }),
+    );
+    expect(persisted?.after).toEqual(
+      expect.objectContaining({ pointsDifference: 0, xpDifference: 0 }),
+    );
+    expect(persisted?.before).not.toHaveProperty('status');
+    expect(persisted?.after).not.toHaveProperty('status');
+    expect(transaction.createPointEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        points: -5,
+        xpDelta: 4,
+        kind: PointEventKind.DEBIT,
+      }),
+    );
   });
 
   it('returns the original result for an identical idempotent replay', async () => {
