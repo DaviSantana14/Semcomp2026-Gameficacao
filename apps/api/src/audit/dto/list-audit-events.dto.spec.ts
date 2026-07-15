@@ -17,10 +17,13 @@ describe(ListAuditEventsDto.name, () => {
       limit: '100',
       actorType: AuditActorType.ADMIN,
       actorAdminId: 'admin-1',
+      actorSearch: '  Ada@Example.COM  ',
       operation: AuditOperation.ACTION_UPDATED,
       entityType: AuditEntityType.ACTION,
       entityId: 'action-1',
+      entitySearch: '  Palestra  ',
       participantId: 'participant-1',
+      participantSearch: '  Grace  ',
       requestId: 'request-1',
       from: '2026-07-01T00:00:00.000Z',
       to: '2026-07-14T00:00:00.000Z',
@@ -28,6 +31,9 @@ describe(ListAuditEventsDto.name, () => {
     expect(await validate(dto)).toEqual([]);
     expect(dto.page).toBe(2);
     expect(dto.limit).toBe(100);
+    expect(dto.actorSearch).toBe('Ada@Example.COM');
+    expect(dto.participantSearch).toBe('Grace');
+    expect(dto.entitySearch).toBe('Palestra');
   });
 
   it.each([
@@ -51,9 +57,12 @@ describe(ListParticipantAuditEventsDto.name, () => {
       expect.arrayContaining([
         'actorType',
         'actorAdminId',
+        'actorSearch',
         'entityType',
         'entityId',
+        'entitySearch',
         'participantId',
+        'participantSearch',
         'requestId',
       ]),
     );

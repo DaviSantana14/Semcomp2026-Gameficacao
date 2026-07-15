@@ -22,16 +22,49 @@ describe(AuditRepository.name, () => {
       limit: 20,
       actorType: AuditActorType.ADMIN,
       actorAdminId: 'admin-1',
+      actorSearch: 'Ada',
       operation: AuditOperation.ACTION_UPDATED,
       entityType: AuditEntityType.ACTION,
       entityId: 'action-1',
+      entitySearch: 'Palestra',
       participantId: 'participant-1',
+      participantSearch: 'Grace',
       requestId: 'request-1',
       from,
       to,
     });
 
     const where = {
+      AND: [
+        {
+          OR: [
+            { actorDisplayName: { contains: 'Ada', mode: 'insensitive' } },
+            { actorDisplayEmail: { contains: 'Ada', mode: 'insensitive' } },
+          ],
+        },
+        {
+          OR: [
+            {
+              participantDisplayName: {
+                contains: 'Grace',
+                mode: 'insensitive',
+              },
+            },
+            {
+              participantDisplayEmail: {
+                contains: 'Grace',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+        {
+          entityDisplayName: {
+            contains: 'Palestra',
+            mode: 'insensitive',
+          },
+        },
+      ],
       actorType: AuditActorType.ADMIN,
       actorAdminId: 'admin-1',
       operation: AuditOperation.ACTION_UPDATED,
@@ -48,6 +81,146 @@ describe(AuditRepository.name, () => {
         skip: 20,
         take: 20,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          actorType: true,
+          actorAdminId: true,
+          actorDisplayName: true,
+          actorDisplayEmail: true,
+          participantId: true,
+          participantDisplayName: true,
+          participantDisplayEmail: true,
+          operation: true,
+          entityType: true,
+          entityId: true,
+          entityDisplayName: true,
+          reason: true,
+          before: true,
+          after: true,
+          metadata: true,
+          requestId: true,
+          createdAt: true,
+        },
+      }),
+    );
+  });
+
+  it.each([
+    [AuditEntityType.PARTICIPANT, 'participant-1', 'Grace Hopper'],
+    [AuditEntityType.ACTION, 'action-1', 'Palestra de abertura'],
+    [AuditEntityType.CLAIM_CODE_BATCH, 'batch-1', 'Lote de códigos batch-1'],
+    [AuditEntityType.CLAIM_CODE, 'claim-1', 'Código AB****YZ'],
+    [AuditEntityType.REWARD, 'reward-1', 'Camiseta'],
+    [AuditEntityType.REWARD_REDEMPTION, 'redemption-1', 'Resgate de Camiseta'],
+    [AuditEntityType.POINT_EVENT, 'point-1', 'Evento de pontos point-1'],
+    [
+      AuditEntityType.RECONCILIATION,
+      'reconciliation-1',
+      'Reconciliação reconciliation-1',
+    ],
+  ])(
+    'resolves ADMIN identities and the %s entity display in the bound transaction',
+    async (entityType, entityId, entityDisplayName) => {
+      const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve(data),
+      );
+      const transaction = {
+        adminAuditEvent: { create },
+        user: {
+          findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve(
+              where.id === 'admin-1'
+                ? { name: 'Ada Lovelace', email: 'ada@example.com' }
+                : { name: 'Grace Hopper', email: 'grace@example.com' },
+            ),
+          ),
+        },
+        action: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ name: 'Palestra de abertura' }),
+        },
+        reward: {
+          findUnique: jest.fn().mockResolvedValue({ name: 'Camiseta' }),
+        },
+        rewardRedemption: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ reward: { name: 'Camiseta' } }),
+        },
+      };
+      const repository = new AuditRepository({} as never);
+
+      await repository.bindTransaction(transaction as never).create({
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        participantId: 'participant-1',
+        operation: AuditOperation.CLAIM_CODE_STATUS_CHANGED,
+        entityType,
+        entityId,
+        reason: 'Alteração administrativa necessária',
+        before: {
+          id: 'claim-1',
+          isActive: true,
+          isUsed: false,
+          maskedCode: 'AB****YZ',
+        },
+        after: {
+          id: 'claim-1',
+          isActive: false,
+          isUsed: false,
+          maskedCode: 'AB****YZ',
+        },
+        requestId: 'request-1',
+      });
+
+      expect(create.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({
+          actorDisplayName: 'Ada Lovelace',
+          actorDisplayEmail: 'ada@example.com',
+          participantDisplayName: 'Grace Hopper',
+          participantDisplayEmail: 'grace@example.com',
+          entityDisplayName,
+        }),
+      );
+      expect(JSON.stringify(create.mock.calls)).not.toContain('52998224725');
+      if (entityType === AuditEntityType.CLAIM_CODE) {
+        expect(JSON.stringify(create.mock.calls)).not.toContain('AB1234YZ');
+      }
+    },
+  );
+
+  it('uses a fixed SYSTEM identity and deterministic translated fallbacks', async () => {
+    const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
+      Promise.resolve(data),
+    );
+    const transaction = {
+      adminAuditEvent: { create },
+      user: { findUnique: jest.fn().mockResolvedValue(null) },
+      action: { findUnique: jest.fn().mockResolvedValue(null) },
+      reward: { findUnique: jest.fn().mockResolvedValue(null) },
+      rewardRedemption: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const repository = new AuditRepository({} as never);
+
+    await repository.bindTransaction(transaction as never).create({
+      actorType: AuditActorType.SYSTEM,
+      actorAdminId: null,
+      participantId: null,
+      operation: AuditOperation.ACTION_UPDATED,
+      entityType: AuditEntityType.ACTION,
+      entityId: 'missing-action',
+      reason: 'Rotina automática necessária',
+      requestId: 'request-1',
+    });
+
+    expect(create.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({
+        actorDisplayName: 'Sistema',
+        actorDisplayEmail: null,
+        participantDisplayName: null,
+        participantDisplayEmail: null,
+        entityDisplayName: 'Atividade missing-action',
       }),
     );
   });

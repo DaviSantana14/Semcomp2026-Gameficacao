@@ -48,6 +48,15 @@ export class ListAuditEventsDto extends ListParticipantAuditEventsDto {
   @MaxLength(100)
   actorAdminId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Busca parcial por nome ou e-mail do ator',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => trimmed(value))
+  @IsString()
+  @MaxLength(100)
+  actorSearch?: string;
+
   @ApiPropertyOptional({ enum: AuditEntityType })
   @IsOptional()
   @IsEnum(AuditEntityType)
@@ -60,12 +69,30 @@ export class ListAuditEventsDto extends ListParticipantAuditEventsDto {
   @MaxLength(100)
   entityId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Busca parcial pelo nome histórico da entidade',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => trimmed(value))
+  @IsString()
+  @MaxLength(100)
+  entitySearch?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => trimmed(value))
   @IsString()
   @MaxLength(100)
   participantId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Busca parcial por nome ou e-mail do participante',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => trimmed(value))
+  @IsString()
+  @MaxLength(100)
+  participantSearch?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

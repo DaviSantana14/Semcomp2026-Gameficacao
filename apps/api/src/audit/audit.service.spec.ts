@@ -434,10 +434,15 @@ describe(AuditService.name, () => {
             id: 'audit-1',
             actorType: AuditActorType.SYSTEM,
             actorAdminId: null,
+            actorDisplayName: 'Sistema',
+            actorDisplayEmail: null,
             participantId: null,
+            participantDisplayName: null,
+            participantDisplayEmail: null,
             operation: AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED,
             entityType: AuditEntityType.RECONCILIATION,
             entityId: 'reconciliation-1',
+            entityDisplayName: 'Reconciliação reconciliation-1',
             reason: 'Correção automática reconciliada',
             before: { points: 1 },
             after: { points: 2 },
@@ -454,12 +459,18 @@ describe(AuditService.name, () => {
       page: 1,
       limit: 20,
       participantId: 'participant-1',
+      actorSearch: '  sistema  ',
+      participantSearch: '  grace  ',
+      entitySearch: '  reconciliação  ',
       from: '2026-07-01T00:00:00.000Z',
     });
 
     expect(repository.findPage).toHaveBeenCalledWith(
       expect.objectContaining({
         participantId: 'participant-1',
+        actorSearch: 'sistema',
+        participantSearch: 'grace',
+        entitySearch: 'reconciliação',
         from: new Date('2026-07-01T00:00:00.000Z'),
       }),
     );
@@ -468,6 +479,9 @@ describe(AuditService.name, () => {
         before: { points: 1 },
         after: { points: 2 },
         metadata: { pointEventId: 'point-1' },
+        actorDisplay: { name: 'Sistema', email: null },
+        participantDisplay: null,
+        entityDisplay: { name: 'Reconciliação reconciliation-1' },
         createdAt: createdAt.toISOString(),
       }),
     );

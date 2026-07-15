@@ -32,22 +32,27 @@ enum AuditOperation {
 }
 
 model AdminAuditEvent {
-  id            String          @id @default(cuid())
-  actorType     AuditActorType
-  actorAdminId  String?
-  participantId String?
-  operation     AuditOperation
-  entityType    AuditEntityType
-  entityId      String
-  reason        String
-  before        Json?
-  after         Json?
-  metadata      Json?
-  requestId     String
-  createdAt     DateTime        @default(now())
-  actorAdmin    User?           @relation("AuditActor", fields: [actorAdminId], references: [id], onDelete: Restrict)
-  participant   User?           @relation("AuditParticipant", fields: [participantId], references: [id], onDelete: Restrict)
-  pointEvents   PointEvent[]
+  id                      String          @id @default(cuid())
+  actorType               AuditActorType
+  actorAdminId            String?
+  actorDisplayName        String?
+  actorDisplayEmail       String?
+  participantId           String?
+  participantDisplayName  String?
+  participantDisplayEmail String?
+  operation               AuditOperation
+  entityType              AuditEntityType
+  entityId                String
+  entityDisplayName       String?
+  reason                  String
+  before                  Json?
+  after                   Json?
+  metadata                Json?
+  requestId               String
+  createdAt               DateTime        @default(now())
+  actorAdmin              User?           @relation("AuditActor", fields: [actorAdminId], references: [id], onDelete: Restrict)
+  participant             User?           @relation("AuditParticipant", fields: [participantId], references: [id], onDelete: Restrict)
+  pointEvents             PointEvent[]
 
   @@index([createdAt])
   @@index([actorAdminId, createdAt])

@@ -641,23 +641,70 @@ export class AuditService {
       limit: query.limit,
       actorType: query.actorType,
       actorAdminId: query.actorAdminId,
+      actorSearch: query.actorSearch?.trim(),
       operation: query.operation,
       entityType: query.entityType,
       entityId: query.entityId,
+      entitySearch: query.entitySearch?.trim(),
       participantId: query.participantId,
+      participantSearch: query.participantSearch?.trim(),
       requestId: query.requestId,
       from,
       to,
     });
     return paginate(
-      page.rows.map((event) => ({
-        ...event,
-        createdAt: event.createdAt.toISOString(),
-      })),
+      page.rows.map((event) => {
+        const {
+          actorDisplayName,
+          actorDisplayEmail,
+          participantDisplayName,
+          participantDisplayEmail,
+          entityDisplayName,
+          ...persisted
+        } = event;
+        return {
+          ...persisted,
+          actorDisplay: {
+            name:
+              actorDisplayName ??
+              (event.actorType === AuditActorType.SYSTEM
+                ? 'Sistema'
+                : `Administrador ${event.actorAdminId}`),
+            email: actorDisplayEmail,
+          },
+          participantDisplay: event.participantId
+            ? {
+                name:
+                  participantDisplayName ??
+                  `Participante ${event.participantId}`,
+                email: participantDisplayEmail ?? '',
+              }
+            : null,
+          entityDisplay: {
+            name:
+              entityDisplayName ??
+              `${this.entityTypeLabel(event.entityType)} ${event.entityId}`,
+          },
+          createdAt: event.createdAt.toISOString(),
+        };
+      }),
       page.total,
       query.page,
       query.limit,
     );
+  }
+
+  private entityTypeLabel(entityType: AuditEntityType) {
+    return {
+      [AuditEntityType.PARTICIPANT]: 'Participante',
+      [AuditEntityType.ACTION]: 'Atividade',
+      [AuditEntityType.CLAIM_CODE_BATCH]: 'Lote de códigos',
+      [AuditEntityType.CLAIM_CODE]: 'Código',
+      [AuditEntityType.REWARD]: 'Recompensa',
+      [AuditEntityType.REWARD_REDEMPTION]: 'Resgate',
+      [AuditEntityType.POINT_EVENT]: 'Evento de pontos',
+      [AuditEntityType.RECONCILIATION]: 'Reconciliação',
+    }[entityType];
   }
 
   private validateContext(input: RecordAuditEventInput) {
