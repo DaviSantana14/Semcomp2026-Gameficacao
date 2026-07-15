@@ -20,6 +20,7 @@ const POINT_EVENT_ORIGIN_LABELS: Record<
   LEGACY_UNKNOWN: "Origem histórica desconhecida",
   REWARD: "Lojinha",
   ADMIN: "Administrativa",
+  RECONCILIATION_COMPENSATION: "Compensação de reconciliação",
 };
 
 export function getPointEventSourceLabel(

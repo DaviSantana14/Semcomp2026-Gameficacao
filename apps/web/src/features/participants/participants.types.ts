@@ -48,7 +48,8 @@ export type AdminParticipantPointEvent = {
     | "DIRECT_ACTION"
     | "LEGACY_UNKNOWN"
     | "REWARD"
-    | "ADMIN";
+    | "ADMIN"
+    | "RECONCILIATION_COMPENSATION";
   isAudited: boolean;
   action: { id: string; name: string } | null;
   claimCode: { id: string; code: string } | null;

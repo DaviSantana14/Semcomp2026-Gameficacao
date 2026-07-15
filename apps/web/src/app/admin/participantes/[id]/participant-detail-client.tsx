@@ -14,10 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAdminParticipant } from "@/features/participants/participants.service";
+import { participantQueryKeys } from "@/features/participants/participant-query-keys";
 import { ApiError } from "@/lib/http/api-error";
 import { StatusBadge } from "../../_components/status-badge";
 import { ParticipantPointEvents } from "./participant-point-events";
 import { ParticipantRewardHistory } from "./participant-reward-history";
+import { ParticipantReconciliationPanel } from "./participant-reconciliation-panel";
+import { ParticipantAuditTimeline } from "./participant-audit-timeline";
 
 const number = new Intl.NumberFormat("pt-BR");
 const dateTime = new Intl.DateTimeFormat("pt-BR", {
@@ -27,7 +30,7 @@ const dateTime = new Intl.DateTimeFormat("pt-BR", {
 
 export function ParticipantDetailClient({ id }: { id: string }) {
   const query = useQuery({
-    queryKey: ["admin", "participant", id],
+    queryKey: participantQueryKeys.detail(id),
     queryFn: () => fetchAdminParticipant(id),
     retry: false,
   });
@@ -132,7 +135,12 @@ export function ParticipantDetailClient({ id }: { id: string }) {
           />
         </div>
       </section>
+      <ParticipantReconciliationPanel
+        balance={{ points: participant.points, xp: participant.xp }}
+        participantId={id}
+      />
       <ParticipantPointEvents participantId={id} />
+      <ParticipantAuditTimeline participantId={id} />
       <ParticipantRewardHistory participantId={id} />
     </div>
   );

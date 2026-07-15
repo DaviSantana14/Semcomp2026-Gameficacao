@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { AdminParticipantPointEvent } from "@/features/participants/participants.types";
 import { getPointEventOriginLabel } from "@/features/participants/point-event-labels";
 import { PointEvent } from "./participant-point-events";
@@ -55,5 +55,37 @@ describe("participant point-event presentation", () => {
     expect(screen.getByText("Correção operacional")).toBeInTheDocument();
     expect(screen.queryByText("Atividade")).not.toBeInTheDocument();
     expect(screen.queryByText("Registro direto")).not.toBeInTheDocument();
+  });
+
+  it("offers reversal only for an audited, unreversed administrative event", () => {
+    const adjustment: AdminParticipantPointEvent = {
+      ...baseEvent,
+      source: "ADMIN_ADJUST",
+      origin: "ADMIN",
+      isAudited: true,
+      action: null,
+    };
+    const onReverse = vi.fn();
+    render(<PointEvent event={adjustment} onReverse={onReverse} />);
+    fireEvent.click(screen.getByRole("button", { name: "Estornar ajuste" }));
+    expect(onReverse).toHaveBeenCalledWith(adjustment);
+  });
+
+  it("never offers reversal for ledger-only reconciliation compensation", () => {
+    render(
+      <PointEvent
+        event={{
+          ...baseEvent,
+          source: "ADMIN_ADJUST",
+          origin: "RECONCILIATION_COMPENSATION",
+          isAudited: true,
+          action: null,
+        }}
+        onReverse={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Estornar ajuste" }),
+    ).not.toBeInTheDocument();
   });
 });

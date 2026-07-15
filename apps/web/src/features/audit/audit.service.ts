@@ -15,3 +15,18 @@ export function fetchAdminAuditEvents(filters: AuditFilters) {
     ),
   );
 }
+
+export function fetchParticipantAuditEvents(
+  participantId: string,
+  filters: Pick<AuditFilters, "page" | "limit" | "operation" | "from" | "to">,
+) {
+  return apiFetch<PaginatedResponse<AdminAuditEvent>>(
+    withQuery(
+      `/admin/participants/${participantId}/audit-events`,
+      serializeAuditApiFilters(filters as AuditFilters) as Record<
+        string,
+        string | number | undefined
+      >,
+    ),
+  );
+}
