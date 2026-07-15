@@ -145,7 +145,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
       .post(`/actions/${id}/redeem`, secondSession)
       .expect(201)
       .expect(({ body }: Response) =>
-        expect(body).toMatchObject({ awardedPoints: 23 }),
+        expect(body).toMatchObject({ awardedPoints: 23, awardedXp: 23 }),
       );
     await harness
       .patch(`/admin/actions/${id}`, adminSession)

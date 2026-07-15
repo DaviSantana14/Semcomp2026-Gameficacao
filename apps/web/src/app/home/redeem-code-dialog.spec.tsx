@@ -33,6 +33,7 @@ const redeemedAction = {
     createdAt: "2026-07-12T12:00:00.000Z",
   },
   awardedPoints: 20,
+  awardedXp: 7,
   currentPoints: 20,
   currentXp: 20,
   currentLevel: 1,
@@ -62,7 +63,7 @@ describe("RedeemCodeDialog", () => {
       expect(onClose).toHaveBeenCalledOnce();
     });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["me"] });
-    expect(toast.success).toHaveBeenCalledWith("Check-in: +20 XP");
+    expect(toast.success).toHaveBeenCalledWith("Check-in: +7 XP");
   });
 
   it("mostra a mensagem da API para um código inválido", async () => {

@@ -361,7 +361,7 @@ export class ActionsService {
     }
     const redeemedAt = new Date();
     const xpDelta = action.points;
-    await repository.createActionPointEvent({
+    const pointEvent = await repository.createActionPointEvent({
       userId,
       actionId: action.id,
       points: action.points,
@@ -379,6 +379,7 @@ export class ActionsService {
     return {
       action,
       awardedPoints: action.points,
+      awardedXp: pointEvent.xpDelta,
       currentPoints: user.points,
       currentXp: user.xp,
       currentLevel: user.level,

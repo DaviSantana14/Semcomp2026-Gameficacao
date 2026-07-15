@@ -336,7 +336,7 @@ describe(AdminParticipantsService.name, () => {
   it('keeps unknown legacy origin explicit and exposes missing audit honestly', async () => {
     const createdAt = new Date('2026-07-12T12:00:00.000Z');
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
-    prisma.pointEvent.count.mockResolvedValue(2);
+    prisma.pointEvent.count.mockResolvedValue(3);
     prisma.pointEvent.findMany.mockResolvedValue([
       {
         id: 'e-empty',
@@ -368,6 +368,21 @@ describe(AdminParticipantsService.name, () => {
         reversedEventId: null,
         reversal: null,
       },
+      {
+        id: 'e-unknown-source',
+        points: 2,
+        xpDelta: 1,
+        kind: PointEventKind.CREDIT,
+        source: 'LEGACY_UNKNOWN',
+        redemptionMethod: null,
+        description: 'Importação histórica',
+        createdAt,
+        action: null,
+        claimCode: null,
+        auditEventId: null,
+        reversedEventId: null,
+        reversal: null,
+      },
     ]);
 
     const result = await service.findPointEvents('p1', {
@@ -387,6 +402,11 @@ describe(AdminParticipantsService.name, () => {
         xpDelta: 11,
         origin: 'ADMIN',
         isAudited: true,
+      }),
+      expect.objectContaining({
+        id: 'e-unknown-source',
+        origin: 'LEGACY_UNKNOWN',
+        isAudited: false,
       }),
     ]);
   });

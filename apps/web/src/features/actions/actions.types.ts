@@ -110,6 +110,7 @@ export type RedeemActionResponse = {
   message: string;
   action: Action;
   awardedPoints: number;
+  awardedXp: number;
   currentPoints: number;
   currentXp: number;
   currentLevel: number;

@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { paginate } from '../common/dto/pagination-response.dto';
-import { AdminParticipantsRepository } from './admin-participants.repository';
+import {
+  AdminParticipantsRepository,
+  ParticipantEventPageFilter,
+} from './admin-participants.repository';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
 import {
   AdminParticipantRedemptionsQueryDto,
@@ -18,6 +21,13 @@ import {
 } from '../audit/audit.repository';
 import { AuditService } from '../audit/audit.service';
 import { AdminOperationContext } from '../common/request-context';
+
+type KnownPointEventSource = NonNullable<ParticipantEventPageFilter['source']>;
+type KnownActionRedemptionMethod =
+  | 'DIRECT'
+  | 'REUSABLE_CODE'
+  | 'CLAIM_CODE'
+  | 'LEGACY_UNKNOWN';
 
 @Injectable()
 export class AdminParticipantsService {
@@ -124,18 +134,7 @@ export class AdminParticipantsService {
           reversalOfPointEventId: reversedEventId,
           reversalPointEventId: reversal?.id ?? null,
           isAudited: auditEventId !== null,
-          origin:
-            row.source === 'REWARD_REDEMPTION'
-              ? 'REWARD'
-              : row.source !== 'ACTION_REDEEM'
-                ? 'ADMIN'
-                : row.redemptionMethod === 'CLAIM_CODE'
-                  ? 'UNIQUE_CODE'
-                  : row.redemptionMethod === 'REUSABLE_CODE'
-                    ? 'REUSABLE_CODE'
-                    : row.redemptionMethod === 'DIRECT'
-                      ? 'DIRECT_ACTION'
-                      : 'LEGACY_UNKNOWN',
+          origin: mapPointEventOrigin(row.source, row.redemptionMethod),
           createdAt: row.createdAt.toISOString(),
         };
       }),
@@ -183,6 +182,49 @@ export class AdminParticipantsService {
       throw new NotFoundException('Participante não encontrado.');
     }
   }
+}
+
+function mapPointEventOrigin(
+  source: KnownPointEventSource,
+  redemptionMethod: KnownActionRedemptionMethod | null,
+) {
+  switch (source) {
+    case 'ACTION_REDEEM':
+      return mapActionRedemptionOrigin(redemptionMethod);
+    case 'REWARD_REDEMPTION':
+      return 'REWARD' as const;
+    case 'ADMIN_GRANT':
+    case 'ADMIN_ADJUST':
+      return 'ADMIN' as const;
+    default:
+      return unknownPointEventSource(source);
+  }
+}
+
+function mapActionRedemptionOrigin(method: KnownActionRedemptionMethod | null) {
+  switch (method) {
+    case 'CLAIM_CODE':
+      return 'UNIQUE_CODE' as const;
+    case 'REUSABLE_CODE':
+      return 'REUSABLE_CODE' as const;
+    case 'DIRECT':
+      return 'DIRECT_ACTION' as const;
+    case 'LEGACY_UNKNOWN':
+    case null:
+      return 'LEGACY_UNKNOWN' as const;
+    default:
+      return unknownActionRedemptionMethod(method);
+  }
+}
+
+function unknownPointEventSource(source: never) {
+  void source;
+  return 'LEGACY_UNKNOWN' as const;
+}
+
+function unknownActionRedemptionMethod(method: never) {
+  void method;
+  return 'LEGACY_UNKNOWN' as const;
 }
 
 function mapParticipant<

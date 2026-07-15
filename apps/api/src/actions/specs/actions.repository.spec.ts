@@ -547,6 +547,7 @@ describe('ActionsRepository', () => {
       tx.action.findUnique.mockResolvedValue(activeAction);
       tx.pointEvent.create.mockImplementation(() => {
         callOrder.push('pointEvent.create');
+        return { xpDelta: 7 };
       });
       tx.user.update.mockImplementation(() => {
         callOrder.push('user.update');
@@ -597,6 +598,7 @@ describe('ActionsRepository', () => {
       expect(result).toMatchObject({
         action: activeAction,
         awardedPoints: 10,
+        awardedXp: 7,
         currentPoints: 110,
         currentXp: 210,
         currentLevel: 1,
@@ -638,7 +640,7 @@ describe('ActionsRepository', () => {
         code: 'DIA1',
         isCodeActive: true,
       });
-      tx.pointEvent.create.mockResolvedValue(undefined);
+      tx.pointEvent.create.mockResolvedValue({ xpDelta: 10 });
       tx.user.update.mockResolvedValue({
         id: 'user-1',
         points: 110,
@@ -666,6 +668,7 @@ describe('ActionsRepository', () => {
       expect(result).toMatchObject({
         action: { ...activeAction, code: 'DIA1', isCodeActive: true },
         awardedPoints: 10,
+        awardedXp: 10,
         currentPoints: 110,
         currentXp: 210,
       });
@@ -810,6 +813,7 @@ describe('ActionsRepository', () => {
       });
       tx.pointEvent.create.mockImplementation(() => {
         callOrder.push('pointEvent.create');
+        return { xpDelta: 10 };
       });
       tx.user.update.mockImplementation(() => {
         callOrder.push('user.update');
@@ -836,6 +840,7 @@ describe('ActionsRepository', () => {
       expect(result).toMatchObject({
         action: activeAction,
         awardedPoints: 10,
+        awardedXp: 10,
         currentPoints: 110,
         currentXp: 210,
         currentLevel: 2,

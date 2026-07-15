@@ -302,6 +302,15 @@ describe('RankingRepository', () => {
         xpDelta: true,
       },
     });
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { role: UserRole.PARTICIPANT, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        xp: true,
+        createdAt: true,
+      },
+    });
     expect(result).toEqual({
       ranking: [
         { position: 1, name: 'Grace Hopper', xp: 14 },
