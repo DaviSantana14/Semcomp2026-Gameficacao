@@ -65,7 +65,7 @@ export function AuditEventList({
                   <Entity event={event} />
                 </td>
                 <td className="px-3 py-3">
-                  <Participant id={event.participantId} />
+                  <Participant event={event} />
                 </td>
                 <td className="max-w-40 break-all px-3 py-3 font-mono text-xs">
                   {event.requestId}
@@ -90,7 +90,7 @@ export function AuditEventList({
       >
         {events.map((event) => (
           <li
-            className="grid gap-3 rounded-md border border-border bg-card/90 p-4"
+            className="grid min-w-0 gap-3 overflow-hidden rounded-md border border-border bg-card/90 p-4"
             key={event.id}
           >
             <div className="flex items-start justify-between gap-3">
@@ -108,7 +108,7 @@ export function AuditEventList({
                 onSelect={onSelect}
               />
             </div>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
               <MobileField label="Ator">
                 <Actor event={event} />
               </MobileField>
@@ -116,7 +116,7 @@ export function AuditEventList({
                 <Entity event={event} />
               </MobileField>
               <MobileField label="Participante">
-                <Participant id={event.participantId} />
+                <Participant event={event} />
               </MobileField>
               <MobileField label="Request ID">
                 <span className="break-all font-mono text-xs">
@@ -165,9 +165,16 @@ function DetailButton({
 }
 
 function Actor({ event }: { event: AdminAuditEvent }) {
+  const name = displayText(event.actorDisplay?.name);
+  const email = displayText(event.actorDisplay?.email);
   return (
-    <span className="grid">
-      <span>{actorLabels[event.actorType]}</span>
+    <span className="grid min-w-0 gap-0.5">
+      <span className="break-words font-medium">
+        {name ?? actorLabels[event.actorType]}
+      </span>
+      {email ? (
+        <span className="break-all text-xs text-muted-foreground">{email}</span>
+      ) : null}
       {event.actorAdminId ? (
         <span className="break-all font-mono text-xs text-muted-foreground">
           {event.actorAdminId}
@@ -178,9 +185,12 @@ function Actor({ event }: { event: AdminAuditEvent }) {
 }
 
 function Entity({ event }: { event: AdminAuditEvent }) {
+  const name = displayText(event.entityDisplay?.name);
   return (
-    <span className="grid">
-      <span>{entityLabels[event.entityType]}</span>
+    <span className="grid min-w-0 gap-0.5">
+      <span className="break-words font-medium">
+        {name ?? entityLabels[event.entityType]}
+      </span>
       <span className="break-all font-mono text-xs text-muted-foreground">
         {event.entityId}
       </span>
@@ -188,17 +198,40 @@ function Entity({ event }: { event: AdminAuditEvent }) {
   );
 }
 
-function Participant({ id }: { id: string | null }) {
+function Participant({ event }: { event: AdminAuditEvent }) {
+  const id = event.participantId;
+  const name = displayText(event.participantDisplay?.name);
+  const email = displayText(event.participantDisplay?.email);
   return id ? (
     <Link
-      className="break-all font-mono text-xs underline-offset-4 hover:text-primary hover:underline"
+      className="grid min-w-0 gap-0.5 underline-offset-4 hover:text-primary hover:underline"
       href={`/admin/participantes/${id}`}
     >
-      {id}
+      <span
+        className={
+          name
+            ? "break-words font-medium"
+            : "break-all font-mono text-xs text-muted-foreground"
+        }
+      >
+        {name ?? id}
+      </span>
+      {email ? (
+        <span className="break-all text-xs text-muted-foreground">{email}</span>
+      ) : null}
+      {name ? (
+        <span className="break-all font-mono text-xs text-muted-foreground">
+          {id}
+        </span>
+      ) : null}
     </Link>
   ) : (
     <span className="text-muted-foreground">Não relacionado</span>
   );
+}
+
+function displayText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function MobileField({

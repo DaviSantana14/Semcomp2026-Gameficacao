@@ -48,7 +48,7 @@ describe("audit filters", () => {
 
   it("reseta a pagina ao alterar filtros e remove valores vazios", () => {
     const current = new URLSearchParams(
-      "page=4&limit=50&requestId=req-1&entityId=act-1",
+      "page=4&limit=50&requestId=req-1&entitySearch=Palestra",
     );
     const next = updateAuditUrlFilters(current, {
       requestId: "  ",
@@ -56,7 +56,7 @@ describe("audit filters", () => {
     });
 
     expect(next.toString()).toBe(
-      "entityId=act-1&limit=50&operation=ACTION_CREATED",
+      "entitySearch=Palestra&limit=50&operation=ACTION_CREATED",
     );
   });
 
@@ -72,8 +72,27 @@ describe("audit filters", () => {
 
   it("inclui todos os filtros na chave de consulta", () => {
     const filters = parseAuditUrlFilters(
-      new URLSearchParams("page=3&requestId=req-1&participantId=user-1"),
+      new URLSearchParams(
+        "page=3&requestId=req-1&actorSearch=Ada&participantSearch=Grace&entitySearch=Palestra",
+      ),
     );
     expect(auditQueryKey(filters)).toEqual(["admin", "audit-events", filters]);
+  });
+
+  it("normaliza e serializa buscas por identidade humana", () => {
+    const filters = parseAuditUrlFilters(
+      new URLSearchParams(
+        "actorSearch=%20Ada%40example.com%20&participantSearch=%20Grace%20&entitySearch=%20Palestra%20&actorAdminId=admin-1&participantId=participant-1&entityId=action-1",
+      ),
+    );
+
+    expect(filters).toEqual({
+      page: 1,
+      limit: 20,
+      actorSearch: "Ada@example.com",
+      participantSearch: "Grace",
+      entitySearch: "Palestra",
+    });
+    expect(serializeAuditApiFilters(filters)).toEqual(filters);
   });
 });

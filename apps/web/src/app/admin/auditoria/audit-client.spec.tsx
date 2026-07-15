@@ -25,10 +25,13 @@ const event = {
   id: "audit-1",
   actorType: "ADMIN" as const,
   actorAdminId: "admin-1",
+  actorDisplay: { name: "Ada Lovelace", email: "ada@example.com" },
   participantId: "participant-1",
+  participantDisplay: { name: "Grace Hopper", email: "grace@example.com" },
   operation: "PARTICIPANT_STATUS_CHANGED" as const,
   entityType: "PARTICIPANT" as const,
   entityId: "participant-1",
+  entityDisplay: { name: "Grace Hopper" },
   reason: "Bloqueio solicitado pela organização.",
   before: { id: "participant-1", isActive: true, passwordHash: "segredo" },
   after: { id: "participant-1", isActive: false, token: "segredo" },
@@ -48,7 +51,8 @@ describe("AuditClient", () => {
   });
 
   it("carrega os filtros da URL e aplica combinacoes resetando a pagina", async () => {
-    currentSearch = "page=3&actorType=ADMIN&operation=ACTION_UPDATED";
+    currentSearch =
+      "page=3&actorType=ADMIN&operation=ACTION_UPDATED&actorSearch=Ada";
     fetchAuditMock.mockResolvedValue({
       items: [event],
       meta: { page: 3, limit: 20, total: 60, totalPages: 3 },
@@ -61,18 +65,38 @@ describe("AuditClient", () => {
         expect.objectContaining({
           page: 3,
           actorType: "ADMIN",
+          actorSearch: "Ada",
           operation: "ACTION_UPDATED",
         }),
       ),
     );
-    await user.type(screen.getByLabelText("Request ID"), "req-42");
+    await user.clear(screen.getByLabelText("Ator (nome ou e-mail)"));
+    await user.type(screen.getByLabelText("Ator (nome ou e-mail)"), "Linus");
+    await user.type(screen.getByLabelText("Entidade (nome)"), "Palestra");
+    await user.type(
+      screen.getByLabelText("Participante (nome ou e-mail)"),
+      "Grace",
+    );
     await user.click(screen.getByRole("button", { name: "Aplicar filtros" }));
 
     expect(push).toHaveBeenCalledWith(
-      "/admin/auditoria?actorType=ADMIN&operation=ACTION_UPDATED&requestId=req-42",
+      "/admin/auditoria?actorSearch=Linus&actorType=ADMIN&entitySearch=Palestra&operation=ACTION_UPDATED&participantSearch=Grace",
       { scroll: false },
     );
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("remove filtros tecnicos de ID do formulario", async () => {
+    renderWithQueryClient(<AuditClient />);
+    await screen.findByRole("table", { name: "Eventos de auditoria" });
+
+    expect(
+      screen.queryByLabelText("ID do administrador"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("ID da entidade")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("ID do participante"),
+    ).not.toBeInTheDocument();
   });
 
   it("usa push na paginacao e reidrata o formulario ao voltar no historico", async () => {
@@ -230,6 +254,53 @@ describe("AuditClient", () => {
       screen.getByRole("list", {
         name: "Eventos de auditoria em tela pequena",
       }),
+    ).toBeInTheDocument();
+  });
+
+  it("prioriza nomes e e-mails e preserva IDs e navegacao do participante", async () => {
+    renderWithQueryClient(<AuditClient />);
+    const table = await screen.findByRole("table", {
+      name: "Eventos de auditoria",
+    });
+
+    expect(within(table).getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(within(table).getByText("ada@example.com")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Grace Hopper", { selector: "a span" }),
+    ).toBeInTheDocument();
+    expect(within(table).getByText("grace@example.com")).toBeInTheDocument();
+    expect(within(table).getByText("admin-1")).toHaveClass("font-mono");
+    expect(within(table).getAllByText("participant-1")[0]).toHaveClass(
+      "font-mono",
+    );
+    expect(
+      within(table).getByRole("link", { name: /Grace Hopper/ }),
+    ).toHaveAttribute("href", "/admin/participantes/participant-1");
+  });
+
+  it("usa fallbacks seguros quando os displays nao existem", async () => {
+    fetchAuditMock.mockResolvedValue({
+      items: [
+        {
+          ...event,
+          actorDisplay: null,
+          participantDisplay: null,
+          entityDisplay: null,
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    renderWithQueryClient(<AuditClient />);
+    const table = await screen.findByRole("table", {
+      name: "Eventos de auditoria",
+    });
+
+    expect(within(table).getByText("Administrador")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Participante", { selector: "span.font-medium" }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("link", { name: /participant-1/ }),
     ).toBeInTheDocument();
   });
 });

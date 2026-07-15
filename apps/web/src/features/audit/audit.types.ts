@@ -33,14 +33,31 @@ export type AuditOperation = (typeof AUDIT_OPERATIONS)[number];
 
 export type AuditSnapshot = Record<string, unknown>;
 
+export type AuditActorDisplay = {
+  name: string;
+  email: string | null;
+};
+
+export type AuditParticipantDisplay = {
+  name: string;
+  email: string;
+};
+
+export type AuditEntityDisplay = {
+  name: string;
+};
+
 export type AdminAuditEvent = {
   id: string;
   actorType: AuditActorType;
   actorAdminId: string | null;
+  actorDisplay?: AuditActorDisplay | null;
   participantId: string | null;
+  participantDisplay?: AuditParticipantDisplay | null;
   operation: AuditOperation;
   entityType: AuditEntityType;
   entityId: string;
+  entityDisplay?: AuditEntityDisplay | null;
   reason: string;
   before: AuditSnapshot | null;
   after: AuditSnapshot | null;
@@ -53,11 +70,11 @@ export type AuditFilters = {
   page: number;
   limit: number;
   actorType?: AuditActorType;
-  actorAdminId?: string;
+  actorSearch?: string;
   operation?: AuditOperation;
   entityType?: AuditEntityType;
-  entityId?: string;
-  participantId?: string;
+  entitySearch?: string;
+  participantSearch?: string;
   requestId?: string;
   from?: string;
   to?: string;

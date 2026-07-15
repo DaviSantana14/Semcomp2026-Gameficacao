@@ -29,11 +29,11 @@ import { actorLabels, entityLabels, operationLabels } from "./audit-labels";
 
 type DraftFilters = {
   actorType: string;
-  actorAdminId: string;
+  actorSearch: string;
   operation: string;
   entityType: string;
-  entityId: string;
-  participantId: string;
+  entitySearch: string;
+  participantSearch: string;
   requestId: string;
   from: string;
   to: string;
@@ -156,11 +156,11 @@ export function AuditClient() {
                 ))}
               </SelectField>
               <TextField
-                id="audit-actor-id"
-                label="ID do administrador"
-                onChange={(value) => setField(setDraft, "actorAdminId", value)}
-                placeholder="admin_..."
-                value={draft.actorAdminId}
+                id="audit-actor-search"
+                label="Ator (nome ou e-mail)"
+                onChange={(value) => setField(setDraft, "actorSearch", value)}
+                placeholder="Nome ou e-mail"
+                value={draft.actorSearch}
               />
               <SelectField
                 id="audit-operation"
@@ -189,18 +189,20 @@ export function AuditClient() {
                 ))}
               </SelectField>
               <TextField
-                id="audit-entity-id"
-                label="ID da entidade"
-                onChange={(value) => setField(setDraft, "entityId", value)}
-                placeholder="Identificador principal"
-                value={draft.entityId}
+                id="audit-entity-search"
+                label="Entidade (nome)"
+                onChange={(value) => setField(setDraft, "entitySearch", value)}
+                placeholder="Nome da entidade"
+                value={draft.entitySearch}
               />
               <TextField
-                id="audit-participant-id"
-                label="ID do participante"
-                onChange={(value) => setField(setDraft, "participantId", value)}
-                placeholder="participant_..."
-                value={draft.participantId}
+                id="audit-participant-search"
+                label="Participante (nome ou e-mail)"
+                onChange={(value) =>
+                  setField(setDraft, "participantSearch", value)
+                }
+                placeholder="Nome ou e-mail"
+                value={draft.participantSearch}
               />
               <TextField
                 id="audit-request-id"
@@ -366,11 +368,11 @@ function toDraft(
 ): DraftFilters {
   return {
     actorType: filters.actorType ?? "",
-    actorAdminId: filters.actorAdminId ?? "",
+    actorSearch: filters.actorSearch ?? "",
     operation: filters.operation ?? "",
     entityType: filters.entityType ?? "",
-    entityId: filters.entityId ?? "",
-    participantId: filters.participantId ?? "",
+    entitySearch: filters.entitySearch ?? "",
+    participantSearch: filters.participantSearch ?? "",
     requestId: filters.requestId ?? "",
     from: filters.from ?? "",
     to: filters.to ?? "",
@@ -379,11 +381,11 @@ function toDraft(
 
 const emptyDraft: DraftFilters = {
   actorType: "",
-  actorAdminId: "",
+  actorSearch: "",
   operation: "",
   entityType: "",
-  entityId: "",
-  participantId: "",
+  entitySearch: "",
+  participantSearch: "",
   requestId: "",
   from: "",
   to: "",
