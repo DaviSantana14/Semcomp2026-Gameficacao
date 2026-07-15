@@ -110,6 +110,14 @@ describe("AuditClient", () => {
     ).toHaveAttribute("name", "participantSearch");
   });
 
+  it("permite que os campos de data encolham dentro da coluna do filtro", async () => {
+    renderWithQueryClient(<AuditClient />);
+    await screen.findByRole("table", { name: "Eventos de auditoria" });
+
+    expect(screen.getByLabelText("Data inicial")).toHaveClass("min-w-0");
+    expect(screen.getByLabelText("Data final")).toHaveClass("min-w-0");
+  });
+
   it("preserva filtros de ID de uma URL salva ao combinar buscas humanas", async () => {
     currentSearch =
       "actorAdminId=admin-1&entityId=action-1&participantId=participant-1";
