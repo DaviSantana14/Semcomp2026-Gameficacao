@@ -290,6 +290,7 @@ export class ActionsRepository {
     userId: string;
     actionId: string;
     points: number;
+    xpDelta: number;
     redemptionMethod: 'DIRECT' | 'REUSABLE_CODE' | 'CLAIM_CODE';
     claimCodeId?: string;
     description: string;
@@ -308,10 +309,10 @@ export class ActionsRepository {
     }
   }
 
-  incrementUserProgress(userId: string, points: number) {
+  incrementUserProgress(userId: string, points: number, xpDelta: number) {
     return this.client.user.update({
       where: { id: userId },
-      data: { points: { increment: points }, xp: { increment: points } },
+      data: { points: { increment: points }, xp: { increment: xpDelta } },
       select: userProgressSelect,
     });
   }

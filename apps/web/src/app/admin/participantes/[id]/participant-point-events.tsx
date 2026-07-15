@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAdminParticipantPointEvents } from "@/features/participants/participants.service";
+import {
+  formatPointEventDetail,
+  getPointEventSourceLabel,
+} from "@/features/participants/point-event-labels";
 import type {
   AdminParticipantPointEvent,
   AdminPointEventsFilters,
@@ -21,13 +25,6 @@ const date = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short",
 });
-const SOURCE_LABELS: Record<AdminParticipantPointEvent["source"], string> = {
-  ACTION_REDEEM: "Atividade",
-  ADMIN_GRANT: "Concessão administrativa",
-  ADMIN_ADJUST: "Ajuste administrativo",
-  REWARD_REDEMPTION: "Lojinha",
-};
-
 export function ParticipantPointEvents({
   participantId,
 }: {
@@ -121,11 +118,9 @@ export function ParticipantPointEvents({
   );
 }
 
-function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
+export function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
   const credit = event.kind === "CREDIT";
-  const method = formatRedemptionMethod(event);
-  const detail =
-    (method ?? event.description?.trim()) || "Sem detalhe adicional";
+  const detail = formatPointEventDetail(event) ?? "Sem detalhe adicional";
   return (
     <article className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
@@ -136,13 +131,21 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
             {credit ? "Crédito" : "Débito"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {SOURCE_LABELS[event.source]}
+            {getPointEventSourceLabel(event.source)}
           </span>
         </div>
         <p className="mt-2 break-words font-bold">
-          {event.action?.name ?? SOURCE_LABELS[event.source]}
+          {event.action?.name ?? getPointEventSourceLabel(event.source)}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        {!event.isAudited &&
+        (event.origin === "LEGACY_UNKNOWN" ||
+          event.source === "ADMIN_GRANT" ||
+          event.source === "ADMIN_ADJUST") ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Sem auditoria histórica
+          </p>
+        ) : null}
         <time
           className="mt-2 block font-mono text-xs text-muted-foreground"
           dateTime={event.createdAt}
@@ -159,17 +162,6 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
       </dl>
     </article>
   );
-}
-
-function formatRedemptionMethod(event: AdminParticipantPointEvent) {
-  if (event.redemptionMethod === "CLAIM_CODE")
-    return event.claimCode
-      ? `Código único · ${event.claimCode.code}`
-      : "Código único";
-  if (event.redemptionMethod === "REUSABLE_CODE")
-    return "Código reutilizável";
-  if (event.redemptionMethod === "DIRECT") return "Registro direto";
-  return null;
 }
 
 function Delta({ label, value }: { label: string; value: number }) {

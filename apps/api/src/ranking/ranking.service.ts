@@ -60,7 +60,7 @@ export class RankingService {
     ]);
     const xpByUserId = new Map(
       eventGroups.map(
-        (group) => [group.userId, group._sum.points ?? 0] as const,
+        (group) => [group.userId, group._sum.xpDelta ?? 0] as const,
       ),
     );
     const rankedUsers = eligibleUsers

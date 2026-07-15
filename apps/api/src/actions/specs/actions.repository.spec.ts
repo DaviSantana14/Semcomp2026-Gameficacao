@@ -657,6 +657,7 @@ describe('ActionsRepository', () => {
           data: expect.objectContaining({
             actionId: 'action-1',
             userId: 'user-1',
+            xpDelta: 10,
             redemptionMethod: 'REUSABLE_CODE',
             claimCodeId: undefined,
           }) as object,
@@ -827,6 +828,7 @@ describe('ActionsRepository', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             redemptionMethod: 'CLAIM_CODE',
+            xpDelta: 10,
             claimCodeId: 'claim-1',
           }) as object,
         }),

@@ -288,6 +288,7 @@ describe(AdminParticipantsService.name, () => {
         createdAt,
         action: { id: 'a1', name: 'Check-in' },
         claimCode: { id: 'claim-1', code: 'ABC123' },
+        auditEventId: 'audit-1',
         reversedEventId: null,
         reversal: { id: 'reversal-1' },
       },
@@ -309,6 +310,7 @@ describe(AdminParticipantsService.name, () => {
       action: { id: 'a1', name: 'Check-in' },
       origin: 'UNIQUE_CODE',
       claimCode: { id: 'claim-1', code: 'ABC123' },
+      isAudited: true,
       reversalOfPointEventId: null,
       reversalPointEventId: 'reversal-1',
       createdAt: createdAt.toISOString(),
@@ -331,7 +333,7 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
-  it('returns stable origin enums independently of legacy labels', async () => {
+  it('keeps unknown legacy origin explicit and exposes missing audit honestly', async () => {
     const createdAt = new Date('2026-07-12T12:00:00.000Z');
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
     prisma.pointEvent.count.mockResolvedValue(2);
@@ -339,17 +341,22 @@ describe(AdminParticipantsService.name, () => {
       {
         id: 'e-empty',
         points: 10,
+        xpDelta: 3,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
-        redemptionMethod: null,
+        redemptionMethod: 'LEGACY_UNKNOWN',
         description: '  Descrição preservada  ',
         createdAt,
         action: { id: 'a1', name: '' },
         claimCode: null,
+        auditEventId: null,
+        reversedEventId: null,
+        reversal: null,
       },
       {
         id: 'e-whitespace',
         points: 5,
+        xpDelta: 11,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ADMIN_GRANT,
         redemptionMethod: null,
@@ -357,6 +364,9 @@ describe(AdminParticipantsService.name, () => {
         createdAt,
         action: { id: 'a2', name: ' \t ' },
         claimCode: null,
+        auditEventId: 'audit-admin',
+        reversedEventId: null,
+        reversal: null,
       },
     ]);
 
@@ -368,11 +378,15 @@ describe(AdminParticipantsService.name, () => {
     expect(result.items).toEqual([
       expect.objectContaining({
         id: 'e-empty',
-        origin: 'DIRECT_ACTION',
+        xpDelta: 3,
+        origin: 'LEGACY_UNKNOWN',
+        isAudited: false,
       }),
       expect.objectContaining({
         id: 'e-whitespace',
+        xpDelta: 11,
         origin: 'ADMIN',
+        isAudited: true,
       }),
     ]);
   });

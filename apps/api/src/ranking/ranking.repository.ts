@@ -72,7 +72,7 @@ export class RankingRepository {
         source: PointEventSource.ACTION_REDEEM,
         createdAt: { gte: start, lt: end },
       },
-      _sum: { points: true },
+      _sum: { xpDelta: true },
     });
   }
 }

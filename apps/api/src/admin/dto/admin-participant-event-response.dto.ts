@@ -11,7 +11,14 @@ export class AdminParticipantEventResponseDto {
   source!: PointEventSource;
   redemptionMethod!: ActionRedemptionMethod | null;
   description!: string | null;
-  origin!: string;
+  origin!:
+    | 'UNIQUE_CODE'
+    | 'REUSABLE_CODE'
+    | 'DIRECT_ACTION'
+    | 'LEGACY_UNKNOWN'
+    | 'REWARD'
+    | 'ADMIN';
+  isAudited!: boolean;
   claimCode!: { id: string; code: string } | null;
   reversalOfPointEventId!: string | null;
   reversalPointEventId!: string | null;

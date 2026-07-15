@@ -118,11 +118,12 @@ export class AdminParticipantsService {
     });
     return paginate(
       page.rows.map((row) => {
-        const { reversedEventId, reversal, ...pointEvent } = row;
+        const { auditEventId, reversedEventId, reversal, ...pointEvent } = row;
         return {
           ...pointEvent,
           reversalOfPointEventId: reversedEventId,
           reversalPointEventId: reversal?.id ?? null,
+          isAudited: auditEventId !== null,
           origin:
             row.source === 'REWARD_REDEMPTION'
               ? 'REWARD'
@@ -132,7 +133,9 @@ export class AdminParticipantsService {
                   ? 'UNIQUE_CODE'
                   : row.redemptionMethod === 'REUSABLE_CODE'
                     ? 'REUSABLE_CODE'
-                    : 'DIRECT_ACTION',
+                    : row.redemptionMethod === 'DIRECT'
+                      ? 'DIRECT_ACTION'
+                      : 'LEGACY_UNKNOWN',
           createdAt: row.createdAt.toISOString(),
         };
       }),

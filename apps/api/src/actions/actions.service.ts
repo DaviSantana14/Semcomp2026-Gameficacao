@@ -360,16 +360,22 @@ export class ActionsService {
       );
     }
     const redeemedAt = new Date();
+    const xpDelta = action.points;
     await repository.createActionPointEvent({
       userId,
       actionId: action.id,
       points: action.points,
+      xpDelta,
       redemptionMethod,
       claimCodeId,
       description: `Resgate da atividade: ${action.name}`,
       createdAt: redeemedAt,
     });
-    const user = await repository.incrementUserProgress(userId, action.points);
+    const user = await repository.incrementUserProgress(
+      userId,
+      action.points,
+      xpDelta,
+    );
     return {
       action,
       awardedPoints: action.points,
