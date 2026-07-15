@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/react-query";
+import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { participantQueryKeys } from "./participant-query-keys";
 
 export type AdjustmentInput = {
@@ -63,15 +63,18 @@ export async function invalidateParticipantOperationQueries(
   participantId: string,
   xpChanged: boolean,
 ) {
-  const keys = [
-    participantQueryKeys.detail(participantId),
-    participantQueryKeys.pointEvents(participantId),
-    participantQueryKeys.auditEvents(participantId),
-    participantQueryKeys.reconciliation(participantId),
-    ["admin", "dashboard"] as const,
-    ...(xpChanged ? [["ranking"] as const] : []),
+  const queries: Array<{ queryKey: QueryKey; exact: boolean }> = [
+    { queryKey: participantQueryKeys.detail(participantId), exact: true },
+    { queryKey: participantQueryKeys.pointEvents(participantId), exact: false },
+    { queryKey: participantQueryKeys.auditEvents(participantId), exact: false },
+    {
+      queryKey: participantQueryKeys.reconciliation(participantId),
+      exact: true,
+    },
+    { queryKey: ["admin", "dashboard"] as const, exact: true },
+    ...(xpChanged ? [{ queryKey: ["ranking"] as const, exact: true }] : []),
   ];
   await Promise.all(
-    keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    queries.map((query) => queryClient.invalidateQueries(query)),
   );
 }

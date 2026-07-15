@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertTriangle, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +59,7 @@ export function AdjustmentDialog({
   }
 
   return (
-    <Modal onClose={onClose} title="Ajustar pontos e XP">
+    <Modal onClose={onClose} pending={pending} title="Ajustar pontos e XP">
       <form className="grid gap-5" onSubmit={submit}>
         <p className="text-sm text-muted-foreground">
           Registre uma correção motivada. O nível atual não será recalculado.
@@ -67,6 +68,7 @@ export function AdjustmentDialog({
           <Field label="Delta de pontos">
             <Input
               aria-invalid={Boolean(validation.errors.pointsDelta)}
+              data-initial-focus
               id="adjustment-points"
               inputMode="numeric"
               onChange={(event) => setPointsDelta(event.target.value)}
@@ -96,7 +98,11 @@ export function AdjustmentDialog({
             {Object.values(validation.errors)[0]}
           </p>
         ) : null}
-        <Review checked={reviewed} onChange={setReviewed} />
+        <Review
+          checked={reviewed}
+          label="Revisei os saldos previstos"
+          onChange={setReviewed}
+        />
         <OperationError error={error} />
         <DialogActions
           confirm="Confirmar ajuste"
@@ -110,11 +116,13 @@ export function AdjustmentDialog({
 }
 
 export function ReversalDialog({
+  balance,
   event,
   onClose,
   onSubmit,
 }: {
-  event: { points: number; xpDelta: number };
+  balance: { points: number; xp: number };
+  event: { pointsDelta: number; xpDelta: number };
   onClose: () => void;
   onSubmit: (reason: string) => Promise<unknown>;
 }) {
@@ -124,11 +132,32 @@ export function ReversalDialog({
       description="O histórico original será preservado e um evento compensatório será criado."
       onClose={onClose}
       onSubmit={onSubmit}
+      reviewLabel="Revisei o evento original e os saldos do estorno"
       title="Estornar ajuste"
     >
-      <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/30 p-4">
-        <Balance label="Pontos opostos" value={-event.points} signed />
-        <Balance label="XP oposto" value={-event.xpDelta} signed />
+      <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-4 sm:grid-cols-2">
+        <BalancePair
+          label="Evento original"
+          points={event.pointsDelta}
+          xp={event.xpDelta}
+          signed
+        />
+        <BalancePair
+          label="Delta do estorno"
+          points={-event.pointsDelta}
+          xp={-event.xpDelta}
+          signed
+        />
+        <BalancePair
+          label="Saldo atual"
+          points={balance.points}
+          xp={balance.xp}
+        />
+        <BalancePair
+          label="Saldo após estorno"
+          points={balance.points - event.pointsDelta}
+          xp={balance.xp - event.xpDelta}
+        />
       </div>
     </ReasonDialog>
   );
@@ -149,6 +178,7 @@ export function ReconciliationConfirmationDialog({
       description="Esta ação alinha somente o livro-razão. O saldo armazenado não será alterado."
       onClose={onClose}
       onSubmit={onSubmit}
+      reviewLabel="Revisei a divergência e o lançamento no histórico"
       title="Confirmar compensação"
     >
       <div className="grid grid-cols-2 gap-3 rounded-md border border-warning/40 bg-warning/5 p-4">
@@ -165,6 +195,7 @@ function ReasonDialog({
   description,
   onClose,
   onSubmit,
+  reviewLabel,
   title,
 }: {
   children: React.ReactNode;
@@ -172,6 +203,7 @@ function ReasonDialog({
   description: string;
   onClose: () => void;
   onSubmit: (reason: string) => Promise<unknown>;
+  reviewLabel: string;
   title: string;
 }) {
   const [reason, setReason] = useState("");
@@ -195,12 +227,12 @@ function ReasonDialog({
     }
   }
   return (
-    <Modal onClose={onClose} title={title}>
+    <Modal onClose={onClose} pending={pending} title={title}>
       <form className="grid gap-5" onSubmit={submit}>
         <p className="text-sm text-muted-foreground">{description}</p>
         {children}
-        <Reason value={reason} onChange={setReason} />
-        <Review checked={reviewed} onChange={setReviewed} />
+        <Reason initialFocus value={reason} onChange={setReason} />
+        <Review checked={reviewed} label={reviewLabel} onChange={setReviewed} />
         <OperationError error={error} />
         <DialogActions
           confirm={confirm}
@@ -216,33 +248,96 @@ function ReasonDialog({
 function Modal({
   children,
   onClose,
+  pending,
   title,
 }: {
   children: React.ReactNode;
   onClose: () => void;
+  pending: boolean;
   title: string;
 }) {
+  const titleId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm">
+    previousFocus.current = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    const initial = dialog?.querySelector<HTMLElement>("[data-initial-focus]");
+    initial?.focus();
+    const siblings = Array.from(document.body.children).filter(
+      (element) => element !== rootRef.current,
+    ) as HTMLElement[];
+    const previous = siblings.map((element) => ({
+      element,
+      ariaHidden: element.getAttribute("aria-hidden"),
+      inert: element.inert,
+    }));
+    siblings.forEach((element) => {
+      element.setAttribute("aria-hidden", "true");
+      element.inert = true;
+    });
+    return () => {
+      previous.forEach(({ element, ariaHidden, inert }) => {
+        if (ariaHidden === null) element.removeAttribute("aria-hidden");
+        else element.setAttribute("aria-hidden", ariaHidden);
+        element.inert = inert;
+      });
+      previousFocus.current?.focus();
+    };
+  }, []);
+  useEffect(() => {
+    function keydown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!pending) onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [onClose, pending]);
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (!pending && event.currentTarget === event.target) onClose();
+      }}
+      ref={rootRef}
+    >
       <section
-        aria-labelledby="operation-dialog-title"
+        aria-labelledby={titleId}
         aria-modal="true"
         className="my-auto w-full max-w-xl rounded-lg border border-border bg-card p-5 shadow-2xl"
         role="dialog"
+        ref={dialogRef}
       >
         <div className="mb-5 flex items-start justify-between gap-4">
-          <h2 className="text-xl font-black" id="operation-dialog-title">
+          <h2 className="text-xl font-black" id={titleId}>
             {title}
           </h2>
           <Button
             aria-label="Fechar"
             className="size-11 p-0"
-            onClick={onClose}
+            disabled={pending}
+            onClick={() => !pending && onClose()}
+            type="button"
             variant="ghost"
           >
             <X />
@@ -250,7 +345,8 @@ function Modal({
         </div>
         {children}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -271,9 +367,11 @@ function Field({
   );
 }
 function Reason({
+  initialFocus = false,
   value,
   onChange,
 }: {
+  initialFocus?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -283,6 +381,7 @@ function Reason({
       <textarea
         className="min-h-24 rounded-md border border-input bg-muted/70 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         id="operation-reason"
+        {...(initialFocus ? { "data-initial-focus": true } : {})}
         maxLength={500}
         onChange={(event) => onChange(event.target.value)}
         value={value}
@@ -292,9 +391,11 @@ function Reason({
 }
 function Review({
   checked,
+  label,
   onChange,
 }: {
   checked: boolean;
+  label: string;
   onChange: (value: boolean) => void;
 }) {
   return (
@@ -305,7 +406,7 @@ function Review({
         onChange={(event) => onChange(event.target.checked)}
         type="checkbox"
       />
-      Revisei os saldos previstos
+      {label}
     </label>
   );
 }
@@ -354,12 +455,39 @@ function DialogActions({
 }) {
   return (
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-      <Button onClick={onClose} variant="outline">
+      <Button
+        disabled={pending}
+        onClick={onClose}
+        type="button"
+        variant="outline"
+      >
         Cancelar
       </Button>
       <Button disabled={disabled} type="submit">
         {pending ? "Registrando..." : confirm}
       </Button>
+    </div>
+  );
+}
+
+function BalancePair({
+  label,
+  points,
+  signed = false,
+  xp,
+}: {
+  label: string;
+  points: number;
+  signed?: boolean;
+  xp: number;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Balance label="Pontos" signed={signed} value={points} />
+        <Balance label="XP" signed={signed} value={xp} />
+      </div>
     </div>
   );
 }

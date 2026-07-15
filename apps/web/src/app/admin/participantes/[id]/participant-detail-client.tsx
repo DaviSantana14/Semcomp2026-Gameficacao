@@ -139,7 +139,10 @@ export function ParticipantDetailClient({ id }: { id: string }) {
         balance={{ points: participant.points, xp: participant.xp }}
         participantId={id}
       />
-      <ParticipantPointEvents participantId={id} />
+      <ParticipantPointEvents
+        balance={{ points: participant.points, xp: participant.xp }}
+        participantId={id}
+      />
       <ParticipantAuditTimeline participantId={id} />
       <ParticipantRewardHistory participantId={id} />
     </div>

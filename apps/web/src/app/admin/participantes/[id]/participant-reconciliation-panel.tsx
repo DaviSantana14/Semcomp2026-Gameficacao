@@ -16,7 +16,10 @@ import {
   createParticipantAdjustment,
   fetchParticipantReconciliation,
 } from "@/features/reconciliation/reconciliation.service";
-import type { OperationResult } from "@/features/reconciliation/reconciliation.types";
+import type {
+  BalanceOperationResult,
+  ReconciliationConfirmationResult,
+} from "@/features/reconciliation/reconciliation.types";
 import { ApiError } from "@/lib/http/api-error";
 import {
   AdjustmentDialog,
@@ -37,7 +40,9 @@ export function ParticipantReconciliationPanel({
   const confirmationLifecycle = useRef(createIdempotencyLifecycle()).current;
   const [dialog, setDialog] = useState<"adjust" | "confirm" | null>(null);
   const [prepared, setPrepared] = useState({ pointsDelta: 0, xpDelta: 0 });
-  const [feedback, setFeedback] = useState<OperationResult | null>(null);
+  const [feedback, setFeedback] = useState<
+    BalanceOperationResult | ReconciliationConfirmationResult | null
+  >(null);
   const query = useQuery({
     queryKey: participantQueryKeys.reconciliation(participantId),
     queryFn: () => fetchParticipantReconciliation(participantId),

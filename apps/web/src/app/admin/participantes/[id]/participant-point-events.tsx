@@ -33,8 +33,10 @@ const date = new Intl.DateTimeFormat("pt-BR", {
   timeStyle: "short",
 });
 export function ParticipantPointEvents({
+  balance,
   participantId,
 }: {
+  balance: { points: number; xp: number };
   participantId: string;
 }) {
   const [page, setPage] = useState(1);
@@ -178,7 +180,14 @@ export function ParticipantPointEvents({
       </CardContent>
       {selected ? (
         <ReversalDialog
-          event={selected}
+          balance={balance}
+          event={{
+            pointsDelta:
+              selected.kind === "CREDIT"
+                ? Math.abs(selected.points)
+                : -Math.abs(selected.points),
+            xpDelta: selected.xpDelta,
+          }}
           onClose={() => setSelected(null)}
           onSubmit={reverse}
         />

@@ -83,15 +83,22 @@ describe("participant operation query invalidation", () => {
       "participant-1",
       true,
     );
-    expect(
-      invalidateQueries.mock.calls.map(([value]) => value.queryKey),
-    ).toEqual([
-      ["admin", "participant", "participant-1"],
-      ["admin", "participant", "participant-1", "point-events"],
-      ["admin", "participant", "participant-1", "audit-events"],
-      ["admin", "participant", "participant-1", "reconciliation"],
-      ["admin", "dashboard"],
-      ["ranking"],
+    expect(invalidateQueries.mock.calls.map(([value]) => value)).toEqual([
+      { queryKey: ["admin", "participant", "participant-1"], exact: true },
+      {
+        queryKey: ["admin", "participant", "participant-1", "point-events"],
+        exact: false,
+      },
+      {
+        queryKey: ["admin", "participant", "participant-1", "audit-events"],
+        exact: false,
+      },
+      {
+        queryKey: ["admin", "participant", "participant-1", "reconciliation"],
+        exact: true,
+      },
+      { queryKey: ["admin", "dashboard"], exact: true },
+      { queryKey: ["ranking"], exact: true },
     ]);
   });
 
@@ -104,6 +111,7 @@ describe("participant operation query invalidation", () => {
     );
     expect(invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: ["ranking"],
+      exact: true,
     });
   });
 });

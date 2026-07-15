@@ -1,9 +1,10 @@
 import { apiFetch } from "@/lib/http/client";
 import type {
   AdjustmentPayload,
+  BalanceOperationResult,
   OperationPayload,
-  OperationResult,
   ParticipantReconciliation,
+  ReconciliationConfirmationResult,
 } from "./reconciliation.types";
 
 export function fetchParticipantReconciliation(id: string) {
@@ -16,17 +17,20 @@ export function createParticipantAdjustment(
   id: string,
   payload: AdjustmentPayload,
 ) {
-  return apiFetch<OperationResult>(`/admin/participants/${id}/adjustments`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return apiFetch<BalanceOperationResult>(
+    `/admin/participants/${id}/adjustments`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function reverseParticipantPointEvent(
   id: string,
   payload: OperationPayload,
 ) {
-  return apiFetch<OperationResult>(`/admin/point-events/${id}/reverse`, {
+  return apiFetch<BalanceOperationResult>(`/admin/point-events/${id}/reverse`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -36,7 +40,7 @@ export function confirmParticipantReconciliation(
   id: string,
   payload: OperationPayload,
 ) {
-  return apiFetch<OperationResult>(
+  return apiFetch<ReconciliationConfirmationResult>(
     `/admin/participants/${id}/reconciliation/confirm`,
     { method: "POST", body: JSON.stringify(payload) },
   );
