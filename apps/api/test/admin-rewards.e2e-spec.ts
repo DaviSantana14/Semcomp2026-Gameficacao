@@ -146,6 +146,39 @@ describe('Admin rewards (e2e)', () => {
     });
   });
 
+  it('serializes equivalent concurrent reward deactivations', async () => {
+    const rewardId = await createTransactionalReward();
+    const reason = 'Desativacao concorrente equivalente para auditoria unica';
+
+    const responses = await Promise.all([
+      harness
+        .patch(`/rewards/${rewardId}`, adminSession)
+        .send({ reason, isActive: false }),
+      harness
+        .patch(`/rewards/${rewardId}`, adminSession)
+        .send({ reason, isActive: false }),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    expect(
+      responses.map(({ body }) => body as { id: string; isActive: boolean }),
+    ).toEqual([
+      expect.objectContaining({ id: rewardId, isActive: false }),
+      expect.objectContaining({ id: rewardId, isActive: false }),
+    ]);
+    const audits = await harness.prisma.adminAuditEvent.findMany({
+      where: {
+        entityId: rewardId,
+        operation: AuditOperation.REWARD_STATUS_CHANGED,
+      },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      before: { isActive: true },
+      after: { isActive: false },
+    });
+  });
+
   it('redeems and cancels with exact balances and restored stock', async () => {
     const rewardId = await createTransactionalReward();
     const before = await harness.prisma.user.findUniqueOrThrow({

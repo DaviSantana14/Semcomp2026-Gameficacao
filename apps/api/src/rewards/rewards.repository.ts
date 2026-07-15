@@ -58,6 +58,18 @@ export type LockedCancellationState = LockedRedemptionState & {
   reward: { id: string; name: string; stock: number };
 };
 
+export type LockedRewardState = {
+  id: string;
+  name: string;
+  description: string | null;
+  costInPoints: number;
+  stock: number;
+  isActive: boolean;
+  imageUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export interface RewardWriteInput {
   name?: string;
   description?: string | null;
@@ -215,6 +227,17 @@ export class RewardsRepository {
       where: { id },
       select: rewardSelect,
     });
+  }
+
+  async lockRewardState(id: string): Promise<LockedRewardState | null> {
+    const rows = await this.client.$queryRaw<LockedRewardState[]>`
+      SELECT "id", "name", "description", "costInPoints", "stock",
+             "isActive", "imageUrl", "createdAt", "updatedAt"
+      FROM "Reward"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `;
+    return rows[0] ?? null;
   }
 
   updateReward(id: string, input: RewardWriteInput) {

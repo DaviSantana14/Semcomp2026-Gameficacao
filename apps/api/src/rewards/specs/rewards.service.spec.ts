@@ -77,7 +77,7 @@ describe(RewardsService.name, () => {
       imageUrl: null,
     };
     const transactional = {
-      findRewardById: jest.fn().mockResolvedValue(current),
+      lockRewardState: jest.fn().mockResolvedValue(current),
       updateReward: jest.fn(),
       auditWriter: {},
     } as unknown as RewardsRepository;
@@ -94,6 +94,73 @@ describe(RewardsService.name, () => {
     ).resolves.toBe(current);
     expect(transactional.updateReward).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('serializes equivalent updates into one effect and one coherent audit', async () => {
+    const original = {
+      id: 'reward-concurrent',
+      name: 'Camiseta',
+      description: null,
+      costInPoints: 50,
+      stock: 2,
+      isActive: true,
+      imageUrl: null,
+      createdAt: new Date('2026-07-14T10:00:00.000Z'),
+      updatedAt: new Date('2026-07-14T10:00:00.000Z'),
+    };
+    let state = { ...original };
+    let previous = Promise.resolve();
+    const writes: Array<{ isActive?: boolean }> = [];
+
+    repository.withTransaction.mockImplementation(async (callback) => {
+      const waitForPrevious = previous;
+      let release!: () => void;
+      previous = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await waitForPrevious;
+      const transactional = {
+        auditWriter: {},
+        lockRewardState: jest.fn(() => Promise.resolve({ ...state })),
+        updateReward: jest.fn((_id: string, input: { isActive?: boolean }) => {
+          writes.push(input);
+          state = { ...state, ...input };
+          return Promise.resolve({ ...state });
+        }),
+      };
+      try {
+        return await callback(transactional as never, {} as never);
+      } finally {
+        release();
+      }
+    });
+
+    const results = await Promise.all([
+      service.update(
+        original.id,
+        { isActive: false, reason: 'Desativacao concorrente equivalente A' },
+        { actorAdminId: 'admin-1', requestId: 'request-a' },
+      ),
+      service.update(
+        original.id,
+        { isActive: false, reason: 'Desativacao concorrente equivalente B' },
+        { actorAdminId: 'admin-1', requestId: 'request-b' },
+      ),
+    ]);
+
+    expect(results).toEqual([
+      expect.objectContaining({ isActive: false }),
+      expect.objectContaining({ isActive: false }),
+    ]);
+    expect(writes).toEqual([{ isActive: false }]);
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        before: { isActive: true },
+        after: { isActive: false },
+      }),
+    );
   });
 
   it('audits a created reward with only allowlisted snapshot fields', async () => {
@@ -177,7 +244,7 @@ describe(RewardsService.name, () => {
               return Promise.resolve({ id: 'audit-1' });
             }),
           },
-          findRewardById: jest.fn(() =>
+          lockRewardState: jest.fn(() =>
             Promise.resolve({ ...provisional.reward }),
           ),
           updateReward: jest.fn((_id: string, input: typeof change) => {

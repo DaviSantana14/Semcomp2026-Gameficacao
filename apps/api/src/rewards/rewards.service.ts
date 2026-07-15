@@ -121,7 +121,7 @@ export class RewardsService {
 
   update(id: string, dto: UpdateRewardDto, context: AdminOperationContext) {
     return this.repository.withTransaction(async (repository) => {
-      const current = await repository.findRewardById(id);
+      const current = await repository.lockRewardState(id);
       if (!current) throw new NotFoundException('Recompensa não encontrada.');
       const candidate = normalizeRewardInput(dto);
       const input = Object.fromEntries(

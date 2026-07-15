@@ -56,9 +56,7 @@ function createRepository() {
       if (sql.includes('"User"')) {
         return Promise.resolve([{ id: 'user-1', points: 100 }]);
       }
-      return Promise.resolve([
-        { id: 'reward-1', name: 'Camiseta Semcomp', stock: 3 },
-      ]);
+      return Promise.resolve([activeReward]);
     }),
     reward: {
       create: jest.fn(),
@@ -110,6 +108,26 @@ function createRepository() {
 }
 
 describe('RewardsRepository', () => {
+  it('locks the complete reward state with a parameterized row lock', async () => {
+    const { persistenceRepository, tx } = createRepository();
+    tx.$queryRaw.mockResolvedValueOnce([activeReward]);
+
+    await persistenceRepository.withTransaction(async (repository) => {
+      await expect(repository.lockRewardState('reward-1')).resolves.toEqual(
+        activeReward,
+      );
+    });
+
+    const rawCalls = tx.$queryRaw.mock.calls as unknown as Array<
+      [TemplateStringsArray, string]
+    >;
+    expect(rawCalls).toHaveLength(1);
+    expect(rawCalls[0]?.[0].join('?')).toMatch(
+      /FROM "Reward"[\s\S]*WHERE "id" = \?[\s\S]*FOR UPDATE/,
+    );
+    expect(rawCalls[0]?.[1]).toBe('reward-1');
+  });
+
   it('locks cancellation state in a stable parameterized order', async () => {
     const { persistenceRepository, tx } = createRepository();
     tx.$queryRaw
@@ -561,10 +579,12 @@ describe('RewardsRepository', () => {
 
   it('explicitly clears optional reward details on update', async () => {
     const { repository, tx } = createRepository();
-    tx.reward.findUnique.mockResolvedValue({
-      ...activeReward,
-      imageUrl: 'https://example.test/old.png',
-    });
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        ...activeReward,
+        imageUrl: 'https://example.test/old.png',
+      },
+    ]);
     tx.reward.update.mockResolvedValue({
       ...activeReward,
       description: '',
