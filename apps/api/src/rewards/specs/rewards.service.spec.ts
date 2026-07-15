@@ -4,6 +4,11 @@ import { Test } from '@nestjs/testing';
 import { RewardsRepository } from '../rewards.repository';
 import { RewardsService } from '../rewards.service';
 import { AuditService } from '../../audit/audit.service';
+import {
+  AuditActorType,
+  AuditEntityType,
+  AuditOperation,
+} from '../../audit/audit.repository';
 
 describe(RewardsService.name, () => {
   let service: RewardsService;
@@ -154,13 +159,19 @@ describe(RewardsService.name, () => {
     ]);
     expect(writes).toEqual([{ isActive: false }]);
     expect(audit.record).toHaveBeenCalledTimes(1);
-    expect(audit.record).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        before: { isActive: true },
-        after: { isActive: false },
-      }),
-    );
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-a',
+      },
+      operation: AuditOperation.REWARD_STATUS_CHANGED,
+      entityType: AuditEntityType.REWARD,
+      entityId: original.id,
+      reason: 'Desativacao concorrente equivalente A',
+      before: { isActive: true },
+      after: { isActive: false },
+    });
   });
 
   it('audits a created reward with only allowlisted snapshot fields', async () => {
@@ -193,31 +204,101 @@ describe(RewardsService.name, () => {
       { actorAdminId: 'admin-1', requestId: 'request-1' },
     );
 
-    expect(audit.record).toHaveBeenCalledWith(
-      transactional.auditWriter,
-      expect.objectContaining({
-        reason: 'Inclusao aprovada pela coordenação administrativa',
-        after: {
-          id: 'reward-1',
-          name: 'Camiseta',
-          description: null,
-          costInPoints: 50,
-          stock: 2,
-          isActive: true,
-        },
-      }),
-    );
+    expect(audit.record).toHaveBeenCalledWith(transactional.auditWriter, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.REWARD_CREATED,
+      entityType: AuditEntityType.REWARD,
+      entityId: 'reward-1',
+      reason: 'Inclusao aprovada pela coordenação administrativa',
+      before: null,
+      after: {
+        id: 'reward-1',
+        name: 'Camiseta',
+        description: null,
+        costInPoints: 50,
+        stock: 2,
+        isActive: true,
+      },
+    });
     expect(audit.record.mock.calls[0]?.[1].after).not.toHaveProperty(
       'imageUrl',
     );
   });
 
+  it('rolls back reward creation and its provisional audit when the writer fails', async () => {
+    const failure = new Error('audit writer failed after reward creation');
+    const committed = {
+      rewards: [] as Array<{ id: string; name: string }>,
+      audits: [] as string[],
+    };
+
+    repository.withTransaction.mockImplementation(async (callback) => {
+      const provisional = structuredClone(committed);
+      const transactional = {
+        createReward: jest.fn((input: { name: string }) => {
+          const created = {
+            id: 'reward-create-rollback',
+            description: null,
+            costInPoints: 50,
+            stock: 2,
+            isActive: true,
+            imageUrl: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            ...input,
+          };
+          provisional.rewards.push({ id: created.id, name: created.name });
+          return Promise.resolve(created);
+        }),
+        auditWriter: {
+          create: jest.fn(() => {
+            provisional.audits.push('provisional-audit');
+            return Promise.resolve({ id: 'audit-1' });
+          }),
+        },
+      };
+      const result = await callback(transactional as never, {} as never);
+      committed.rewards = provisional.rewards;
+      committed.audits = provisional.audits;
+      return result;
+    });
+    audit.record.mockImplementation(async (writer) => {
+      await writer.create({} as never);
+      throw failure;
+    });
+
+    await expect(
+      service.create(
+        {
+          name: 'Camiseta',
+          costInPoints: 50,
+          stock: 2,
+          reason: 'Criacao administrativa confirmada',
+        },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
+    ).rejects.toBe(failure);
+    expect(committed).toEqual({ rewards: [], audits: [] });
+  });
+
   it.each([
-    ['reward update', { name: 'Camiseta revisada' }],
-    ['reward status change', { isActive: false }],
+    [
+      'reward update',
+      { name: 'Camiseta revisada' },
+      AuditOperation.REWARD_UPDATED,
+    ],
+    [
+      'reward status change',
+      { isActive: false },
+      AuditOperation.REWARD_STATUS_CHANGED,
+    ],
   ])(
     'rolls back %s and its provisional audit when the writer fails',
-    async (_label, change) => {
+    async (_label, change, expectedOperation) => {
       const failure = new Error('audit writer failed after first write');
       const original = {
         id: 'reward-rollback',
@@ -271,6 +352,23 @@ describe(RewardsService.name, () => {
       ).rejects.toBe(failure);
 
       expect(committed).toEqual({ reward: original, audits: [] });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          actor: {
+            actorType: AuditActorType.ADMIN,
+            actorAdminId: 'admin-1',
+            requestId: 'request-1',
+          },
+          operation: expectedOperation,
+          entityType: AuditEntityType.REWARD,
+          entityId: original.id,
+          reason: 'Alteracao administrativa confirmada',
+        }),
+      );
+      expect(audit.record.mock.calls[0]?.[1]).not.toHaveProperty(
+        'participantId',
+      );
     },
   );
 
@@ -345,6 +443,27 @@ describe(RewardsService.name, () => {
       ),
     ).rejects.toBe(failure);
     expect(committed).toEqual({ redemption: original, audits: [] });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.REWARD_REDEMPTION_DELIVERED,
+        entityType: AuditEntityType.REWARD_REDEMPTION,
+        entityId: original.id,
+        participantId: original.userId,
+        reason: 'Entrega presencial confirmada pela coordenacao',
+        before: {
+          id: original.id,
+          status: 'PENDING',
+          deliveredAt: null,
+          deliveredByAdminId: null,
+        },
+      }),
+    );
   });
 
   it('rolls back cancellation balances, stock, refund and audit when the writer fails', async () => {
@@ -434,5 +553,26 @@ describe(RewardsService.name, () => {
     expect(committed).toEqual(original);
     expect(committed.pointEvents).toEqual([{ id: 'debit-1', points: -50 }]);
     expect(committed.audits).toEqual([]);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-1',
+        },
+        operation: AuditOperation.REWARD_REDEMPTION_CANCELLED,
+        entityType: AuditEntityType.REWARD_REDEMPTION,
+        entityId: original.redemption.id,
+        participantId: original.redemption.userId,
+        reason: 'Cancelamento operacional confirmado pela coordenacao',
+        before: {
+          id: original.redemption.id,
+          status: 'PENDING',
+          stock: 1,
+          points: 50,
+        },
+      }),
+    );
   });
 });

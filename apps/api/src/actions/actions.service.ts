@@ -59,7 +59,7 @@ export class ActionsService {
           entityId: action.id,
           reason: dto.reason,
           before: null,
-          after: toActionAuditSnapshot(action),
+          after: toActionAuditSnapshot(action, false),
         });
         return action;
       });
@@ -83,7 +83,7 @@ export class ActionsService {
   ) {
     try {
       return await this.repository.withTransaction(async (repository) => {
-        const current = await repository.findActionById(id);
+        const current = await repository.lockActionById(id);
         if (!current) {
           throw new NotFoundException('Atividade pontuável não encontrada.');
         }
@@ -114,8 +114,14 @@ export class ActionsService {
             entityType: AuditEntityType.ACTION,
             entityId: id,
             reason: dto.reason,
-            before: toActionAuditSnapshot(current),
-            after: toActionAuditSnapshot(updated),
+            before: toActionAuditSnapshot(
+              current,
+              changedFields.includes('code') ? false : undefined,
+            ),
+            after: toActionAuditSnapshot(
+              updated,
+              changedFields.includes('code') ? true : undefined,
+            ),
           });
         }
         return updated;
@@ -412,7 +418,7 @@ export class ActionsService {
   }
 }
 
-function toActionAuditSnapshot(action: ActionSummary) {
+function toActionAuditSnapshot(action: ActionSummary, codeChanged?: boolean) {
   return {
     id: action.id,
     name: action.name,
@@ -421,5 +427,7 @@ function toActionAuditSnapshot(action: ActionSummary) {
     points: action.points,
     isActive: action.isActive,
     isCodeActive: action.isCodeActive,
+    hasCode: action.code !== null,
+    ...(codeChanged === undefined ? {} : { codeChanged }),
   };
 }

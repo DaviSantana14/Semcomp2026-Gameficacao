@@ -58,6 +58,10 @@ function createRepository() {
   };
 
   const tx = {
+    $queryRaw: jest.fn(async () => {
+      const result = (await action.findUnique()) as typeof activeAction | null;
+      return result ? [result] : [];
+    }),
     action,
     claimCode: {
       findUnique: jest.fn(),
@@ -114,6 +118,18 @@ function createUniqueConstraintError(target = ['userId', 'actionId']) {
 }
 
 describe('ActionsRepository', () => {
+  it('locks the action row before an audited update', async () => {
+    let sql = '';
+    const raw = jest.fn((query: { strings: readonly string[] }) => {
+      sql = query.strings.join('?');
+      return Promise.resolve([{ id: 'action-1' }]);
+    });
+    const repository = new ActionsRepository({ $queryRaw: raw } as never);
+
+    await repository.lockActionById('action-1');
+
+    expect(sql).toMatch(/FROM "Action"[\s\S]*FOR UPDATE/);
+  });
   describe('create', () => {
     it('normalizes reusable action codes before creating the action', async () => {
       const { repository, prisma } = createRepository();

@@ -599,6 +599,42 @@ describeDisposable('Admin actions and codes (e2e)', () => {
     ).toBe(1);
   });
 
+  it('serializes concurrent action status updates with one exact before snapshot', async () => {
+    const action = await harness.prisma.action.create({
+      data: {
+        name: `Concurrent action status ${randomUUID()}`,
+        type: ActionType.BONUS,
+        points: 1,
+      },
+    });
+    actionIds.push(action.id);
+
+    const responses = await Promise.all([
+      harness.patch(`/admin/actions/${action.id}`, adminSession).send({
+        isActive: false,
+        reason: 'Primeira desativacao concorrente da atividade',
+      }),
+      harness.patch(`/admin/actions/${action.id}`, adminSession).send({
+        isActive: false,
+        reason: 'Segunda desativacao concorrente da atividade',
+      }),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    const events = await harness.prisma.adminAuditEvent.findMany({
+      where: {
+        operation: AuditOperation.ACTION_STATUS_CHANGED,
+        entityType: AuditEntityType.ACTION,
+        entityId: action.id,
+      },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      before: { isActive: true },
+      after: { isActive: false },
+    });
+  });
+
   it('rolls back generated codes and status changes when audit fails', async () => {
     const action = await harness.prisma.action.create({
       data: {

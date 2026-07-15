@@ -31,6 +31,13 @@ type ReconciliationConfirmation = {
     source: string;
     origin: string;
   };
+  pointEvents: Array<{
+    id: string;
+    pointsDelta: number;
+    xpDelta: number;
+    source: string;
+    origin: string;
+  }>;
   auditEvent: { id: string; operation: string };
   replayed: boolean;
 };
@@ -74,7 +81,7 @@ describe('Admin reconciliation (e2e)', () => {
         event(consistent.id, -3, 0, PointEventSource.REWARD_REDEMPTION),
         event(pointsOnly.id, 8, 10, PointEventSource.ACTION_REDEEM),
         event(xpOnly.id, 10, 7, PointEventSource.ADMIN_ADJUST),
-        event(both.id, 6, 5, PointEventSource.ADMIN_ADJUST),
+        event(both.id, 15, 5, PointEventSource.ADMIN_ADJUST),
         event(admin.id, 99, 99, PointEventSource.ADMIN_GRANT),
       ],
     });
@@ -131,7 +138,7 @@ describe('Admin reconciliation (e2e)', () => {
       status: 'DIVERGENT',
     });
     await expectDetail('both', {
-      pointsDifference: 4,
+      pointsDifference: -5,
       xpDifference: 5,
       status: 'DIVERGENT',
     });
@@ -312,7 +319,7 @@ describe('Admin reconciliation (e2e)', () => {
     );
   });
 
-  it('serializes concurrent confirmation and creates one compensation', async () => {
+  it('serializes concurrent opposite-signed compensation into semantic events', async () => {
     const participantId = participantIds.both;
     const idempotencyKey = randomUUID();
     const body = {
@@ -350,6 +357,38 @@ describe('Admin reconciliation (e2e)', () => {
     expect(
       await harness.prisma.pointEvent.count({ where: { idempotencyKey } }),
     ).toBe(1);
+    const first = responses.find(
+      (response) => !(response.body as ReconciliationConfirmation).replayed,
+    );
+    const firstBody = first?.body as ReconciliationConfirmation;
+    expect(firstBody.pointEvents).toEqual([
+      expect.objectContaining({
+        pointsDelta: -5,
+        xpDelta: 0,
+        source: PointEventSource.ADMIN_ADJUST,
+      }),
+      expect.objectContaining({
+        pointsDelta: 0,
+        xpDelta: 5,
+        source: PointEventSource.ADMIN_ADJUST,
+      }),
+    ]);
+    expect(
+      await harness.prisma.pointEvent.count({
+        where: { auditEventId: firstBody.auditEvent.id },
+      }),
+    ).toBe(2);
+    const linkedIds = firstBody.pointEvents.map((event) => event.id);
+    const persistedAudit =
+      await harness.prisma.adminAuditEvent.findUniqueOrThrow({
+        where: { id: firstBody.auditEvent.id },
+        select: { after: true, metadata: true },
+      });
+    expect(persistedAudit.after).toMatchObject({ pointEventIds: linkedIds });
+    expect(persistedAudit.metadata).toEqual({ pointEventIds: linkedIds });
+    expect(JSON.stringify(persistedAudit)).not.toMatch(
+      /cookie|authorization|csrf|password|jwt|token|code/i,
+    );
     expect(
       await harness.prisma.user.findUniqueOrThrow({
         where: { id: participantId },

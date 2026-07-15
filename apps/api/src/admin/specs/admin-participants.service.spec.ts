@@ -11,6 +11,7 @@ import { AdminParticipantsService } from '../admin-participants.service';
 import { AuditService } from '../../audit/audit.service';
 
 describe(AdminParticipantsService.name, () => {
+  const queryRaw = jest.fn();
   const prisma = {
     user: {
       count: jest.fn(),
@@ -26,6 +27,7 @@ describe(AdminParticipantsService.name, () => {
       findMany: jest.fn(),
       groupBy: jest.fn(),
     },
+    $queryRaw: queryRaw,
     $transaction: jest.fn(),
   };
   let service: AdminParticipantsService;
@@ -34,6 +36,13 @@ describe(AdminParticipantsService.name, () => {
     prisma.$transaction.mockImplementation(
       (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
     );
+    queryRaw.mockImplementation(async () => {
+      const result = (await prisma.user.findFirst()) as {
+        id: string;
+        isActive: boolean;
+      } | null;
+      return result ? [result] : [];
+    });
     prisma.pointEvent.count.mockResolvedValue(0);
     prisma.claimCode.count.mockResolvedValue(0);
     prisma.rewardRedemption.groupBy.mockResolvedValue([]);
@@ -184,10 +193,7 @@ describe(AdminParticipantsService.name, () => {
         { actorAdminId: 'admin-1', requestId: 'request-1' },
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.user.findFirst).toHaveBeenCalledWith({
-      where: { id: 'admin', role: UserRole.PARTICIPANT },
-      select: { id: true, isActive: true },
-    });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 

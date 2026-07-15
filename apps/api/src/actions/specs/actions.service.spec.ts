@@ -10,7 +10,7 @@ import { AuditOperation } from '../../audit/audit.repository';
 describe(ActionsService.name, () => {
   let service: ActionsService;
   let repository: jest.Mocked<ActionsRepository>;
-  let audit: { record: jest.Mock };
+  let audit: { record: jest.MockedFunction<AuditService['record']> };
 
   beforeEach(async () => {
     const repositoryMock = {
@@ -25,7 +25,9 @@ describe(ActionsService.name, () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
       (callback) => callback(repositoryMock, {}),
     );
-    audit = { record: jest.fn().mockResolvedValue({ id: 'audit-1' }) };
+    audit = {
+      record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    };
     const module = await Test.createTestingModule({
       providers: [
         ActionsService,
@@ -136,6 +138,8 @@ describe(ActionsService.name, () => {
           points: 10,
           isActive: true,
           isCodeActive: true,
+          hasCode: true,
+          codeChanged: false,
         },
         reason: 'Criacao operacional confirmada',
       }),
@@ -158,7 +162,7 @@ describe(ActionsService.name, () => {
     const updated = { ...current, isActive: false };
     const transactional = {
       auditWriter: { create: jest.fn() },
-      findActionById: jest.fn().mockResolvedValue(current),
+      lockActionById: jest.fn().mockResolvedValue(current),
       updateAction: jest.fn().mockResolvedValue(updated),
     };
     repository.withTransaction.mockImplementation((callback) =>
@@ -196,7 +200,7 @@ describe(ActionsService.name, () => {
     const updated = { ...current, name: 'Novo nome', isActive: false };
     const transactional = {
       auditWriter: { create: jest.fn() },
-      findActionById: jest.fn().mockResolvedValue(current),
+      lockActionById: jest.fn().mockResolvedValue(current),
       updateAction: jest.fn().mockResolvedValue(updated),
     };
     repository.withTransaction.mockImplementation((callback) =>
@@ -219,6 +223,62 @@ describe(ActionsService.name, () => {
     );
   });
 
+  it.each([
+    ['adds', null, 'NOVO-CODIGO', undefined],
+    ['changes', 'CODIGO-ANTIGO', 'CODIGO-NOVO', undefined],
+    ['removes', 'CODIGO-ANTIGO', null, undefined],
+    ['changes with another field', 'CODIGO-ANTIGO', 'CODIGO-NOVO', 'Novo nome'],
+  ] as const)(
+    '%s a reusable code with distinguishable safe snapshots',
+    async (_label, previousCode, nextCode, nextName) => {
+      const current = {
+        id: 'action-1',
+        name: 'Check-in',
+        description: null,
+        type: ActionType.CHECKIN,
+        code: previousCode,
+        points: 10,
+        isActive: true,
+        isCodeActive: previousCode !== null,
+        createdAt: new Date(),
+      };
+      const updated = {
+        ...current,
+        ...(nextName ? { name: nextName } : {}),
+        code: nextCode,
+        isCodeActive: nextCode !== null,
+      };
+      const transactional = {
+        auditWriter: { create: jest.fn() },
+        lockActionById: jest.fn().mockResolvedValue(current),
+        updateAction: jest.fn().mockResolvedValue(updated),
+      };
+      repository.withTransaction.mockImplementation((callback) =>
+        callback(transactional as never, {} as never),
+      );
+
+      await service.update(
+        'action-1',
+        {
+          code: nextCode,
+          ...(nextName ? { name: nextName } : {}),
+          reason: 'Rotacao segura do codigo operacional',
+        },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      );
+
+      const auditInput = audit.record.mock.calls[0]?.[1];
+      expect(auditInput).toMatchObject({
+        operation: AuditOperation.ACTION_UPDATED,
+        before: { hasCode: previousCode !== null, codeChanged: false },
+        after: { hasCode: nextCode !== null, codeChanged: true },
+      });
+      const serialized = JSON.stringify(auditInput);
+      if (previousCode) expect(serialized).not.toContain(previousCode);
+      if (nextCode) expect(serialized).not.toContain(nextCode);
+    },
+  );
+
   it('returns a no-op update without writing domain or audit records', async () => {
     const current = {
       id: 'action-1',
@@ -233,7 +293,7 @@ describe(ActionsService.name, () => {
     };
     const transactional = {
       auditWriter: { create: jest.fn() },
-      findActionById: jest.fn().mockResolvedValue(current),
+      lockActionById: jest.fn().mockResolvedValue(current),
       updateAction: jest.fn(),
     };
     repository.withTransaction.mockImplementation((callback) =>
@@ -320,7 +380,7 @@ describe(ActionsService.name, () => {
     const state = { action: { ...original }, audits: 0 };
     const transactional = {
       auditWriter: { create: jest.fn() },
-      findActionById: jest.fn(() => Promise.resolve({ ...state.action })),
+      lockActionById: jest.fn(() => Promise.resolve({ ...state.action })),
       updateAction: jest.fn((_id: string, input: { name?: string }) => {
         state.action = { ...state.action, ...input };
         return Promise.resolve({ ...state.action });

@@ -6,6 +6,20 @@ import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 
 describe('participant status audit', () => {
+  it('locks the participant row before reading the audited status', async () => {
+    let sql = '';
+    const raw = jest.fn((query: { strings: readonly string[] }) => {
+      sql = query.strings.join('?');
+      return Promise.resolve([{ id: 'participant-1', isActive: true }]);
+    });
+    const repository = new AdminParticipantsRepository({
+      $queryRaw: raw,
+    } as never);
+
+    await repository.lockParticipantStatus('participant-1');
+
+    expect(sql).toMatch(/FROM "User"[\s\S]*FOR UPDATE/);
+  });
   let service: AdminParticipantsService;
   let repository: {
     withTransaction: jest.Mock;
@@ -39,7 +53,7 @@ describe('participant status audit', () => {
   it('updates participant status and audit in one transaction', async () => {
     const transaction = {
       auditWriter: { create: jest.fn() },
-      findParticipantStatus: jest
+      lockParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: true }),
       updateParticipantStatus: jest
@@ -82,7 +96,7 @@ describe('participant status audit', () => {
   it('returns no-op success without a domain write or audit event', async () => {
     const transaction = {
       auditWriter: { create: jest.fn() },
-      findParticipantStatus: jest
+      lockParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: true }),
       updateParticipantStatus: jest.fn(),
@@ -111,7 +125,7 @@ describe('participant status audit', () => {
   it('does not audit a missing or invalid participant target', async () => {
     const transaction = {
       auditWriter: { create: jest.fn() },
-      findParticipantStatus: jest.fn().mockResolvedValue(null),
+      lockParticipantStatus: jest.fn().mockResolvedValue(null),
       updateParticipantStatus: jest.fn(),
     };
     repository.withTransaction.mockImplementation(
@@ -134,7 +148,7 @@ describe('participant status audit', () => {
     const failure = new Error('audit writer failed');
     const transaction = {
       auditWriter: { create: jest.fn() },
-      findParticipantStatus: jest
+      lockParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: true }),
       updateParticipantStatus: jest
@@ -162,7 +176,7 @@ describe('participant status audit', () => {
     const state = { participant: { id: 'p1', isActive: true }, audits: 0 };
     const transaction = {
       auditWriter: { create: jest.fn() },
-      findParticipantStatus: jest.fn(() =>
+      lockParticipantStatus: jest.fn(() =>
         Promise.resolve({ ...state.participant }),
       ),
       updateParticipantStatus: jest.fn((id: string, isActive: boolean) => {

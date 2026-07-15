@@ -13,6 +13,7 @@ import type { AdminClaimCode } from "@/features/actions/actions.types";
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
+import { AdminReasonDialog } from "../_components/admin-reason-dialog";
 const status = {
   AVAILABLE: ["Disponível", "active"],
   DISABLED: ["Desativado", "inactive"],
@@ -28,6 +29,7 @@ export function ClaimCodeHistory() {
     "all" | "available" | "disabled" | "blocked" | "used"
   >("all");
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [toggleIntent, setToggleIntent] = useState<AdminClaimCode | null>(null);
   const actions = useQuery({
     queryKey: ["admin", "actions", "claim-filter"],
     queryFn: () => fetchAdminActions({ page: 1, limit: 100 }),
@@ -50,11 +52,18 @@ export function ClaimCodeHistory() {
     retry: false,
   });
   const toggle = useMutation({
-    mutationFn: async (c: AdminClaimCode) => {
-      return updateClaimCodeStatus(c.id, !c.isActive);
+    mutationFn: async ({
+      c,
+      reason,
+    }: {
+      c: AdminClaimCode;
+      reason: string;
+    }) => {
+      return updateClaimCodeStatus(c.id, { isActive: !c.isActive, reason });
     },
-    onMutate: (c) => setPendingIds((ids) => new Set(ids).add(c.id)),
+    onMutate: ({ c }) => setPendingIds((ids) => new Set(ids).add(c.id)),
     onSuccess: async () => {
+      setToggleIntent(null);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
         qc.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
@@ -64,7 +73,7 @@ export function ClaimCodeHistory() {
       toast.error(
         e instanceof ApiError ? e.message : "Não foi possível atualizar.",
       ),
-    onSettled: (_, __, c) =>
+    onSettled: (_, __, { c }) =>
       setPendingIds((ids) => {
         const next = new Set(ids);
         next.delete(c.id);
@@ -148,7 +157,7 @@ export function ClaimCodeHistory() {
                 <Button
                   disabled={pendingIds.has(c.id)}
                   variant="outline"
-                  onClick={() => toggle.mutate(c)}
+                  onClick={() => setToggleIntent(c)}
                 >
                   {pendingIds.has(c.id)
                     ? "Atualizando..."
@@ -170,6 +179,18 @@ export function ClaimCodeHistory() {
           Nenhum código encontrado. Ajuste os filtros ou gere um lote.
         </p>
       )}
+      {toggleIntent ? (
+        <AdminReasonDialog
+          confirmLabel="Confirmar alteração"
+          currentState={toggleIntent.isActive ? "Disponível" : "Desativado"}
+          description={`Código ${toggleIntent.code} · ${toggleIntent.action.name}`}
+          intendedState={toggleIntent.isActive ? "Desativado" : "Disponível"}
+          onClose={() => setToggleIntent(null)}
+          onSubmit={(reason) => toggle.mutateAsync({ c: toggleIntent, reason })}
+          operationKey={`${toggleIntent.id}:${String(!toggleIntent.isActive)}`}
+          title="Alterar status do código"
+        />
+      ) : null}
     </section>
   );
 }

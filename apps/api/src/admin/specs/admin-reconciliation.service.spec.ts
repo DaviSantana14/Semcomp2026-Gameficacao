@@ -22,6 +22,7 @@ describe(AdminReconciliationService.name, () => {
     countDivergent: jest.fn(),
     withTransaction: jest.fn(),
     findByIdempotencyKey: jest.fn(),
+    findByAuditEventId: jest.fn(),
   };
   const audit = { record: jest.fn() };
   let service: AdminReconciliationService;
@@ -105,9 +106,13 @@ describe(AdminReconciliationService.name, () => {
       (callback: (value: ReconciliationTransaction) => Promise<unknown>) =>
         callback(transaction as never),
     );
-    transaction.createPointEvent.mockResolvedValue(
-      pointEvent({ points: -5, xpDelta: 4, kind: PointEventKind.DEBIT }),
-    );
+    transaction.createPointEvent
+      .mockResolvedValueOnce(
+        pointEvent({ points: -5, xpDelta: 0, kind: PointEventKind.DEBIT }),
+      )
+      .mockResolvedValueOnce(
+        pointEvent({ id: 'point-2', points: 0, xpDelta: 4 }),
+      );
     service = new AdminReconciliationService(
       repository as never,
       new AuditService({ findPage: jest.fn() } as never),
@@ -120,7 +125,10 @@ describe(AdminReconciliationService.name, () => {
       }),
     ).resolves.toMatchObject({
       before: { pointsDifference: -5, xpDifference: 4 },
-      pointEvent: { pointsDelta: -5, xpDelta: 4, kind: PointEventKind.DEBIT },
+      pointEvents: [
+        { pointsDelta: -5, xpDelta: 0, kind: PointEventKind.DEBIT },
+        { pointsDelta: 0, xpDelta: 4, kind: PointEventKind.CREDIT },
+      ],
     });
     const persisted = createAudit.mock.calls[0]?.[0];
     expect(persisted).toBeDefined();
@@ -128,15 +136,44 @@ describe(AdminReconciliationService.name, () => {
       expect.objectContaining({ pointsDifference: -5, xpDifference: 4 }),
     );
     expect(persisted?.after).toEqual(
-      expect.objectContaining({ pointsDifference: 0, xpDifference: 0 }),
+      expect.objectContaining({
+        pointsDifference: 0,
+        xpDifference: 0,
+      }),
+    );
+    const persistedAfter = persisted?.after as
+      | { pointEventIds?: unknown }
+      | undefined;
+    expect(Array.isArray(persistedAfter?.pointEventIds)).toBe(true);
+    expect(persistedAfter?.pointEventIds).toHaveLength(2);
+    expect(
+      Array.isArray(persistedAfter?.pointEventIds) &&
+        persistedAfter.pointEventIds.every(
+          (id) => typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id),
+        ),
+    ).toBe(true);
+    expect(persisted?.metadata).toEqual({
+      pointEventIds: persistedAfter?.pointEventIds,
+    });
+    expect(JSON.stringify(persisted)).not.toMatch(
+      /cookie|authorization|csrf|password|jwt|SEGREDO/i,
     );
     expect(persisted?.before).not.toHaveProperty('status');
     expect(persisted?.after).not.toHaveProperty('status');
-    expect(transaction.createPointEvent).toHaveBeenCalledWith(
+    expect(transaction.createPointEvent).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         points: -5,
-        xpDelta: 4,
+        xpDelta: 0,
         kind: PointEventKind.DEBIT,
+      }),
+    );
+    expect(transaction.createPointEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        points: 0,
+        xpDelta: 4,
+        kind: PointEventKind.CREDIT,
       }),
     );
   });
@@ -197,6 +234,46 @@ describe(AdminReconciliationService.name, () => {
       }),
     ).rejects.toThrow('audit failed');
     expect(transaction.createPointEvent).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a provisional audit when point-event persistence fails', async () => {
+    const failure = new Error('point event failed after audit write');
+    const committed = { audits: [] as string[], pointEvents: [] as string[] };
+
+    repository.withTransaction.mockImplementation(
+      async (
+        callback: (value: ReconciliationTransaction) => Promise<unknown>,
+      ) => {
+        const provisional = structuredClone(committed);
+        const transaction = reconciliationTransaction();
+        transaction.auditWriter = {
+          create: jest.fn(() => {
+            provisional.audits.push('provisional-audit');
+            return Promise.resolve(auditEvent());
+          }),
+        };
+        transaction.createPointEvent.mockImplementation(() => {
+          provisional.pointEvents.push('provisional-point-event');
+          return Promise.reject(failure);
+        });
+        const result = await callback(transaction as never);
+        committed.audits = provisional.audits;
+        committed.pointEvents = provisional.pointEvents;
+        return result;
+      },
+    );
+    service = new AdminReconciliationService(
+      repository as never,
+      new AuditService({ findPage: jest.fn() } as never),
+    );
+
+    await expect(
+      service.confirm('participant-1', confirmation(), {
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      }),
+    ).rejects.toBe(failure);
+    expect(committed).toEqual({ audits: [], pointEvents: [] });
   });
 
   it('returns a paginated list with explicit differences and ISO dates', async () => {
@@ -370,6 +447,9 @@ function reconciliationTransaction(
     findByIdempotencyKey: jest
       .fn()
       .mockResolvedValue(overrides.existing ?? null),
+    findByAuditEventId: jest
+      .fn()
+      .mockResolvedValue(overrides.existing ? [overrides.existing] : []),
     createPointEvent: jest.fn(),
   };
 }

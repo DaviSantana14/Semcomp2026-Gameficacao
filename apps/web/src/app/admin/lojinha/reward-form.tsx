@@ -17,6 +17,10 @@ import type {
   CreateRewardPayload,
   UpdateRewardDetailsPayload,
 } from "@/features/rewards/rewards.types";
+import {
+  isValidAdminReason,
+  normalizeAdminReason,
+} from "../_components/admin-reason-dialog";
 
 export type RewardFormSubmission =
   | { mode: "create"; payload: CreateRewardPayload }
@@ -36,6 +40,7 @@ const empty: CreateRewardPayload = {
   stock: 0,
   imageUrl: "",
   isActive: true,
+  reason: "",
 };
 
 export function RewardForm({
@@ -53,17 +58,20 @@ export function RewardForm({
           stock: reward.stock,
           imageUrl: reward.imageUrl ?? "",
           isActive: reward.isActive,
+          reason: "",
         }
       : empty,
   );
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (!isValidAdminReason(form.reason) || pending) return;
     const normalized = {
       ...form,
       name: form.name.trim(),
       description: form.description?.trim() || undefined,
       imageUrl: form.imageUrl?.trim() || undefined,
+      reason: normalizeAdminReason(form.reason),
     };
     if (reward) {
       const payload: UpdateRewardDetailsPayload = {
@@ -72,6 +80,7 @@ export function RewardForm({
         costInPoints: normalized.costInPoints,
         stock: normalized.stock,
         imageUrl: normalized.imageUrl ?? null,
+        reason: normalized.reason,
       };
       onSubmit({ mode: "edit", rewardId: reward.id, payload });
       return;
@@ -95,6 +104,7 @@ export function RewardForm({
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Nome">
               <Input
+                disabled={pending}
                 required
                 minLength={2}
                 value={form.name}
@@ -103,6 +113,7 @@ export function RewardForm({
             </Field>
             <Field label="URL da imagem">
               <Input
+                disabled={pending}
                 inputMode="url"
                 placeholder="https://..."
                 type="url"
@@ -112,6 +123,7 @@ export function RewardForm({
             </Field>
             <Field label="Custo em pontos">
               <Input
+                disabled={pending}
                 min={1}
                 required
                 type="number"
@@ -123,6 +135,7 @@ export function RewardForm({
             </Field>
             <Field label="Estoque">
               <Input
+                disabled={pending}
                 min={0}
                 required
                 type="number"
@@ -135,6 +148,7 @@ export function RewardForm({
           </div>
           <Field label="Descrição">
             <Input
+              disabled={pending}
               value={form.description}
               onChange={(e) =>
                 setForm({ ...form, description: e.target.value })
@@ -145,6 +159,7 @@ export function RewardForm({
             <Label className="flex min-h-11 items-center gap-3">
               <input
                 checked={form.isActive}
+                disabled={pending}
                 onChange={(e) =>
                   setForm({ ...form, isActive: e.target.checked })
                 }
@@ -153,8 +168,28 @@ export function RewardForm({
               Disponível imediatamente
             </Label>
           ) : null}
+          <Field label="Motivo">
+            <textarea
+              aria-label="Motivo"
+              aria-describedby="reward-reason-help"
+              className="min-h-24 rounded-md border border-input bg-muted px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={pending}
+              maxLength={500}
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+            />
+            <span
+              className="text-xs text-muted-foreground"
+              id="reward-reason-help"
+            >
+              Informe de 10 a 500 caracteres.
+            </span>
+          </Field>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={pending}>
+            <Button
+              disabled={pending || !isValidAdminReason(form.reason)}
+              type="submit"
+            >
               {pending ? (
                 <LoaderCircle className="animate-spin" />
               ) : reward ? (

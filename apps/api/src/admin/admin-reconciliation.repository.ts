@@ -74,6 +74,9 @@ export interface ReconciliationTransaction {
   findByIdempotencyKey(
     key: string,
   ): Promise<ReconciliationCompensationEvent | null>;
+  findByAuditEventId(
+    auditEventId: string,
+  ): Promise<ReconciliationCompensationEvent[]>;
   createPointEvent(input: {
     id: string;
     userId: string;
@@ -82,7 +85,7 @@ export interface ReconciliationTransaction {
     kind: 'CREDIT' | 'DEBIT';
     source: 'ADMIN_ADJUST';
     actorAdminId: string;
-    idempotencyKey: string;
+    idempotencyKey: string | null;
     auditEventId: string;
     description: string;
   }): Promise<ReconciliationCompensationEvent>;
@@ -143,6 +146,14 @@ class BoundReconciliationTransaction implements ReconciliationTransaction {
     });
   }
 
+  findByAuditEventId(auditEventId: string) {
+    return this.client.pointEvent.findMany({
+      where: { auditEventId },
+      orderBy: { createdAt: 'asc' },
+      select: compensationEventSelect,
+    });
+  }
+
   createPointEvent(
     input: Parameters<ReconciliationTransaction['createPointEvent']>[0],
   ) {
@@ -192,6 +203,14 @@ export class AdminReconciliationRepository {
   findByIdempotencyKey(key: string) {
     return this.prisma.pointEvent.findUnique({
       where: { idempotencyKey: key },
+      select: compensationEventSelect,
+    });
+  }
+
+  findByAuditEventId(auditEventId: string) {
+    return this.prisma.pointEvent.findMany({
+      where: { auditEventId },
+      orderBy: { createdAt: 'asc' },
       select: compensationEventSelect,
     });
   }

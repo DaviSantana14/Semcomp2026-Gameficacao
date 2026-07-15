@@ -44,7 +44,7 @@ export function fetchAdminParticipantRewardRedemptions(
 
 export function updateParticipantStatus(
   id: string,
-  payload: { isActive: boolean },
+  payload: { isActive: boolean; reason: string },
 ) {
   return apiFetch<AdminParticipantDetail>(`/admin/participants/${id}/status`, {
     method: "PATCH",

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -56,6 +56,7 @@ describe("ActionsClient", () => {
 
     await user.type(screen.getByLabelText("Nome"), "  Palestra  ");
     await user.type(screen.getByLabelText("Código reutilizável"), " dia2 ");
+    await user.type(screen.getByLabelText("Motivo"), "Criação planejada");
     await user.click(screen.getByRole("button", { name: "Criar atividade" }));
 
     await waitFor(() => {
@@ -66,6 +67,7 @@ describe("ActionsClient", () => {
         points: 10,
         code: "DIA2",
         isActive: true,
+        reason: "Criação planejada",
       });
     });
     expect(toast.success).toHaveBeenCalledWith("Atividade criada.");
@@ -77,6 +79,7 @@ describe("ActionsClient", () => {
 
     await user.type(screen.getByLabelText("Nome"), "Dinâmica");
     await user.type(screen.getByLabelText("Código reutilizável"), "K7XM-9N2P");
+    await user.type(screen.getByLabelText("Motivo"), "Criação planejada");
     await user.click(screen.getByRole("button", { name: "Criar atividade" }));
 
     await waitFor(() => {
@@ -94,6 +97,7 @@ describe("ActionsClient", () => {
 
     await user.click(await screen.findByRole("button", { name: "Editar" }));
     await user.clear(screen.getByLabelText("Descrição"));
+    await user.type(screen.getByLabelText("Motivo"), "Correção solicitada");
     await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
 
     await waitFor(() => {
@@ -103,6 +107,7 @@ describe("ActionsClient", () => {
         type: action.type,
         points: action.points,
         code: action.code,
+        reason: "Correção solicitada",
       });
     });
   });
@@ -118,11 +123,24 @@ describe("ActionsClient", () => {
     const user = userEvent.setup();
     renderWithQueryClient(<ActionsClient />);
 
-    await user.click(await screen.findByRole("button", { name: "Desativar atividade" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Desativar atividade" }),
+    );
+    const dialog = screen.getByRole("dialog");
+    await user.type(
+      within(dialog).getByLabelText("Motivo"),
+      "Pausa operacional",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar alteração" }),
+    );
 
-    expect(updateActionMock).toHaveBeenCalledWith(action.id, { isActive: false });
+    expect(updateActionMock).toHaveBeenCalledWith(action.id, {
+      isActive: false,
+      reason: "Pausa operacional",
+    });
     expect(
-      screen.getByRole("button", { name: "Atualizando atividade..." }),
+      screen.getByRole("button", { name: "Registrando..." }),
     ).toBeDisabled();
 
     rejectUpdate(new ApiError("Não foi possível alterar.", 400));
@@ -130,5 +148,54 @@ describe("ActionsClient", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Não foi possível alterar.");
     });
+    expect(within(dialog).getByLabelText("Motivo")).toHaveValue(
+      "Pausa operacional",
+    );
+  });
+
+  it("impede trocar ou cancelar a edição enquanto o salvamento está pendente", async () => {
+    let resolveUpdate!: (value: typeof action) => void;
+    updateActionMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderWithQueryClient(<ActionsClient />);
+
+    await user.click(await screen.findByRole("button", { name: "Editar" }));
+    await user.type(screen.getByLabelText("Motivo"), "Correção planejada");
+    await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Editar" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Desativar atividade" }),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("Motivo")).toHaveAccessibleDescription(
+      "Informe de 10 a 500 caracteres.",
+    );
+    expect(screen.getByLabelText("Nome")).toBeDisabled();
+    expect(screen.getByLabelText("Tipo")).toBeDisabled();
+    expect(screen.getByLabelText("Pontos")).toBeDisabled();
+    expect(screen.getByLabelText("Código reutilizável")).toBeDisabled();
+    expect(screen.getByLabelText("Descrição")).toBeDisabled();
+    expect(screen.getByLabelText("Motivo")).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Nome"), " alterado");
+    await user.selectOptions(screen.getByLabelText("Tipo"), "BONUS");
+    await user.type(screen.getByLabelText("Motivo"), " alterado");
+
+    expect(screen.getByLabelText("Nome")).toHaveValue(action.name);
+    expect(screen.getByLabelText("Tipo")).toHaveValue(action.type);
+    expect(screen.getByLabelText("Motivo")).toHaveValue("Correção planejada");
+
+    resolveUpdate(action);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Criar atividade" }),
+      ).toBeInTheDocument(),
+    );
   });
 });

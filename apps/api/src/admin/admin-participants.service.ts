@@ -60,7 +60,7 @@ export class AdminParticipantsService {
     context: AdminOperationContext,
   ) {
     await this.repository.withTransaction(async (repository) => {
-      const current = await repository.findParticipantStatus(id);
+      const current = await repository.lockParticipantStatus(id);
       if (!current) {
         throw new NotFoundException('Participante não encontrado.');
       }

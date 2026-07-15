@@ -47,6 +47,9 @@ export type ReconciliationConfirmationResult = {
   before: ReconciliationSnapshot;
   after: ReconciliationSnapshot;
   pointEvent: PointEventResult & { origin: "RECONCILIATION_COMPENSATION" };
+  pointEvents: Array<
+    PointEventResult & { origin: "RECONCILIATION_COMPENSATION" }
+  >;
   auditEvent: AuditEventResult;
   replayed: boolean;
 };

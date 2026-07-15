@@ -103,6 +103,18 @@ export class AdminParticipantsRepository {
     });
   }
 
+  async lockParticipantStatus(id: string) {
+    const rows = await this.client.$queryRaw<
+      Array<{ id: string; isActive: boolean }>
+    >(Prisma.sql`
+      SELECT "id", "isActive"
+      FROM "User"
+      WHERE "id" = ${id} AND "role" = 'PARTICIPANT'::"UserRole"
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
+  }
+
   updateParticipantStatus(id: string, isActive: boolean) {
     return this.client.user.update({
       where: { id },

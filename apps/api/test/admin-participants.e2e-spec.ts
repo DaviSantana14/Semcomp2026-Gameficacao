@@ -3,6 +3,8 @@ import {
   ActionType,
   PointEventKind,
   PointEventSource,
+  AuditEntityType,
+  AuditOperation,
   RedemptionStatus,
   UserRole,
 } from '@prisma/client';
@@ -262,6 +264,50 @@ describe('Admin participants (e2e)', () => {
       })
       .expect(200);
     firstSession = await harness.login(first.cpf, first.email);
+  });
+
+  it('serializes concurrent participant status updates with one exact before snapshot', async () => {
+    const auditFilter = {
+      operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
+      entityType: AuditEntityType.PARTICIPANT,
+      entityId: first.id,
+    } as const;
+    const auditCountBefore = await harness.prisma.adminAuditEvent.count({
+      where: auditFilter,
+    });
+    const responses = await Promise.all([
+      harness
+        .patch(`/admin/participants/${first.id}/status`, adminSession)
+        .send({
+          isActive: false,
+          reason: 'Primeira desativacao concorrente do participante',
+        }),
+      harness
+        .patch(`/admin/participants/${first.id}/status`, adminSession)
+        .send({
+          isActive: false,
+          reason: 'Segunda desativacao concorrente do participante',
+        }),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    const events = await harness.prisma.adminAuditEvent.findMany({
+      where: auditFilter,
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(events).toHaveLength(auditCountBefore + 1);
+    expect(events[0]).toMatchObject({
+      before: { id: first.id, isActive: true },
+      after: { id: first.id, isActive: false },
+    });
+
+    await harness
+      .patch(`/admin/participants/${first.id}/status`, adminSession)
+      .send({
+        isActive: true,
+        reason: 'Reativacao apos teste concorrente do participante',
+      })
+      .expect(200);
   });
 
   it('records exact redemption methods in filtered participant history', async () => {

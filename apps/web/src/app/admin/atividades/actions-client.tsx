@@ -27,6 +27,11 @@ import type {
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
+import {
+  AdminReasonDialog,
+  isValidAdminReason,
+  normalizeAdminReason,
+} from "../_components/admin-reason-dialog";
 
 const types: ActionType[] = [
   "CHECKIN",
@@ -54,6 +59,7 @@ const empty = {
   code: "",
   isActive: true,
   isCodeActive: true,
+  reason: "",
 };
 
 export function ActionsClient() {
@@ -64,6 +70,10 @@ export function ActionsClient() {
   const [editing, setEditing] = useState<AdminAction | null>(null);
   const [form, setForm] = useState(empty);
   const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
+  const [toggleIntent, setToggleIntent] = useState<{
+    a: AdminAction;
+    field: "isActive" | "isCodeActive";
+  } | null>(null);
   const query = useQuery({
     queryKey: ["admin", "actions", { page, limit: 10, search }],
     queryFn: () =>
@@ -84,6 +94,7 @@ export function ActionsClient() {
           type: form.type,
           points: form.points,
           code: code || null,
+          reason: normalizeAdminReason(form.reason),
         };
         const reusableAffected = (
           ["name", "type", "points", "code"] as const
@@ -104,6 +115,7 @@ export function ActionsClient() {
         points: form.points,
         code: code || undefined,
         isActive: form.isActive,
+        reason: normalizeAdminReason(form.reason),
       });
       return {
         action,
@@ -140,12 +152,17 @@ export function ActionsClient() {
     mutationFn: async (v: {
       a: AdminAction;
       field: "isActive" | "isCodeActive";
+      reason: string;
     }) => {
-      return updateAction(v.a.id, { [v.field]: !v.a[v.field] });
+      return updateAction(v.a.id, {
+        [v.field]: !v.a[v.field],
+        reason: v.reason,
+      });
     },
     onMutate: (v) =>
       setPendingToggles((keys) => new Set(keys).add(`${v.a.id}:${v.field}`)),
     onSuccess: async (_, v) => {
+      setToggleIntent(null);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
         qc.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
@@ -169,6 +186,7 @@ export function ActionsClient() {
       }),
   });
   function edit(a: AdminAction) {
+    if (save.isPending) return;
     setEditing(a);
     setForm({
       name: a.name,
@@ -178,11 +196,13 @@ export function ActionsClient() {
       code: a.code ?? "",
       isActive: a.isActive,
       isCodeActive: a.isCodeActive,
+      reason: "",
     });
     scrollTo({ top: 0, behavior: "smooth" });
   }
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (!isValidAdminReason(form.reason) || save.isPending) return;
     save.mutate();
   }
   return (
@@ -213,6 +233,7 @@ export function ActionsClient() {
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Nome">
                 <Input
+                  disabled={save.isPending}
                   required
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -221,6 +242,7 @@ export function ActionsClient() {
               <Field label="Tipo">
                 <select
                   className="min-h-11 rounded-md border border-input bg-muted px-3"
+                  disabled={save.isPending}
                   value={form.type}
                   onChange={(e) =>
                     setForm({ ...form, type: e.target.value as ActionType })
@@ -235,6 +257,7 @@ export function ActionsClient() {
               </Field>
               <Field label="Pontos">
                 <Input
+                  disabled={save.isPending}
                   min={0}
                   required
                   type="number"
@@ -246,6 +269,7 @@ export function ActionsClient() {
               </Field>
               <Field label="Código reutilizável">
                 <Input
+                  disabled={save.isPending}
                   placeholder="Ex.: PALESTRA1"
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
@@ -254,11 +278,30 @@ export function ActionsClient() {
             </div>
             <Field label="Descrição">
               <Input
+                disabled={save.isPending}
                 value={form.description}
                 onChange={(e) =>
                   setForm({ ...form, description: e.target.value })
                 }
               />
+            </Field>
+            <Field label="Motivo">
+              <textarea
+                aria-label="Motivo"
+                aria-describedby="action-reason-help"
+                className="min-h-24 rounded-md border border-input bg-muted px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={save.isPending}
+                maxLength={500}
+                required
+                value={form.reason}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              />
+              <span
+                className="text-xs text-muted-foreground"
+                id="action-reason-help"
+              >
+                Informe de 10 a 500 caracteres.
+              </span>
             </Field>
             {editing && form.points !== editing.points ? (
               <p className="text-sm text-accent">
@@ -266,7 +309,10 @@ export function ActionsClient() {
               </p>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={save.isPending}>
+              <Button
+                type="submit"
+                disabled={save.isPending || !isValidAdminReason(form.reason)}
+              >
                 <Plus />
                 {save.isPending
                   ? "Salvando..."
@@ -276,6 +322,7 @@ export function ActionsClient() {
               </Button>
               {editing ? (
                 <Button
+                  disabled={save.isPending}
                   type="button"
                   variant="outline"
                   onClick={() => {
@@ -338,14 +385,20 @@ export function ActionsClient() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => edit(a)}>
+                <Button
+                  disabled={save.isPending}
+                  variant="outline"
+                  onClick={() => edit(a)}
+                >
                   <Pencil />
                   Editar
                 </Button>
                 <Button
-                  disabled={pendingToggles.has(`${a.id}:isActive`)}
+                  disabled={
+                    save.isPending || pendingToggles.has(`${a.id}:isActive`)
+                  }
                   variant="outline"
-                  onClick={() => toggle.mutate({ a, field: "isActive" })}
+                  onClick={() => setToggleIntent({ a, field: "isActive" })}
                 >
                   {pendingToggles.has(`${a.id}:isActive`)
                     ? "Atualizando atividade..."
@@ -355,9 +408,14 @@ export function ActionsClient() {
                 </Button>
                 {a.code ? (
                   <Button
-                    disabled={pendingToggles.has(`${a.id}:isCodeActive`)}
+                    disabled={
+                      save.isPending ||
+                      pendingToggles.has(`${a.id}:isCodeActive`)
+                    }
                     variant="outline"
-                    onClick={() => toggle.mutate({ a, field: "isCodeActive" })}
+                    onClick={() =>
+                      setToggleIntent({ a, field: "isCodeActive" })
+                    }
                   >
                     {pendingToggles.has(`${a.id}:isCodeActive`)
                       ? "Atualizando código..."
@@ -388,6 +446,26 @@ export function ActionsClient() {
           </p>
         </div>
       )}
+      {toggleIntent ? (
+        <AdminReasonDialog
+          confirmLabel="Confirmar alteração"
+          currentState={
+            toggleIntent.a[toggleIntent.field] ? "Ativo" : "Inativo"
+          }
+          description={
+            toggleIntent.field === "isActive"
+              ? `Atividade ${toggleIntent.a.name}`
+              : `Código reutilizável de ${toggleIntent.a.name}`
+          }
+          intendedState={
+            toggleIntent.a[toggleIntent.field] ? "Inativo" : "Ativo"
+          }
+          onClose={() => setToggleIntent(null)}
+          onSubmit={(reason) => toggle.mutateAsync({ ...toggleIntent, reason })}
+          operationKey={`${toggleIntent.a.id}:${toggleIntent.field}:${String(!toggleIntent.a[toggleIntent.field])}`}
+          title="Alterar status"
+        />
+      ) : null}
     </div>
   );
 }

@@ -40,6 +40,8 @@ export interface ActionAuditSnapshot {
   points: number;
   isActive: boolean;
   isCodeActive: boolean;
+  hasCode?: boolean;
+  codeChanged?: boolean;
 }
 
 export interface ClaimCodeBatchSnapshot {
@@ -123,6 +125,7 @@ interface ReconciliationAuditSnapshot {
   pointsDifference: number;
   xpDifference: number;
   pointEventId?: string;
+  pointEventIds?: string[];
 }
 
 export interface AuditMetadataSource {
@@ -130,6 +133,7 @@ export interface AuditMetadataSource {
   batchSize?: number;
   claimCodeIds?: string[];
   pointEventId?: string;
+  pointEventIds?: string[];
   originalPointEventId?: string;
   reversalPointEventId?: string;
   rewardRedemptionId?: string;
@@ -185,7 +189,10 @@ type BatchMetadata = {
 type BalanceMetadata = {
   metadata?: Pick<
     AuditMetadataSource,
-    'pointEventId' | 'originalPointEventId' | 'reversalPointEventId'
+    | 'pointEventId'
+    | 'pointEventIds'
+    | 'originalPointEventId'
+    | 'reversalPointEventId'
   >;
 };
 
@@ -318,6 +325,7 @@ type FieldKind =
   | 'number'
   | 'string'
   | 'stringArray'
+  | 'safeIdArray'
   | 'claimCodeRedemptionMethod'
   | 'maskedCode'
   | 'date'
@@ -350,6 +358,7 @@ const actionRule: ObjectRule = {
     isActive: 'boolean',
     isCodeActive: 'boolean',
   },
+  optional: { hasCode: 'boolean', codeChanged: 'boolean' },
 };
 const activeEntityRule: ObjectRule = {
   required: { isActive: 'boolean' },
@@ -422,7 +431,7 @@ const reconciliationBalanceRule: ObjectRule = {
     pointsDifference: 'number',
     xpDifference: 'number',
   },
-  optional: { pointEventId: 'string' },
+  optional: { pointEventId: 'string', pointEventIds: 'safeIdArray' },
 };
 const batchMetadataRule: ObjectRule = {
   required: {},
@@ -436,6 +445,7 @@ const balanceMetadataRule: ObjectRule = {
   required: {},
   optional: {
     pointEventId: 'string',
+    pointEventIds: 'safeIdArray',
     originalPointEventId: 'string',
     reversalPointEventId: 'string',
   },
@@ -734,6 +744,8 @@ export class AuditService {
           'points',
           'isActive',
           'isCodeActive',
+          'hasCode',
+          'codeChanged',
         ]);
       case AuditOperation.CLAIM_CODE_BATCH_GENERATED:
         return pickScalarFields(value, [
@@ -799,6 +811,7 @@ export class AuditService {
           'pointsDifference',
           'xpDifference',
           'pointEventId',
+          'pointEventIds',
           'originalPointEventId',
         ]);
     }
@@ -813,6 +826,7 @@ export class AuditService {
       'actionId',
       'batchSize',
       'pointEventId',
+      'pointEventIds',
       'originalPointEventId',
       'reversalPointEventId',
       'rewardRedemptionId',
@@ -884,6 +898,8 @@ function matchesFieldKind(value: unknown, kind: FieldKind) {
       return (
         Array.isArray(value) && value.every((item) => typeof item === 'string')
       );
+    case 'safeIdArray':
+      return isSafeIdArray(value);
     case 'claimCodeRedemptionMethod':
       return value === CLAIM_CODE_REDEMPTION_METHOD;
     case 'maskedCode':
@@ -897,6 +913,20 @@ function matchesFieldKind(value: unknown, kind: FieldKind) {
         value === null || typeof value === 'string' || value instanceof Date
       );
   }
+}
+
+function isSafeIdArray(value: unknown): value is string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
+    return false;
+  }
+  const safeIds = value.filter(
+    (item): item is string =>
+      typeof item === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(item),
+  );
+  return (
+    safeIds.length === value.length && new Set(safeIds).size === value.length
+  );
 }
 
 function pickScalarFields(source: Record<string, unknown>, keys: string[]) {
@@ -913,6 +943,11 @@ function pickScalarFields(source: Record<string, unknown>, keys: string[]) {
       result[key] = value;
     } else if (value instanceof Date) {
       result[key] = value.toISOString();
+    } else if (
+      Array.isArray(value) &&
+      value.every((item) => typeof item === 'string')
+    ) {
+      result[key] = value;
     }
   }
   return result;

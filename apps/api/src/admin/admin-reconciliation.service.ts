@@ -53,17 +53,24 @@ export class AdminReconciliationService {
           input.idempotencyKey,
         );
         if (existing)
-          return this.replay(existing, participantId, input, context);
+          return this.replay(
+            transaction,
+            existing,
+            participantId,
+            input,
+            context,
+          );
 
         const before = reconciliationSnapshot(reconciliation);
         if (before.status === ReconciliationStatus.CONSISTENT) {
           throw new ConflictException('O participante já está reconciliado.');
         }
 
-        const pointEventId = randomUUID();
         const pointsDelta = before.pointsDifference;
         const xpDelta = before.xpDifference;
-        const kind = pointEventKind(pointsDelta, xpDelta);
+        const compensations = compensationDeltas(pointsDelta, xpDelta).map(
+          (delta) => ({ id: randomUUID(), ...delta }),
+        );
         const after = {
           participantId,
           storedPoints: before.storedPoints,
@@ -84,26 +91,31 @@ export class AdminReconciliationService {
           before: reconciliationAuditSnapshot(before),
           after: {
             ...reconciliationAuditSnapshot(after),
-            pointEventId,
+            pointEventIds: compensations.map(({ id }) => id),
           },
-          metadata: { pointEventId },
+          metadata: { pointEventIds: compensations.map(({ id }) => id) },
         });
-        const pointEvent = await transaction.createPointEvent({
-          id: pointEventId,
-          userId: participantId,
-          points: pointsDelta,
-          xpDelta,
-          kind,
-          source: PointEventSource.ADMIN_ADJUST,
-          actorAdminId: context.actorAdminId,
-          idempotencyKey: input.idempotencyKey,
-          auditEventId: auditEvent.id,
-          description: input.reason,
-        });
+        const pointEvents: ReconciliationCompensationEvent[] = [];
+        for (const [index, compensation] of compensations.entries()) {
+          pointEvents.push(
+            await transaction.createPointEvent({
+              id: compensation.id,
+              userId: participantId,
+              points: compensation.points,
+              xpDelta: compensation.xpDelta,
+              kind: compensation.kind,
+              source: PointEventSource.ADMIN_ADJUST,
+              actorAdminId: context.actorAdminId,
+              idempotencyKey: index === 0 ? input.idempotencyKey : null,
+              auditEventId: auditEvent.id,
+              description: input.reason,
+            }),
+          );
+        }
         return confirmationResponse(
           before,
           after,
-          pointEvent,
+          pointEvents,
           auditEvent,
           false,
         );
@@ -114,7 +126,13 @@ export class AdminReconciliationService {
         input.idempotencyKey,
       );
       if (!winner) throw error;
-      return this.replay(winner, participantId, input, context);
+      return this.replay(
+        this.repository,
+        winner,
+        participantId,
+        input,
+        context,
+      );
     }
   }
 
@@ -169,7 +187,12 @@ export class AdminReconciliationService {
     };
   }
 
-  private replay(
+  private async replay(
+    repository: {
+      findByAuditEventId(
+        auditEventId: string,
+      ): Promise<ReconciliationCompensationEvent[]>;
+    },
     event: ReconciliationCompensationEvent,
     participantId: string,
     input: ConfirmReconciliationDto,
@@ -191,15 +214,27 @@ export class AdminReconciliationService {
     }
     const before = readReconciliationSnapshot(auditEvent.before);
     const after = readReconciliationSnapshot(auditEvent.after);
+    const relatedEvents = await repository.findByAuditEventId(auditEvent.id);
+    const events = [
+      event,
+      ...relatedEvents.filter((related) => related.id !== event.id),
+    ];
+    const total = events.reduce(
+      (sum, item) => ({
+        points: sum.points + item.points,
+        xpDelta: sum.xpDelta + item.xpDelta,
+      }),
+      { points: 0, xpDelta: 0 },
+    );
     if (
-      event.points !== before.pointsDifference ||
-      event.xpDelta !== before.xpDifference
+      total.points !== before.pointsDifference ||
+      total.xpDelta !== before.xpDifference
     ) {
       throw new ConflictException(
         'A chave de idempotência já foi usada com conteúdo diferente.',
       );
     }
-    return confirmationResponse(before, after, event, auditEvent, true);
+    return confirmationResponse(before, after, events, auditEvent, true);
   }
 }
 
@@ -241,6 +276,26 @@ function reconciliationSnapshot(row: {
 function pointEventKind(pointsDelta: number, xpDelta: number) {
   const direction = pointsDelta === 0 ? xpDelta : pointsDelta;
   return direction < 0 ? PointEventKind.DEBIT : PointEventKind.CREDIT;
+}
+
+function compensationDeltas(pointsDelta: number, xpDelta: number) {
+  if (
+    pointsDelta !== 0 &&
+    xpDelta !== 0 &&
+    Math.sign(pointsDelta) !== Math.sign(xpDelta)
+  ) {
+    return [
+      { points: pointsDelta, xpDelta: 0, kind: pointEventKind(pointsDelta, 0) },
+      { points: 0, xpDelta, kind: pointEventKind(0, xpDelta) },
+    ];
+  }
+  return [
+    {
+      points: pointsDelta,
+      xpDelta,
+      kind: pointEventKind(pointsDelta, xpDelta),
+    },
+  ];
 }
 
 function reconciliationAuditSnapshot(snapshot: ReconciliationSnapshot) {
@@ -291,7 +346,7 @@ function readReconciliationSnapshot(value: unknown): ReconciliationSnapshot {
 function confirmationResponse(
   before: ReconciliationSnapshot,
   after: ReconciliationSnapshot,
-  event: ReconciliationCompensationEvent,
+  events: ReconciliationCompensationEvent[],
   auditEvent: {
     id: string;
     operation: AuditOperation;
@@ -300,18 +355,12 @@ function confirmationResponse(
   },
   replayed: boolean,
 ) {
+  const pointEvents = events.map(mapCompensationEvent);
   return {
     before,
     after,
-    pointEvent: {
-      id: event.id,
-      pointsDelta: event.points,
-      xpDelta: event.xpDelta,
-      kind: event.kind,
-      source: event.source,
-      origin: 'RECONCILIATION_COMPENSATION' as const,
-      createdAt: event.createdAt.toISOString(),
-    },
+    pointEvent: pointEvents[0],
+    pointEvents,
     auditEvent: {
       id: auditEvent.id,
       operation: auditEvent.operation,
@@ -319,5 +368,17 @@ function confirmationResponse(
       createdAt: auditEvent.createdAt.toISOString(),
     },
     replayed,
+  };
+}
+
+function mapCompensationEvent(event: ReconciliationCompensationEvent) {
+  return {
+    id: event.id,
+    pointsDelta: event.points,
+    xpDelta: event.xpDelta,
+    kind: event.kind,
+    source: event.source,
+    origin: 'RECONCILIATION_COMPENSATION' as const,
+    createdAt: event.createdAt.toISOString(),
   };
 }

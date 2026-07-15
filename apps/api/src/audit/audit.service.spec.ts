@@ -37,6 +37,8 @@ describe(AuditService.name, () => {
         points: 10,
         isActive: true,
         isCodeActive: false,
+        hasCode: true,
+        codeChanged: false,
       },
       after: {
         id: 'action-1',
@@ -46,6 +48,8 @@ describe(AuditService.name, () => {
         points: 20,
         isActive: true,
         isCodeActive: false,
+        hasCode: true,
+        codeChanged: true,
       },
     });
 
@@ -63,9 +67,59 @@ describe(AuditService.name, () => {
           points: 10,
           isActive: true,
           isCodeActive: false,
+          hasCode: true,
+          codeChanged: false,
         },
       }),
     );
+  });
+
+  it('rejects unsafe or duplicate point-event identifiers', async () => {
+    const base = {
+      actor: {
+        actorType: AuditActorType.ADMIN as const,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED,
+      entityType: AuditEntityType.RECONCILIATION,
+      entityId: 'participant-1',
+      participantId: 'participant-1',
+      reason: 'Correcao administrativa reconciliada',
+      before: {
+        participantId: 'participant-1',
+        storedPoints: 10,
+        storedXp: 10,
+        ledgerPoints: 9,
+        ledgerXp: 9,
+        pointsDifference: 1,
+        xpDifference: 1,
+      },
+      after: {
+        participantId: 'participant-1',
+        storedPoints: 10,
+        storedXp: 10,
+        ledgerPoints: 10,
+        ledgerXp: 10,
+        pointsDifference: 0,
+        xpDifference: 0,
+      },
+    };
+
+    for (const pointEventIds of [
+      [],
+      ['point-1', 'point-1'],
+      ['point-1', 'secret value'],
+    ]) {
+      await expect(
+        service.record(writer, {
+          ...base,
+          after: { ...base.after, pointEventIds },
+          metadata: { pointEventIds },
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('writes a SYSTEM event without an administrator', async () => {

@@ -33,7 +33,7 @@ const userProgressSelect = {
 
 type ActionsDatabase = Pick<
   Prisma.TransactionClient,
-  'action' | 'claimCode' | 'pointEvent' | 'user'
+  '$queryRaw' | 'action' | 'claimCode' | 'pointEvent' | 'user'
 >;
 
 export type ActionSummary = Prisma.ActionGetPayload<{
@@ -114,6 +114,18 @@ export class ActionsRepository {
       where: { id },
       select: actionSummarySelect,
     });
+  }
+
+  async lockActionById(id: string) {
+    const rows = await this.client.$queryRaw<ActionSummary[]>(Prisma.sql`
+      SELECT
+        "id", "name", "description", "type", "code", "points",
+        "isActive", "isCodeActive", "createdAt"
+      FROM "Action"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
   }
 
   findActionCodeState(id: string) {

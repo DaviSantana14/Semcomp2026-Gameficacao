@@ -87,7 +87,7 @@ export type AdminReusableCodesFilters = {
 
 export type UpdateActionPayload = Partial<
   Pick<Action, "name" | "type" | "points" | "isActive" | "isCodeActive">
-> & { description?: string | null; code?: string | null };
+> & { description?: string | null; code?: string | null; reason: string };
 
 export type CreateActionPayload = {
   name: string;
@@ -96,9 +96,15 @@ export type CreateActionPayload = {
   code?: string;
   points: number;
   isActive?: boolean;
+  reason: string;
 };
 
-export type GenerateClaimCodesPayload = { quantity: number };
+export type GenerateClaimCodesPayload = { quantity: number; reason: string };
+
+export type UpdateClaimCodeStatusPayload = {
+  isActive: boolean;
+  reason: string;
+};
 
 export type GeneratedClaimCodesResponse = {
   action: Pick<Action, "id" | "name">;
