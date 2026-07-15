@@ -17,7 +17,8 @@ export class AdminParticipantEventResponseDto {
     | 'DIRECT_ACTION'
     | 'LEGACY_UNKNOWN'
     | 'REWARD'
-    | 'ADMIN';
+    | 'ADMIN'
+    | 'RECONCILIATION_COMPENSATION';
   isAudited!: boolean;
   claimCode!: { id: string; code: string } | null;
   reversalOfPointEventId!: string | null;

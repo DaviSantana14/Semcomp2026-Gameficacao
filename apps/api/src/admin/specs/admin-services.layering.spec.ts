@@ -5,6 +5,7 @@ import { AdminDashboardService } from '../admin-dashboard.service';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 import { AuditService } from '../../audit/audit.service';
+import { AdminReconciliationService } from '../admin-reconciliation.service';
 
 describe('admin service layering', () => {
   it('keeps participant absence as a service HTTP decision', async () => {
@@ -47,6 +48,14 @@ describe('admin service layering', () => {
               pendingRedemptions: 1,
               recentPendingRedemptions: [{ id: 'r1', createdAt }],
             }),
+          },
+        },
+        {
+          provide: AdminReconciliationService,
+          useValue: {
+            getSummary: jest
+              .fn()
+              .mockResolvedValue({ divergentParticipants: 0 }),
           },
         },
       ],

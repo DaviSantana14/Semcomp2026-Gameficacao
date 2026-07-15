@@ -114,6 +114,17 @@ export interface BalanceAuditSnapshot {
   originalPointEventId?: string;
 }
 
+interface ReconciliationAuditSnapshot {
+  participantId: string;
+  storedPoints: number;
+  storedXp: number;
+  ledgerPoints: number;
+  ledgerXp: number;
+  pointsDifference: number;
+  xpDifference: number;
+  pointEventId?: string;
+}
+
 export interface AuditMetadataSource {
   actionId?: string;
   batchSize?: number;
@@ -297,7 +308,7 @@ export type RecordAuditEventInput =
   | ChangedEvent<
       typeof AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED,
       typeof AuditEntityType.RECONCILIATION,
-      BalanceAuditSnapshot,
+      ReconciliationAuditSnapshot,
       RequiredParticipant,
       BalanceMetadata
     >;
@@ -401,16 +412,17 @@ const redemptionCancellationAfterRule: ObjectRule = {
     pointEventId: 'string',
   },
 };
-const balanceRule: ObjectRule = {
+const reconciliationBalanceRule: ObjectRule = {
   required: {
     participantId: 'string',
-    points: 'number',
-    xp: 'number',
+    storedPoints: 'number',
+    storedXp: 'number',
+    ledgerPoints: 'number',
+    ledgerXp: 'number',
+    pointsDifference: 'number',
+    xpDifference: 'number',
   },
-  optional: {
-    pointEventId: 'string',
-    originalPointEventId: 'string',
-  },
+  optional: { pointEventId: 'string' },
 };
 const batchMetadataRule: ObjectRule = {
   required: {},
@@ -563,8 +575,8 @@ const operationRules = {
   [AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED]: {
     entityType: AuditEntityType.RECONCILIATION,
     participant: 'required',
-    before: balanceRule,
-    after: balanceRule,
+    before: reconciliationBalanceRule,
+    after: reconciliationBalanceRule,
     metadata: balanceMetadataRule,
   },
 } satisfies Record<AuditOperation, OperationRule>;
@@ -770,11 +782,22 @@ export class AuditService {
           'pointEventId',
         ]);
       case AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED:
-      case AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED:
         return pickScalarFields(value, [
           'participantId',
           'points',
           'xp',
+          'pointEventId',
+          'originalPointEventId',
+        ]);
+      case AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED:
+        return pickScalarFields(value, [
+          'participantId',
+          'storedPoints',
+          'storedXp',
+          'ledgerPoints',
+          'ledgerXp',
+          'pointsDifference',
+          'xpDifference',
           'pointEventId',
           'originalPointEventId',
         ]);

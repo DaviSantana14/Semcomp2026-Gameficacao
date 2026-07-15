@@ -6,6 +6,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { paginate } from '../../common/dto/pagination-response.dto';
 import { AdminDashboardRepository } from '../admin-dashboard.repository';
 import { AdminDashboardService } from '../admin-dashboard.service';
+import { AdminReconciliationService } from '../admin-reconciliation.service';
 
 describe('shared pagination', () => {
   it('transforms defaults and numeric query strings', async () => {
@@ -63,6 +64,9 @@ describe(AdminDashboardService.name, () => {
     rewardRedemption: { count: jest.fn(), findMany: jest.fn() },
   };
   let service: AdminDashboardService;
+  const reconciliation = {
+    getSummary: jest.fn().mockResolvedValue({ divergentParticipants: 4 }),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -73,6 +77,7 @@ describe(AdminDashboardService.name, () => {
           provide: AdminDashboardRepository,
           useValue: new AdminDashboardRepository(prisma as never),
         },
+        { provide: AdminReconciliationService, useValue: reconciliation },
       ],
     }).compile();
     service = module.get(AdminDashboardService);
@@ -109,6 +114,7 @@ describe(AdminDashboardService.name, () => {
     ]);
     await expect(service.getOverview()).resolves.toMatchObject({
       participants: { total: 12, active: 9, inactive: 3 },
+      reconciliation: { divergentParticipants: 4 },
       activity: { redemptions: 11, pointsIssued: 340 },
       codes: {
         uniqueTotal: 20,
@@ -168,5 +174,6 @@ describe(AdminDashboardService.name, () => {
     expect(prisma.rewardRedemption.count).toHaveBeenCalledWith({
       where: { status: RedemptionStatus.PENDING },
     });
+    expect(reconciliation.getSummary).toHaveBeenCalledTimes(1);
   });
 });

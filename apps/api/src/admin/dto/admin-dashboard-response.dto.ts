@@ -11,6 +11,7 @@ export class AdminDashboardPendingRedemptionResponseDto {
 
 export class AdminDashboardResponseDto {
   participants!: { total: number; active: number };
+  reconciliation!: { divergentParticipants: number };
   pointsAwarded!: number;
   claimCodes!: { used: number; available: number };
   shop!: {

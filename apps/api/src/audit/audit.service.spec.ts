@@ -79,14 +79,44 @@ describe(AuditService.name, () => {
       entityId: 'reconciliation-1',
       participantId: 'participant-1',
       reason: 'Correção automática reconciliada',
-      before: { participantId: 'participant-1', points: 9, xp: 18 },
-      after: { participantId: 'participant-1', points: 10, xp: 20 },
+      before: {
+        participantId: 'participant-1',
+        storedPoints: 10,
+        storedXp: 20,
+        ledgerPoints: 9,
+        ledgerXp: 18,
+        pointsDifference: 1,
+        xpDifference: 2,
+      },
+      after: {
+        participantId: 'participant-1',
+        storedPoints: 10,
+        storedXp: 20,
+        ledgerPoints: 10,
+        ledgerXp: 20,
+        pointsDifference: 0,
+        xpDifference: 0,
+        pointEventId: 'point-1',
+      },
+      metadata: { pointEventId: 'point-1' },
     });
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         actorType: AuditActorType.SYSTEM,
         actorAdminId: null,
+        // Jest asymmetric matchers are intentionally untyped inside mock calls.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        before: expect.objectContaining({
+          storedPoints: 10,
+          ledgerPoints: 9,
+          pointsDifference: 1,
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        after: expect.objectContaining({
+          ledgerPoints: 10,
+          pointEventId: 'point-1',
+        }),
       }),
     );
   });

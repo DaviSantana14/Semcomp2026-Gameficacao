@@ -411,6 +411,38 @@ describe(AdminParticipantsService.name, () => {
     ]);
   });
 
+  it('identifies reconciliation compensation separately in participant history', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
+    prisma.pointEvent.count.mockResolvedValue(1);
+    prisma.pointEvent.findMany.mockResolvedValue([
+      {
+        id: 'compensation-1',
+        points: 4,
+        xpDelta: 2,
+        kind: PointEventKind.CREDIT,
+        source: PointEventSource.ADMIN_ADJUST,
+        redemptionMethod: null,
+        description: 'Correcao operacional confirmada',
+        createdAt: new Date('2026-07-14T12:00:00.000Z'),
+        action: null,
+        claimCode: null,
+        auditEventId: 'audit-1',
+        auditEvent: { operation: 'RECONCILIATION_ADJUSTMENT_CONFIRMED' },
+        reversedEventId: null,
+        reversal: null,
+      },
+    ]);
+
+    const result = await service.findPointEvents('p1', { page: 1, limit: 20 });
+
+    expect(result.items[0]).toMatchObject({
+      source: PointEventSource.ADMIN_ADJUST,
+      origin: 'RECONCILIATION_COMPENSATION',
+      isAudited: true,
+    });
+    expect(result.items[0]).not.toHaveProperty('auditEvent');
+  });
+
   it.each(['admin', 'missing'])(
     'rejects %s id before querying point events',
     async (id) => {

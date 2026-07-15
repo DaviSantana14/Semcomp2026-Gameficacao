@@ -170,6 +170,7 @@ export class AdminParticipantsRepository {
           action: { select: { id: true, name: true } },
           claimCode: { select: { id: true, code: true } },
           auditEventId: true,
+          auditEvent: { select: { operation: true } },
           reversedEventId: true,
           reversal: { select: { id: true } },
         },

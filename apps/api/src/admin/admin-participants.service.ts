@@ -128,13 +128,23 @@ export class AdminParticipantsService {
     });
     return paginate(
       page.rows.map((row) => {
-        const { auditEventId, reversedEventId, reversal, ...pointEvent } = row;
+        const {
+          auditEventId,
+          auditEvent,
+          reversedEventId,
+          reversal,
+          ...pointEvent
+        } = row;
         return {
           ...pointEvent,
           reversalOfPointEventId: reversedEventId,
           reversalPointEventId: reversal?.id ?? null,
           isAudited: auditEventId !== null,
-          origin: mapPointEventOrigin(row.source, row.redemptionMethod),
+          origin:
+            auditEvent?.operation ===
+            AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED
+              ? ('RECONCILIATION_COMPENSATION' as const)
+              : mapPointEventOrigin(row.source, row.redemptionMethod),
           createdAt: row.createdAt.toISOString(),
         };
       }),
