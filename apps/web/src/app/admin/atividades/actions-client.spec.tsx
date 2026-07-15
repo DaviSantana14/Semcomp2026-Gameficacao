@@ -49,6 +49,23 @@ describe("ActionsClient", () => {
     setupActionsQuery();
   });
 
+  it("permite que cards com nomes longos encolham no viewport mobile", async () => {
+    const longName = "AtividadeComNomeMuitoLongoSemQualquerEspacoParaQuebra";
+    fetchAdminActionsMock.mockResolvedValueOnce({
+      items: [{ ...action, name: longName }],
+      meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
+    });
+    renderWithQueryClient(<ActionsClient />);
+
+    const card = await screen.findByRole("article");
+    expect(card).toHaveClass("min-w-0");
+    expect(card.firstElementChild).toHaveClass("min-w-0");
+    expect(screen.getByRole("heading", { name: longName })).toHaveClass(
+      "min-w-0",
+      "break-words",
+    );
+  });
+
   it("cria uma atividade com nome normalizado e código em maiúsculas", async () => {
     createActionMock.mockResolvedValue(action);
     const user = userEvent.setup();

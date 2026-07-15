@@ -365,12 +365,12 @@ export function ActionsClient() {
         <section className="grid gap-3">
           {query.data.items.map((a) => (
             <article
-              className="grid gap-4 rounded-lg border bg-card/90 p-4 lg:grid-cols-[1fr_auto]"
+              className="grid min-w-0 gap-4 rounded-lg border bg-card/90 p-4 lg:grid-cols-[1fr_auto]"
               key={a.id}
             >
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap gap-2">
-                  <h2 className="font-black">{a.name}</h2>
+                  <h2 className="min-w-0 break-words font-black">{a.name}</h2>
                   <StatusBadge
                     label={a.isActive ? "Ativa" : "Inativa"}
                     status={a.isActive ? "active" : "inactive"}
