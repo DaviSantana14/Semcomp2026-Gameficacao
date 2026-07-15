@@ -17,10 +17,13 @@ describe("fetchAdminAuditEvents", () => {
       page: 1,
       limit: 20,
       actorType: "ADMIN",
+      actorAdminId: "admin-1",
       actorSearch: "Ada@example.com",
       operation: "ACTION_UPDATED",
       entityType: "ACTION",
+      entityId: "action-1",
       entitySearch: "Palestra",
+      participantId: "participant-1",
       participantSearch: "Grace",
       requestId: "request-1",
       from: "2026-07-01",
@@ -28,7 +31,7 @@ describe("fetchAdminAuditEvents", () => {
     });
 
     expect(apiFetch).toHaveBeenCalledWith(
-      "/admin/audit-events?page=1&limit=20&actorType=ADMIN&actorSearch=Ada%40example.com&operation=ACTION_UPDATED&entityType=ACTION&entitySearch=Palestra&participantSearch=Grace&requestId=request-1&from=2026-07-01T00%3A00%3A00.000-03%3A00&to=2026-07-03T23%3A59%3A59.999-03%3A00",
+      "/admin/audit-events?page=1&limit=20&actorType=ADMIN&actorAdminId=admin-1&actorSearch=Ada%40example.com&operation=ACTION_UPDATED&entityType=ACTION&entityId=action-1&entitySearch=Palestra&participantId=participant-1&participantSearch=Grace&requestId=request-1&from=2026-07-01T00%3A00%3A00.000-03%3A00&to=2026-07-03T23%3A59%3A59.999-03%3A00",
     );
   });
 });

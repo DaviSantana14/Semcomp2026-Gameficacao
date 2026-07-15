@@ -97,6 +97,41 @@ describe("AuditClient", () => {
     expect(
       screen.queryByLabelText("ID do participante"),
     ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Ator (nome ou e-mail)")).toHaveAttribute(
+      "name",
+      "actorSearch",
+    );
+    expect(screen.getByLabelText("Entidade (nome)")).toHaveAttribute(
+      "name",
+      "entitySearch",
+    );
+    expect(
+      screen.getByLabelText("Participante (nome ou e-mail)"),
+    ).toHaveAttribute("name", "participantSearch");
+  });
+
+  it("preserva filtros de ID de uma URL salva ao combinar buscas humanas", async () => {
+    currentSearch =
+      "actorAdminId=admin-1&entityId=action-1&participantId=participant-1";
+    const user = userEvent.setup();
+    renderWithQueryClient(<AuditClient />);
+
+    await waitFor(() =>
+      expect(fetchAuditMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorAdminId: "admin-1",
+          entityId: "action-1",
+          participantId: "participant-1",
+        }),
+      ),
+    );
+    await user.type(screen.getByLabelText("Ator (nome ou e-mail)"), "Ada");
+    await user.click(screen.getByRole("button", { name: "Aplicar filtros" }));
+
+    expect(push).toHaveBeenCalledWith(
+      "/admin/auditoria?actorAdminId=admin-1&actorSearch=Ada&entityId=action-1&participantId=participant-1",
+      { scroll: false },
+    );
   });
 
   it("usa push na paginacao e reidrata o formulario ao voltar no historico", async () => {
@@ -302,5 +337,75 @@ describe("AuditClient", () => {
     expect(
       within(table).getByRole("link", { name: /participant-1/ }),
     ).toBeInTheDocument();
+  });
+
+  it("renderiza a hierarquia humana completa na lista mobile", async () => {
+    renderWithQueryClient(<AuditClient />);
+    const mobile = await screen.findByRole("list", {
+      name: "Eventos de auditoria em tela pequena",
+    });
+    const participant = within(mobile).getByRole("link", {
+      name: /Grace Hopper/,
+    });
+
+    expect(within(mobile).getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(within(mobile).getByText("ada@example.com")).toBeInTheDocument();
+    expect(within(participant).getByText("Grace Hopper")).toBeInTheDocument();
+    expect(
+      within(participant).getByText("grace@example.com"),
+    ).toBeInTheDocument();
+    expect(within(participant).getByText("participant-1")).toHaveClass(
+      "font-mono",
+    );
+  });
+
+  it("trata SYSTEM, participante ausente e displays vazios sem links invalidos", async () => {
+    fetchAuditMock.mockResolvedValue({
+      items: [
+        {
+          ...event,
+          actorType: "SYSTEM",
+          actorAdminId: null,
+          actorDisplay: { name: " ", email: undefined as unknown as null },
+          participantId: null,
+          participantDisplay: { name: "", email: " " },
+          entityDisplay: { name: "" },
+        },
+        {
+          ...event,
+          id: "audit-2",
+          actorDisplay: null,
+          participantDisplay: { name: "", email: " " },
+          entityDisplay: null,
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+    });
+    renderWithQueryClient(<AuditClient />);
+    const mobile = await screen.findByRole("list", {
+      name: "Eventos de auditoria em tela pequena",
+    });
+
+    expect(within(mobile).getByText("Sistema")).toBeInTheDocument();
+    expect(
+      within(mobile).getAllByText("Participante", {
+        selector: "span.font-medium",
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(within(mobile).getByText("Não relacionado")).toBeInTheDocument();
+    const links = within(mobile).getAllByRole("link");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute(
+      "href",
+      "/admin/participantes/participant-1",
+    );
+    expect(within(links[0]).getByText("participant-1")).toHaveClass(
+      "font-mono",
+    );
+    expect(links[0]).not.toHaveAttribute(
+      "href",
+      expect.stringMatching(/null|undefined/),
+    );
+    expect(mobile).not.toHaveTextContent("undefined");
   });
 });

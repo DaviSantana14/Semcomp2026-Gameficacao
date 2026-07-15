@@ -70,10 +70,13 @@ export type AuditFilters = {
   page: number;
   limit: number;
   actorType?: AuditActorType;
+  actorAdminId?: string;
   actorSearch?: string;
   operation?: AuditOperation;
   entityType?: AuditEntityType;
+  entityId?: string;
   entitySearch?: string;
+  participantId?: string;
   participantSearch?: string;
   requestId?: string;
   from?: string;

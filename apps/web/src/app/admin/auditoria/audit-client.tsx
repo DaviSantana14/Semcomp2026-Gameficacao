@@ -158,6 +158,7 @@ export function AuditClient() {
               <TextField
                 id="audit-actor-search"
                 label="Ator (nome ou e-mail)"
+                name="actorSearch"
                 onChange={(value) => setField(setDraft, "actorSearch", value)}
                 placeholder="Nome ou e-mail"
                 value={draft.actorSearch}
@@ -191,6 +192,7 @@ export function AuditClient() {
               <TextField
                 id="audit-entity-search"
                 label="Entidade (nome)"
+                name="entitySearch"
                 onChange={(value) => setField(setDraft, "entitySearch", value)}
                 placeholder="Nome da entidade"
                 value={draft.entitySearch}
@@ -198,6 +200,7 @@ export function AuditClient() {
               <TextField
                 id="audit-participant-search"
                 label="Participante (nome ou e-mail)"
+                name="participantSearch"
                 onChange={(value) =>
                   setField(setDraft, "participantSearch", value)
                 }
@@ -207,6 +210,7 @@ export function AuditClient() {
               <TextField
                 id="audit-request-id"
                 label="Request ID"
+                name="requestId"
                 onChange={(value) => setField(setDraft, "requestId", value)}
                 placeholder="request_..."
                 value={draft.requestId}
@@ -215,6 +219,7 @@ export function AuditClient() {
                 <TextField
                   id="audit-from"
                   label="Data inicial"
+                  name="from"
                   onChange={(value) => setField(setDraft, "from", value)}
                   type="date"
                   value={draft.from}
@@ -222,6 +227,7 @@ export function AuditClient() {
                 <TextField
                   id="audit-to"
                   label="Data final"
+                  name="to"
                   onChange={(value) => setField(setDraft, "to", value)}
                   type="date"
                   value={draft.to}
@@ -299,6 +305,7 @@ export function AuditClient() {
 function TextField({
   id,
   label,
+  name,
   onChange,
   placeholder,
   type = "text",
@@ -306,6 +313,7 @@ function TextField({
 }: {
   id: string;
   label: string;
+  name: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
@@ -318,6 +326,7 @@ function TextField({
         autoComplete="off"
         id={id}
         maxLength={type === "text" ? 100 : undefined}
+        name={name}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         type={type}

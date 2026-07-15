@@ -79,7 +79,7 @@ describe("audit filters", () => {
     expect(auditQueryKey(filters)).toEqual(["admin", "audit-events", filters]);
   });
 
-  it("normaliza e serializa buscas por identidade humana", () => {
+  it("preserva filtros tecnicos de URLs salvas junto das buscas humanas", () => {
     const filters = parseAuditUrlFilters(
       new URLSearchParams(
         "actorSearch=%20Ada%40example.com%20&participantSearch=%20Grace%20&entitySearch=%20Palestra%20&actorAdminId=admin-1&participantId=participant-1&entityId=action-1",
@@ -90,8 +90,11 @@ describe("audit filters", () => {
       page: 1,
       limit: 20,
       actorSearch: "Ada@example.com",
+      actorAdminId: "admin-1",
       participantSearch: "Grace",
+      participantId: "participant-1",
       entitySearch: "Palestra",
+      entityId: "action-1",
     });
     expect(serializeAuditApiFilters(filters)).toEqual(filters);
   });
