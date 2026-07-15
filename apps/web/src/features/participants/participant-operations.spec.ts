@@ -1,3 +1,4 @@
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import {
   createIdempotencyLifecycle,
@@ -76,42 +77,67 @@ describe("idempotency lifecycle", () => {
 });
 
 describe("participant operation query invalidation", () => {
-  it("refreshes all participant panels, dashboard and ranking when XP changes", async () => {
-    const invalidateQueries = vi.fn().mockResolvedValue(undefined);
-    await invalidateParticipantOperationQueries(
-      { invalidateQueries } as never,
+  it("invalidates and refetches a parameterized ranking when XP changes", async () => {
+    const queryClient = new QueryClient();
+    const rankingKey = ["ranking", "all", 10] as const;
+    let finishRefetch!: (value: { version: number }) => void;
+    const queryFn = vi
+      .fn()
+      .mockResolvedValueOnce({ version: 1 })
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ version: number }>((resolve) => {
+            finishRefetch = resolve;
+          }),
+      );
+    await queryClient.fetchQuery({
+      queryKey: rankingKey,
+      queryFn,
+      staleTime: Infinity,
+    });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: rankingKey,
+      queryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    const invalidation = invalidateParticipantOperationQueries(
+      queryClient,
       "participant-1",
       true,
     );
-    expect(invalidateQueries.mock.calls.map(([value]) => value)).toEqual([
-      { queryKey: ["admin", "participant", "participant-1"], exact: true },
-      {
-        queryKey: ["admin", "participant", "participant-1", "point-events"],
-        exact: false,
-      },
-      {
-        queryKey: ["admin", "participant", "participant-1", "audit-events"],
-        exact: false,
-      },
-      {
-        queryKey: ["admin", "participant", "participant-1", "reconciliation"],
-        exact: true,
-      },
-      { queryKey: ["admin", "dashboard"], exact: true },
-      { queryKey: ["ranking"], exact: true },
-    ]);
+    await vi.waitFor(() => {
+      expect(queryClient.getQueryState(rankingKey)?.isInvalidated).toBe(true);
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+    finishRefetch({ version: 2 });
+    await invalidation;
+
+    expect(queryClient.getQueryData(rankingKey)).toEqual({ version: 2 });
+    expect(queryClient.getQueryState(rankingKey)?.isInvalidated).toBe(false);
+    unsubscribe();
+    queryClient.clear();
   });
 
-  it("does not refresh ranking for points-only operations", async () => {
-    const invalidateQueries = vi.fn().mockResolvedValue(undefined);
+  it("does not invalidate a parameterized ranking for points-only operations", async () => {
+    const queryClient = new QueryClient();
+    const rankingKey = ["ranking", "daily", 10] as const;
+    const queryFn = vi.fn().mockResolvedValue({ version: 1 });
+    await queryClient.fetchQuery({
+      queryKey: rankingKey,
+      queryFn,
+      staleTime: Infinity,
+    });
+
     await invalidateParticipantOperationQueries(
-      { invalidateQueries } as never,
+      queryClient,
       "participant-1",
       false,
     );
-    expect(invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ["ranking"],
-      exact: true,
-    });
+
+    expect(queryClient.getQueryState(rankingKey)?.isInvalidated).toBe(false);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    queryClient.clear();
   });
 });

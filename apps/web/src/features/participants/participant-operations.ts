@@ -72,7 +72,7 @@ export async function invalidateParticipantOperationQueries(
       exact: true,
     },
     { queryKey: ["admin", "dashboard"] as const, exact: true },
-    ...(xpChanged ? [{ queryKey: ["ranking"] as const, exact: true }] : []),
+    ...(xpChanged ? [{ queryKey: ["ranking"] as const, exact: false }] : []),
   ];
   await Promise.all(
     queries.map((query) => queryClient.invalidateQueries(query)),

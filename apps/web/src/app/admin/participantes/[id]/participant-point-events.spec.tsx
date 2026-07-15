@@ -181,7 +181,7 @@ describe("participant point-event reversal flow", () => {
       expect(await screen.findByRole("status")).toHaveTextContent(message);
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["ranking"],
-        exact: true,
+        exact: false,
       });
     },
   );
