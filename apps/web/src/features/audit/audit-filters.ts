@@ -33,8 +33,8 @@ export function parseAuditUrlFilters(params: URLSearchParams): AuditFilters {
 export function serializeAuditApiFilters(filters: AuditFilters) {
   return compact({
     ...filters,
-    from: filters.from ? `${filters.from}T00:00:00.000Z` : undefined,
-    to: filters.to ? `${filters.to}T23:59:59.999Z` : undefined,
+    from: filters.from ? `${filters.from}T00:00:00.000-03:00` : undefined,
+    to: filters.to ? `${filters.to}T23:59:59.999-03:00` : undefined,
   });
 }
 
@@ -43,7 +43,7 @@ export function updateAuditUrlFilters(
   patch: AuditFilterPatch,
 ) {
   const next = new URLSearchParams(current.toString());
-  next.delete("limit");
+  if (!isAcceptedLimit(next.get("limit"))) next.delete("limit");
   for (const [key, rawValue] of Object.entries(patch)) {
     const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
     if (value === undefined || value === "" || value === 1) next.delete(key);
@@ -52,6 +52,12 @@ export function updateAuditUrlFilters(
   if (!("page" in patch)) next.delete("page");
   next.sort();
   return next;
+}
+
+function isAcceptedLimit(value: string | null) {
+  if (value === null) return true;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 100;
 }
 
 export function auditQueryKey(filters: AuditFilters) {

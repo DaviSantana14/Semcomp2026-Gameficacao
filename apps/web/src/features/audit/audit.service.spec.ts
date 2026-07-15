@@ -28,7 +28,7 @@ describe("fetchAdminAuditEvents", () => {
     });
 
     expect(apiFetch).toHaveBeenCalledWith(
-      "/admin/audit-events?page=1&limit=20&actorType=ADMIN&actorAdminId=admin-1&operation=ACTION_UPDATED&entityType=ACTION&entityId=action-1&participantId=participant-1&requestId=request-1&from=2026-07-01T00%3A00%3A00.000Z&to=2026-07-03T23%3A59%3A59.999Z",
+      "/admin/audit-events?page=1&limit=20&actorType=ADMIN&actorAdminId=admin-1&operation=ACTION_UPDATED&entityType=ACTION&entityId=action-1&participantId=participant-1&requestId=request-1&from=2026-07-01T00%3A00%3A00.000-03%3A00&to=2026-07-03T23%3A59%3A59.999-03%3A00",
     );
   });
 });

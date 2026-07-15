@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Filter, ListRestart, SearchX } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,7 @@ export function AuditClient() {
   const [dateError, setDateError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [stateSearch, setStateSearch] = useState(search);
+  const canonicalizedSearchRef = useRef<string | null>(null);
 
   if (stateSearch !== search) {
     setStateSearch(search);
@@ -64,12 +65,14 @@ export function AuditClient() {
     queryKey: auditQueryKey(filters),
     queryFn: () => fetchAdminAuditEvents(filters),
     placeholderData: keepPreviousData,
+    refetchOnMount: "always",
     retry: false,
+    staleTime: 0,
   });
 
   function navigate(patch: AuditFilterPatch) {
     const next = updateAuditUrlFilters(new URLSearchParams(search), patch);
-    router.replace(`${pathname}${next.size ? `?${next}` : ""}`, {
+    router.push(`${pathname}${next.size ? `?${next}` : ""}`, {
       scroll: false,
     });
   }
@@ -87,10 +90,35 @@ export function AuditClient() {
   function clearFilters() {
     setDraft(emptyDraft);
     setDateError(null);
-    router.replace(pathname, { scroll: false });
+    const next = updateAuditUrlFilters(new URLSearchParams(search), emptyDraft);
+    router.push(`${pathname}${next.size ? `?${next}` : ""}`, {
+      scroll: false,
+    });
   }
 
   const data = auditQuery.data;
+  const canonicalPage =
+    data &&
+    !auditQuery.isPlaceholderData &&
+    filters.page > Math.max(1, data.meta.totalPages)
+      ? Math.max(1, data.meta.totalPages)
+      : null;
+
+  useEffect(() => {
+    if (canonicalPage === null) {
+      canonicalizedSearchRef.current = null;
+      return;
+    }
+    if (canonicalizedSearchRef.current === search) return;
+    canonicalizedSearchRef.current = search;
+    const next = updateAuditUrlFilters(new URLSearchParams(search), {
+      page: canonicalPage,
+    });
+    router.replace(`${pathname}${next.size ? `?${next}` : ""}`, {
+      scroll: false,
+    });
+  }, [canonicalPage, pathname, router, search]);
+
   const hasFilters = Object.keys(filters).some(
     (key) => key !== "page" && key !== "limit",
   );
@@ -219,7 +247,7 @@ export function AuditClient() {
         </CardContent>
       </Card>
 
-      {auditQuery.isPending ? (
+      {auditQuery.isPending || canonicalPage !== null ? (
         <AuditSkeleton />
       ) : auditQuery.isError ? (
         <ErrorState

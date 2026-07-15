@@ -10,11 +10,13 @@ import {
   entityLabels,
   operationLabels,
   snapshotFieldLabels,
+  snapshotValueLabels,
 } from "./audit-labels";
 
 const dateTime = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short",
+  timeZone: "America/Sao_Paulo",
 });
 
 export function AuditEventList({
@@ -142,8 +144,10 @@ function DetailButton({
   onSelect: (id: string | null) => void;
 }) {
   const Icon = selected ? ChevronUp : ChevronDown;
+  const detailId = getDetailId(event.id);
   return (
     <Button
+      aria-controls={detailId}
       aria-expanded={selected}
       aria-label={`${selected ? "Ocultar" : "Ver"} detalhes de ${operationLabels[event.operation]}`}
       className="size-9 p-0"
@@ -215,13 +219,19 @@ function MobileField({
 }
 
 function AuditEventDetail({ event }: { event: AdminAuditEvent }) {
+  const detailId = getDetailId(event.id);
+  const titleId = `${detailId}-title`;
   return (
     <section
-      aria-label="Detalhes do evento"
+      aria-labelledby={titleId}
       className="grid gap-5 rounded-md border border-primary/30 bg-card/95 p-4 md:p-5"
+      id={detailId}
+      role="region"
     >
       <div className="grid gap-1">
-        <h3 className="font-black">Detalhes do evento</h3>
+        <h3 className="font-black" id={titleId}>
+          Detalhes do evento
+        </h3>
         <p className="text-sm leading-6 text-muted-foreground">
           {event.reason}
         </p>
@@ -255,7 +265,8 @@ function SafeFields({
 }) {
   const fields = snapshot
     ? Object.entries(snapshot).filter(
-        ([key, value]) => key in snapshotFieldLabels && isSafeValue(value),
+        ([key, value]) =>
+          Object.hasOwn(snapshotFieldLabels, key) && isSafeValue(value),
       )
     : [];
   return (
@@ -272,6 +283,7 @@ function SafeFields({
               </dt>
               <dd className="mt-0.5 break-words font-mono text-xs">
                 {formatValue(
+                  key,
                   value as string | number | boolean | null | string[],
                 )}
               </dd>
@@ -297,13 +309,26 @@ function isSafeValue(
   );
 }
 
-function formatValue(value: string | number | boolean | null | string[]) {
+function formatValue(
+  key: string,
+  value: string | number | boolean | null | string[],
+) {
   if (value === null) return "Não informado";
   if (typeof value === "boolean") return value ? "Sim" : "Não";
   if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "string" && Object.hasOwn(snapshotValueLabels, key)) {
+    const labels = snapshotValueLabels[key as keyof typeof snapshotValueLabels];
+    return Object.hasOwn(labels, value)
+      ? (labels as Record<string, string>)[value]
+      : "Valor não reconhecido";
+  }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value))
     return formatDate(value);
   return String(value);
+}
+
+function getDetailId(eventId: string) {
+  return `audit-event-detail-${eventId}`;
 }
 
 function formatDate(value: string) {

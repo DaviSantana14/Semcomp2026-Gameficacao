@@ -3,6 +3,14 @@ import type {
   AuditEntityType,
   AuditOperation,
 } from "@/features/audit/audit.types";
+import type { ActionType } from "@/features/actions/actions.types";
+import type { AdminParticipantPointEvent } from "@/features/participants/participants.types";
+import type { RedemptionStatus } from "@/features/rewards/rewards.types";
+import type { UserRole } from "@/features/users/users.types";
+
+type ActionRedemptionMethod = NonNullable<
+  AdminParticipantPointEvent["redemptionMethod"]
+>;
 
 export const actorLabels: Record<AuditActorType, string> = {
   ADMIN: "Administrador",
@@ -73,4 +81,36 @@ export const snapshotFieldLabels: Record<string, string> = {
   claimCodeIds: "Códigos do lote",
   reversalPointEventId: "Evento de estorno",
   rewardRedemptionId: "Resgate de recompensa",
+};
+
+export const snapshotValueLabels = {
+  type: {
+    CHECKIN: "Credenciamento",
+    ATTENDANCE: "Presença",
+    STAND_VISIT: "Visita a estande",
+    EASTER_EGG: "Desafio secreto",
+    QUESTION: "Pergunta",
+    DYNAMIC: "Dinâmica",
+    BONUS: "Bônus",
+  },
+  role: {
+    PARTICIPANT: "Participante",
+    ADMIN: "Administrador",
+  },
+  status: {
+    PENDING: "Pendente",
+    DELIVERED: "Entregue",
+    CANCELLED: "Cancelado",
+  },
+  redemptionMethod: {
+    DIRECT: "Resgate direto",
+    REUSABLE_CODE: "Código reutilizável",
+    CLAIM_CODE: "Código de uso único",
+    LEGACY_UNKNOWN: "Método legado não identificado",
+  },
+} as const satisfies {
+  type: Record<ActionType, string>;
+  role: Record<UserRole, string>;
+  status: Record<RedemptionStatus, string>;
+  redemptionMethod: Record<ActionRedemptionMethod, string>;
 };

@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAdminAuditEvents } from "@/features/audit/audit.service";
@@ -7,11 +8,12 @@ import { renderWithQueryClient } from "@/test/render";
 import { AuditClient } from "./audit-client";
 
 const replace = vi.fn();
+const push = vi.fn();
 let currentSearch = "";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/auditoria",
-  useRouter: () => ({ replace }),
+  useRouter: () => ({ push, replace }),
   useSearchParams: () => new URLSearchParams(currentSearch),
 }));
 vi.mock("@/features/audit/audit.service", () => ({
@@ -47,6 +49,10 @@ describe("AuditClient", () => {
 
   it("carrega os filtros da URL e aplica combinacoes resetando a pagina", async () => {
     currentSearch = "page=3&actorType=ADMIN&operation=ACTION_UPDATED";
+    fetchAuditMock.mockResolvedValue({
+      items: [event],
+      meta: { page: 3, limit: 20, total: 60, totalPages: 3 },
+    });
     const user = userEvent.setup();
     renderWithQueryClient(<AuditClient />);
 
@@ -62,10 +68,85 @@ describe("AuditClient", () => {
     await user.type(screen.getByLabelText("Request ID"), "req-42");
     await user.click(screen.getByRole("button", { name: "Aplicar filtros" }));
 
-    expect(replace).toHaveBeenCalledWith(
+    expect(push).toHaveBeenCalledWith(
       "/admin/auditoria?actorType=ADMIN&operation=ACTION_UPDATED&requestId=req-42",
       { scroll: false },
     );
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("usa push na paginacao e reidrata o formulario ao voltar no historico", async () => {
+    currentSearch = "limit=50&requestId=req-atual";
+    fetchAuditMock.mockResolvedValue({
+      items: [event],
+      meta: { page: 1, limit: 50, total: 100, totalPages: 2 },
+    });
+    const user = userEvent.setup();
+    const view = renderWithQueryClient(<AuditClient />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Proxima pagina" }),
+    );
+    expect(push).toHaveBeenCalledWith(
+      "/admin/auditoria?limit=50&page=2&requestId=req-atual",
+      { scroll: false },
+    );
+
+    currentSearch = "limit=50&requestId=req-anterior";
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <AuditClient />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByLabelText("Request ID")).toHaveValue("req-anterior");
+  });
+
+  it("limpa filtros com push preservando o limite aceito", async () => {
+    currentSearch = "limit=50&requestId=req-1";
+    const user = userEvent.setup();
+    renderWithQueryClient(<AuditClient />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Limpar filtros" }),
+    );
+
+    expect(push).toHaveBeenCalledWith("/admin/auditoria?limit=50", {
+      scroll: false,
+    });
+  });
+
+  it("canonicaliza pagina acima do total com replace sem renderizar vazio", async () => {
+    currentSearch = "limit=50&page=9&requestId=req-1";
+    fetchAuditMock.mockResolvedValue({
+      items: [],
+      meta: { page: 9, limit: 50, total: 120, totalPages: 3 },
+    });
+    renderWithQueryClient(<AuditClient />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "/admin/auditoria?limit=50&page=3&requestId=req-1",
+        { scroll: false },
+      ),
+    );
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByText("Nenhum evento encontrado"),
+    ).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("refaz a consulta ao remontar mesmo quando o cache contem auditoria", async () => {
+    const first = renderWithQueryClient(<AuditClient />);
+    await screen.findByRole("table", { name: "Eventos de auditoria" });
+    first.unmount();
+
+    render(
+      <QueryClientProvider client={first.queryClient}>
+        <AuditClient />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetchAuditMock).toHaveBeenCalledTimes(2));
   });
 
   it("exibe carregamento, erro com retry e vazio independentemente", async () => {
@@ -94,13 +175,45 @@ describe("AuditClient", () => {
   });
 
   it("mostra detalhes nomeados sem renderizar campos sensiveis ou JSON cru", async () => {
+    fetchAuditMock.mockResolvedValue({
+      items: [
+        {
+          ...event,
+          before: {
+            id: "participant-1",
+            isActive: true,
+            passwordHash: "segredo",
+            type: "CHECKIN",
+            role: "ADMIN",
+            status: "PENDING",
+            redemptionMethod: "CLAIM_CODE",
+          },
+          after: { id: "participant-1", isActive: false, token: "segredo" },
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
     const user = userEvent.setup();
     renderWithQueryClient(<AuditClient />);
-    const details = await screen.findByText("Ver detalhes");
-    await user.click(details);
+    const details = (
+      await screen.findAllByRole("button", {
+        name: "Ver detalhes de Status do participante alterado",
+      })
+    )[0];
+    details.focus();
+    await user.keyboard("{Enter}");
     const region = screen.getByRole("region", { name: "Detalhes do evento" });
 
+    expect(details).toHaveAttribute("aria-expanded", "true");
+    expect(details).toHaveAttribute("aria-controls", region.id);
+    expect(details).toHaveFocus();
     expect(within(region).getAllByText("Ativo")).toHaveLength(2);
+    expect(region).toHaveTextContent("Credenciamento");
+    expect(region).toHaveTextContent("Administrador");
+    expect(region).toHaveTextContent("Pendente");
+    expect(region).toHaveTextContent("Código de uso único");
+    expect(region).not.toHaveTextContent("CHECKIN");
+    expect(region).not.toHaveTextContent("CLAIM_CODE");
     expect(within(region).getByText("point-1")).toBeInTheDocument();
     expect(region).not.toHaveTextContent("passwordHash");
     expect(region).not.toHaveTextContent("token");
