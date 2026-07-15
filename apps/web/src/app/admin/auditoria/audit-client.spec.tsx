@@ -174,6 +174,21 @@ describe("AuditClient", () => {
     });
   });
 
+  it("limpa IDs legados invisiveis junto dos filtros visiveis", async () => {
+    currentSearch =
+      "limit=50&actorAdminId=admin-1&entityId=action-1&participantId=participant-1&actorSearch=Ada";
+    const user = userEvent.setup();
+    renderWithQueryClient(<AuditClient />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Limpar filtros" }),
+    );
+
+    expect(push).toHaveBeenCalledWith("/admin/auditoria?limit=50", {
+      scroll: false,
+    });
+  });
+
   it("canonicaliza pagina acima do total com replace sem renderizar vazio", async () => {
     currentSearch = "limit=50&page=9&requestId=req-1";
     fetchAuditMock.mockResolvedValue({

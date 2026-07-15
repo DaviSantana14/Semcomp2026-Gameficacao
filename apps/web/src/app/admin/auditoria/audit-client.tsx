@@ -90,7 +90,12 @@ export function AuditClient() {
   function clearFilters() {
     setDraft(emptyDraft);
     setDateError(null);
-    const next = updateAuditUrlFilters(new URLSearchParams(search), emptyDraft);
+    const next = updateAuditUrlFilters(new URLSearchParams(search), {
+      ...emptyDraft,
+      actorAdminId: "",
+      entityId: "",
+      participantId: "",
+    });
     router.push(`${pathname}${next.size ? `?${next}` : ""}`, {
       scroll: false,
     });
