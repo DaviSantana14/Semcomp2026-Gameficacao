@@ -11,20 +11,20 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: semcomp_ci
+          POSTGRES_DB: semcomp_e2e
           POSTGRES_USER: semcomp_ci
           POSTGRES_PASSWORD: semcomp_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U semcomp_ci -d semcomp_ci"
+          --health-cmd "pg_isready -U semcomp_ci -d semcomp_e2e"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       DB_HOST: localhost
       DB_PORT: 5432
-      DB_NAME: semcomp_ci
+      DB_NAME: semcomp_e2e
       DB_USER: semcomp_ci
       DB_PASSWORD: semcomp_ci
       DB_SCHEMA: public
@@ -70,6 +70,9 @@ jobs:
 
       - name: Test API end-to-end
         run: npm --workspace api run test:e2e
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://semcomp_ci:semcomp_ci@localhost:5432/semcomp_e2e?schema=public
 
       - name: Build API
         run: npm --workspace api run build
