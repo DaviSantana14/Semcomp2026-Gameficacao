@@ -109,7 +109,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
           <nav
             aria-label="Áreas administrativas"
-            className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible"
+            className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:overflow-visible"
           >
             {ADMIN_AREAS.map(({ href, icon: Icon, label }) => {
               const active =

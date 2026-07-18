@@ -92,7 +92,7 @@ export function ParticipantDashboard({
         </div>
 
         <nav aria-label="Navegação principal" className="mt-5 lg:mt-10">
-          <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+          <ul className="grid grid-cols-3 gap-2 lg:flex lg:flex-col">
             {navigation.map((item) => {
               const Icon = item.icon;
               const isCurrent = item.href === "/home";
@@ -102,7 +102,7 @@ export function ParticipantDashboard({
                   <Link
                     aria-current={isCurrent ? "page" : undefined}
                     className={cn(
-                      "flex min-h-11 items-center gap-3 rounded-[11px] px-3.5 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                      "flex min-h-11 items-center justify-center gap-2 rounded-[11px] px-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:justify-start lg:gap-3 lg:px-3.5",
                       isCurrent && "bg-secondary/10 text-foreground",
                     )}
                     href={item.href}
