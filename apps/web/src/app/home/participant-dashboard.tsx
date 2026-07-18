@@ -155,42 +155,44 @@ export function ParticipantDashboard({
             </div>
           </header>
 
-          <section className="relative isolate overflow-hidden rounded-[24px] border border-secondary/35 bg-secondary px-6 py-7 text-secondary-foreground shadow-[0_24px_80px_color-mix(in_srgb,var(--secondary)_22%,transparent)] sm:px-8 sm:py-9 lg:min-h-72 lg:px-10">
-            <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_76%_42%,rgba(255,75,180,0.32),transparent_30rem)]" />
-            <div className="relative z-10 flex h-full flex-col justify-between gap-10 lg:max-w-[58%]">
-              <div>
-                <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
+          <section className="journey-hero relative isolate overflow-hidden rounded-[24px] border border-secondary/35 px-6 py-7 text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:px-8 sm:py-9 lg:min-h-72 lg:px-10">
+            <div className="relative z-10 grid grid-cols-1 items-end gap-x-4 gap-y-7 min-[360px]:grid-cols-[minmax(0,1fr)_7.5rem] lg:min-h-56 lg:grid-cols-[minmax(0,58%)_minmax(18rem,42%)] lg:grid-rows-[1fr_auto] lg:gap-x-6">
+              <div className="col-span-1 min-[360px]:col-span-2 lg:col-span-1 lg:row-start-1">
+                <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-secondary-foreground/65">
                   checkpoint rápido
                 </p>
-                <h2 className="mt-3 max-w-xl font-display text-4xl font-bold uppercase leading-[0.86] tracking-wide text-white sm:text-5xl">
+                <h2 className="mt-3 max-w-xl font-display text-4xl font-bold uppercase leading-[0.86] tracking-wide text-foreground sm:text-5xl">
                   Concluiu uma atividade?
                 </h2>
-                <p className="mt-4 max-w-lg text-sm leading-6 text-white/75 sm:text-base">
+                <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">
                   Resgate o código recebido para somar pontos e experiência à
                   sua jornada.
                 </p>
               </div>
+
               <Button
-                className="w-fit bg-primary text-primary-foreground hover:bg-primary/90"
+                className="col-start-1 row-start-2 w-fit whitespace-nowrap max-[359px]:w-full"
                 onClick={() => setIsRedeemOpen(true)}
               >
                 <QrCode aria-hidden="true" data-icon="inline-start" />
                 Resgatar código
               </Button>
-            </div>
 
-            <div
-              aria-hidden="true"
-              className="absolute -right-8 top-1/2 hidden size-64 -translate-y-1/2 items-center justify-center lg:flex xl:right-6"
-            >
-              <div className="semcomp-orbit" />
-              <div className="flex size-32 flex-col items-center justify-center rounded-full border border-white/25 bg-background/90 shadow-[0_0_70px_rgba(0,0,0,0.4)] backdrop-blur">
-                <span className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  nível
-                </span>
-                <strong className="font-display text-7xl font-bold leading-none text-primary">
-                  {formatTwoDigits(user.level)}
-                </strong>
+              <div
+                aria-hidden="true"
+                className="journey-orbit-stage col-start-1 row-start-3 justify-self-center min-[360px]:col-start-2 min-[360px]:row-start-2 min-[360px]:justify-self-end lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mr-16 lg:justify-self-end lg:self-center"
+                data-testid="journey-orbit"
+              >
+                <div className="journey-orbit-outer" />
+                <div className="journey-orbit-inner" />
+                <div className="journey-level-badge">
+                  <span className="font-mono text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground lg:text-[0.65rem]">
+                    nível
+                  </span>
+                  <strong className="font-display text-5xl font-bold leading-none text-primary lg:text-7xl">
+                    {formatTwoDigits(user.level)}
+                  </strong>
+                </div>
               </div>
             </div>
           </section>

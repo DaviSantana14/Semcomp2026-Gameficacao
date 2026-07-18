@@ -154,6 +154,185 @@ body {
   }
 }
 
+.journey-hero {
+  background:
+    radial-gradient(
+      circle at 17% 48%,
+      color-mix(in srgb, var(--semcomp-purple) 34%, transparent),
+      transparent 31rem
+    ),
+    radial-gradient(
+      circle at 79% 52%,
+      color-mix(in srgb, var(--semcomp-purple-deep) 30%, transparent),
+      transparent 22rem
+    ),
+    linear-gradient(110deg, #100817 0%, #08040b 58%, #050205 100%);
+}
+
+.journey-orbit-stage {
+  position: relative;
+  display: flex;
+  width: 7.5rem;
+  height: 7.5rem;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.journey-orbit-outer,
+.journey-orbit-inner,
+.journey-level-badge {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.journey-orbit-outer {
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 999px;
+  background: conic-gradient(
+    from 20deg,
+    color-mix(in srgb, var(--semcomp-purple) 30%, transparent) 0 28%,
+    transparent 28% 54%,
+    color-mix(in srgb, var(--semcomp-pink) 18%, transparent) 54% 76%,
+    transparent 76% 100%
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 1rem),
+    #000 calc(100% - 1rem + 1px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 1rem),
+    #000 calc(100% - 1rem + 1px)
+  );
+}
+
+.journey-orbit-inner {
+  width: 6.65rem;
+  height: 6.65rem;
+  border: 1px solid color-mix(in srgb, var(--semcomp-purple) 68%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 0 1.5rem
+    color-mix(in srgb, var(--semcomp-purple) 22%, transparent);
+}
+
+.journey-orbit-inner::before,
+.journey-orbit-inner::after {
+  position: absolute;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 0.14rem;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.journey-orbit-inner::before {
+  top: 0.55rem;
+  right: 0.55rem;
+  background: var(--semcomp-pink);
+  box-shadow: 0 0 0.85rem
+    color-mix(in srgb, var(--semcomp-pink) 85%, transparent);
+}
+
+.journey-orbit-inner::after {
+  bottom: 0.65rem;
+  left: 0.35rem;
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 0.85rem
+    color-mix(in srgb, var(--semcomp-lime) 82%, transparent);
+}
+
+.journey-level-badge {
+  z-index: 2;
+  display: flex;
+  width: 5.5rem;
+  height: 5.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--semcomp-lime) 52%, transparent);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #100817, #050205 72%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--semcomp-purple) 26%, transparent),
+    0 1rem 3rem rgba(0, 0, 0, 0.45);
+}
+
+@media (min-width: 64rem) {
+  .journey-orbit-stage {
+    width: 20rem;
+    height: 16rem;
+  }
+
+  .journey-orbit-outer {
+    width: 17rem;
+    height: 17rem;
+    -webkit-mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - 2.75rem),
+      #000 calc(100% - 2.75rem + 1px)
+    );
+    mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - 2.75rem),
+      #000 calc(100% - 2.75rem + 1px)
+    );
+  }
+
+  .journey-orbit-inner {
+    width: 11.5rem;
+    height: 11.5rem;
+  }
+
+  .journey-orbit-inner::before,
+  .journey-orbit-inner::after {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.18rem;
+  }
+
+  .journey-orbit-inner::before {
+    top: 1.15rem;
+    right: 1.45rem;
+  }
+
+  .journey-orbit-inner::after {
+    bottom: 1.55rem;
+    left: 0.75rem;
+  }
+
+  .journey-level-badge {
+    width: 7rem;
+    height: 7rem;
+    border-radius: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .journey-orbit-inner {
+    animation: journey-orbit-clockwise 14s linear infinite;
+  }
+
+  .journey-orbit-outer {
+    animation: journey-orbit-counterclockwise 22s linear infinite;
+  }
+}
+
+@keyframes journey-orbit-clockwise {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes journey-orbit-counterclockwise {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
 .arcade-grid {
   background:
     radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 26rem),

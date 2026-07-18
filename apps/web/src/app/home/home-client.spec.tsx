@@ -53,7 +53,7 @@ describe("HomeClient", () => {
 
   it("apresenta a jornada e somente dados reais do participante", async () => {
     const user = userEvent.setup();
-    renderWithQueryClient(<HomeClient />);
+    const { container } = renderWithQueryClient(<HomeClient />);
 
     expect(
       screen.getByRole("heading", {
@@ -64,6 +64,10 @@ describe("HomeClient", () => {
     expect(screen.getByText("620 PTS")).toBeInTheDocument();
     expect(screen.getByText("Nível 07")).toBeInTheDocument();
     expect(await screen.findByText("#08")).toBeInTheDocument();
+    expect(container.querySelector(".journey-hero")).toBeInTheDocument();
+    const orbit = screen.getByTestId("journey-orbit");
+    expect(orbit).toHaveAttribute("aria-hidden", "true");
+    expect(orbit).not.toHaveClass("hidden");
     expect(
       screen
         .getAllByRole("link", { name: /Ranking/ })
