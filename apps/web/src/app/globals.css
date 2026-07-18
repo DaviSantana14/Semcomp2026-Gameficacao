@@ -1,27 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #060912;
-  --foreground: #f7fbff;
-  --card: #0c1324;
-  --card-foreground: #f7fbff;
-  --popover: #0c1324;
-  --popover-foreground: #f7fbff;
-  --primary: #22d3ee;
-  --primary-foreground: #031018;
-  --secondary: #17233a;
-  --secondary-foreground: #dbeafe;
-  --muted: #101827;
-  --muted-foreground: #94a3b8;
-  --accent: #fbbf24;
-  --accent-foreground: #1b1302;
-  --destructive: #fb7185;
-  --destructive-foreground: #2a030b;
-  --success: #34d399;
-  --success-foreground: #03140e;
-  --border: #26344f;
-  --input: #2d3a55;
-  --ring: #22d3ee;
+  --background: #050205;
+  --foreground: #f8f4fa;
+  --card: #0f0f0f;
+  --card-foreground: #f8f4fa;
+  --popover: #171019;
+  --popover-foreground: #f8f4fa;
+  --primary: #8cff00;
+  --primary-foreground: #091300;
+  --secondary: #912cbc;
+  --secondary-foreground: #ffffff;
+  --muted: #171019;
+  --muted-foreground: #afa5b2;
+  --accent: #c42db5;
+  --accent-foreground: #ffffff;
+  --destructive: #ff6b81;
+  --destructive-foreground: #210108;
+  --success: #8cff00;
+  --success-foreground: #091300;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 14%);
+  --ring: #8cff00;
+  --semcomp-purple-deep: #54025c;
+  --semcomp-purple: #912cbc;
+  --semcomp-pink: #c42db5;
+  --semcomp-lime: #8cff00;
+  --semcomp-blue: #6b77ff;
+  --semcomp-surface: #171019;
 }
 
 @theme inline {
@@ -46,14 +52,22 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-semcomp-purple-deep: var(--semcomp-purple-deep);
+  --color-semcomp-purple: var(--semcomp-purple);
+  --color-semcomp-pink: var(--semcomp-pink);
+  --color-semcomp-lime: var(--semcomp-lime);
+  --color-semcomp-blue: var(--semcomp-blue);
+  --color-semcomp-surface: var(--semcomp-surface);
+  --font-display: var(--font-thunder);
+  --font-sans: var(--font-outfit);
+  --font-reading: var(--font-ibm-plex-sans);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-outfit), Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -63,6 +77,81 @@ body {
 ::selection {
   background: color-mix(in srgb, var(--primary) 35%, transparent);
   color: var(--foreground);
+}
+
+.semcomp-atmosphere {
+  background:
+    radial-gradient(
+      circle at 90% -12%,
+      color-mix(in srgb, var(--semcomp-purple) 28%, transparent),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at -12% 82%,
+      color-mix(in srgb, var(--semcomp-purple-deep) 22%, transparent),
+      transparent 34rem
+    ),
+    var(--background);
+}
+
+.semcomp-checkpoint {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 0.1rem;
+  transform: rotate(45deg);
+}
+
+[aria-current="page"] .semcomp-checkpoint {
+  border-color: var(--semcomp-lime);
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 0.75rem color-mix(in srgb, var(--semcomp-lime) 65%, transparent);
+}
+
+.semcomp-orbit {
+  position: absolute;
+  width: 11.5rem;
+  height: 11.5rem;
+  border: 1px solid color-mix(in srgb, var(--semcomp-pink) 32%, transparent);
+  border-radius: 999px;
+}
+
+.semcomp-orbit::before,
+.semcomp-orbit::after {
+  position: absolute;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.18rem;
+  background: var(--semcomp-pink);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--semcomp-pink) 78%, transparent);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.semcomp-orbit::before {
+  top: 1.15rem;
+  right: 1.45rem;
+}
+
+.semcomp-orbit::after {
+  bottom: 1.55rem;
+  left: 0.75rem;
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--semcomp-lime) 72%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .semcomp-orbit {
+    animation: semcomp-orbit 14s linear infinite;
+  }
+}
+
+@keyframes semcomp-orbit {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .arcade-grid {

@@ -18,7 +18,7 @@ export function Progress({ className, value, ...props }: ProgressProps) {
       {...props}
     >
       <div
-        className="h-full rounded-full bg-primary transition-[width]"
+        className="h-full rounded-full bg-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_45%,transparent)] transition-[width] motion-reduce:transition-none"
         style={{ width: `${safeValue}%` }}
       />
     </div>
