@@ -55,8 +55,8 @@ describe("RedeemCodeDialog", () => {
     );
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
-    await user.type(screen.getByLabelText("Codigo"), " dia-1 ");
-    await user.click(screen.getByRole("button", { name: "Resgatar codigo" }));
+    await user.type(screen.getByLabelText("Código"), " dia-1 ");
+    await user.click(screen.getByRole("button", { name: "Resgatar código" }));
 
     await waitFor(() => {
       expect(redeemActionCodeMock).toHaveBeenCalledWith("DIA-1");
@@ -73,8 +73,8 @@ describe("RedeemCodeDialog", () => {
     const user = userEvent.setup();
     renderWithQueryClient(<RedeemCodeDialog isOpen onClose={vi.fn()} />);
 
-    await user.type(screen.getByLabelText("Codigo"), "DIA-1");
-    await user.click(screen.getByRole("button", { name: "Resgatar codigo" }));
+    await user.type(screen.getByLabelText("Código"), "DIA-1");
+    await user.click(screen.getByRole("button", { name: "Resgatar código" }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Este código já foi utilizado.");
@@ -86,12 +86,12 @@ describe("RedeemCodeDialog", () => {
     const user = userEvent.setup();
     renderWithQueryClient(<RedeemCodeDialog isOpen onClose={vi.fn()} />);
 
-    await user.type(screen.getByLabelText("Codigo"), "DIA-1");
-    await user.click(screen.getByRole("button", { name: "Resgatar codigo" }));
+    await user.type(screen.getByLabelText("Código"), "DIA-1");
+    await user.click(screen.getByRole("button", { name: "Resgatar código" }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
-        "Nao foi possivel resgatar este codigo.",
+        "Não foi possível resgatar este código.",
       );
     });
   });
