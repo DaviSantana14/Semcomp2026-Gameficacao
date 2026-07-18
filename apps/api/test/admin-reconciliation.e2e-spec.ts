@@ -1,4 +1,9 @@
-import { PointEventKind, PointEventSource, UserRole } from '@prisma/client';
+import {
+  ActionRedemptionMethod,
+  PointEventKind,
+  PointEventSource,
+  UserRole,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AdminE2eHarness, AuthSession } from './support/admin-e2e-harness';
@@ -436,6 +441,10 @@ function event(
     points,
     xpDelta,
     source,
+    redemptionMethod:
+      source === PointEventSource.ACTION_REDEEM
+        ? ActionRedemptionMethod.LEGACY_UNKNOWN
+        : null,
     kind:
       points < 0 || (points === 0 && xpDelta < 0)
         ? PointEventKind.DEBIT

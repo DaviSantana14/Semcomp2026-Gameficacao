@@ -42,7 +42,7 @@ describe('Marco 10 migration (e2e)', () => {
 
   it('preserves legacy events and only backfills provable XP', async () => {
     await resetSchema();
-    await applyMigrations((name) => name !== marco10Migration);
+    await applyMigrations((name) => name < marco10Migration);
     await createLegacyFixtures();
     await applyMigration(marco10Migration);
 

@@ -263,7 +263,7 @@ describeDisposable('Reconciliation audit-first rollback (e2e)', () => {
         data: {
           name: `Reconciliation rollback admin ${suffix}`,
           cpf: harness.uniqueCpf(suffix, 3),
-          email: `reconciliation-rollback-admin-${suffix}@example.test`,
+          email: `recon-rollback-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
         },
       }),

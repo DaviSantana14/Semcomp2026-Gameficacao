@@ -17,10 +17,13 @@ type AuditPage = {
   items: Array<{
     id: string;
     actorAdminId: string | null;
+    actorDisplay: { name: string; email: string | null };
     participantId: string | null;
+    participantDisplay: { name: string; email: string } | null;
     operation: AuditOperation;
     entityType: AuditEntityType;
     entityId: string;
+    entityDisplay: { name: string };
     reason: string;
     before: Record<string, unknown> | null;
     after: Record<string, unknown> | null;
@@ -171,16 +174,19 @@ describeDisposable('Admin audit query (e2e)', () => {
     expect(Object.keys(event).sort()).toEqual(
       [
         'actorAdminId',
+        'actorDisplay',
         'actorType',
         'after',
         'before',
         'createdAt',
         'entityId',
+        'entityDisplay',
         'entityType',
         'id',
         'metadata',
         'operation',
         'participantId',
+        'participantDisplay',
         'reason',
         'requestId',
       ].sort(),
