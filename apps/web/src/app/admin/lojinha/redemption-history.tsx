@@ -26,10 +26,14 @@ import {
   deliverRedemption,
   fetchAdminRedemptions,
 } from "@/features/rewards/rewards.service";
-import type { AdminReward } from "@/features/rewards/rewards.types";
+import type {
+  AdminRedemption,
+  AdminReward,
+} from "@/features/rewards/rewards.types";
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
+import { AdminReasonDialog } from "../_components/admin-reason-dialog";
 
 const tabs = ["all", "pending", "delivered", "cancelled"] as const;
 const labels = {
@@ -59,6 +63,10 @@ export function RedemptionHistory({
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
   const [rewardId, setRewardId] = useState("");
+  const [actionIntent, setActionIntent] = useState<{
+    item: AdminRedemption;
+    kind: "deliver" | "cancel";
+  } | null>(null);
   const query = useQuery({
     queryKey: [
       "admin",
@@ -79,13 +87,18 @@ export function RedemptionHistory({
     mutationFn: async ({
       id,
       kind,
+      reason,
     }: {
       id: string;
       kind: "deliver" | "cancel";
+      reason: string;
     }) => {
-      return kind === "deliver" ? deliverRedemption(id) : cancelRedemption(id);
+      return kind === "deliver"
+        ? deliverRedemption(id, { reason })
+        : cancelRedemption(id, { reason });
     },
     onSuccess: async (_, variables) => {
+      setActionIntent(null);
       toast.success(
         variables.kind === "deliver"
           ? "Pedido marcado como entregue."
@@ -128,14 +141,6 @@ export function RedemptionHistory({
     setSearch(draft.trim());
     setPage(1);
   }
-  function mutate(id: string, kind: "deliver" | "cancel") {
-    const message =
-      kind === "deliver"
-        ? "Confirmar que este pedido foi entregue ao participante?"
-        : "Cancelar este pedido? Os pontos e uma unidade de estoque serão devolvidos. O XP não será alterado.";
-    if (window.confirm(message)) action.mutate({ id, kind });
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -294,7 +299,9 @@ export function RedemptionHistory({
                       <div className="flex flex-wrap gap-2">
                         <Button
                           disabled={pending}
-                          onClick={() => mutate(item.id, "deliver")}
+                          onClick={() =>
+                            setActionIntent({ item, kind: "deliver" })
+                          }
                         >
                           <Check />
                           {pending && action.variables?.kind === "deliver"
@@ -303,7 +310,9 @@ export function RedemptionHistory({
                         </Button>
                         <Button
                           disabled={pending}
-                          onClick={() => mutate(item.id, "cancel")}
+                          onClick={() =>
+                            setActionIntent({ item, kind: "cancel" })
+                          }
                           variant="outline"
                         >
                           {pending && action.variables?.kind === "cancel" ? (
@@ -337,6 +346,36 @@ export function RedemptionHistory({
           )}
         </div>
       </CardContent>
+      {actionIntent ? (
+        <AdminReasonDialog
+          confirmLabel={
+            actionIntent.kind === "deliver"
+              ? "Confirmar entrega"
+              : "Confirmar cancelamento"
+          }
+          currentState="Pendente"
+          description={`${actionIntent.item.reward.name} · ${actionIntent.item.user.name}`}
+          intendedState={
+            actionIntent.kind === "deliver"
+              ? "Entregue"
+              : "Cancelado com devolução"
+          }
+          onClose={() => setActionIntent(null)}
+          onSubmit={(reason) =>
+            action.mutateAsync({
+              id: actionIntent.item.id,
+              kind: actionIntent.kind,
+              reason,
+            })
+          }
+          operationKey={`${actionIntent.item.id}:${actionIntent.kind}`}
+          title={
+            actionIntent.kind === "deliver"
+              ? "Entregar pedido"
+              : "Cancelar pedido"
+          }
+        />
+      ) : null}
     </Card>
   );
 }

@@ -42,9 +42,19 @@ export type AdminParticipantPointEvent = {
     | "LEGACY_UNKNOWN"
     | null;
   description: string | null;
-  origin: "UNIQUE_CODE" | "REUSABLE_CODE" | "DIRECT_ACTION" | "REWARD" | "ADMIN";
+  origin:
+    | "UNIQUE_CODE"
+    | "REUSABLE_CODE"
+    | "DIRECT_ACTION"
+    | "LEGACY_UNKNOWN"
+    | "REWARD"
+    | "ADMIN"
+    | "RECONCILIATION_COMPENSATION";
+  isAudited: boolean;
   action: { id: string; name: string } | null;
   claimCode: { id: string; code: string } | null;
+  reversalOfPointEventId: string | null;
+  reversalPointEventId: string | null;
   createdAt: string;
 };
 

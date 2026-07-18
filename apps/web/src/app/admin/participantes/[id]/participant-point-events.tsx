@@ -1,19 +1,30 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAdminParticipantPointEvents } from "@/features/participants/participants.service";
+import {
+  createIdempotencyLifecycle,
+  invalidateParticipantOperationQueries,
+} from "@/features/participants/participant-operations";
+import { participantQueryKeys } from "@/features/participants/participant-query-keys";
+import {
+  formatPointEventDetail,
+  getPointEventSourceLabel,
+} from "@/features/participants/point-event-labels";
 import type {
   AdminParticipantPointEvent,
   AdminPointEventsFilters,
 } from "@/features/participants/participants.types";
 import { ApiError } from "@/lib/http/api-error";
+import { reverseParticipantPointEvent } from "@/features/reconciliation/reconciliation.service";
 import { PaginationControls } from "../../_components/pagination-controls";
+import { ReversalDialog } from "./participant-operation-dialogs";
 
 const LIMIT = 10;
 const number = new Intl.NumberFormat("pt-BR", { signDisplay: "always" });
@@ -21,16 +32,11 @@ const date = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short",
 });
-const SOURCE_LABELS: Record<AdminParticipantPointEvent["source"], string> = {
-  ACTION_REDEEM: "Atividade",
-  ADMIN_GRANT: "Concessão administrativa",
-  ADMIN_ADJUST: "Ajuste administrativo",
-  REWARD_REDEMPTION: "Lojinha",
-};
-
 export function ParticipantPointEvents({
+  balance,
   participantId,
 }: {
+  balance: { points: number; xp: number };
   participantId: string;
 }) {
   const [page, setPage] = useState(1);
@@ -38,6 +44,23 @@ export function ParticipantPointEvents({
     useState<NonNullable<AdminPointEventsFilters["kind"]>>("all");
   const [source, setSource] =
     useState<NonNullable<AdminPointEventsFilters["source"]>>("all");
+  const [selected, setSelected] = useState<AdminParticipantPointEvent | null>(
+    null,
+  );
+  const [feedback, setFeedback] = useState<"created" | "replayed" | null>(null);
+  const lifecycle = useRef(createIdempotencyLifecycle()).current;
+  const queryClient = useQueryClient();
+  const reversal = useMutation({
+    mutationFn: ({
+      id,
+      reason,
+      idempotencyKey,
+    }: {
+      id: string;
+      reason: string;
+      idempotencyKey: string;
+    }) => reverseParticipantPointEvent(id, { reason, idempotencyKey }),
+  });
   const filters: AdminPointEventsFilters = {
     page,
     limit: LIMIT,
@@ -45,11 +68,35 @@ export function ParticipantPointEvents({
     source,
   };
   const query = useQuery({
-    queryKey: ["admin", "participant", participantId, "point-events", filters],
+    queryKey: [...participantQueryKeys.pointEvents(participantId), filters],
     queryFn: () => fetchAdminParticipantPointEvents(participantId, filters),
     retry: false,
   });
   const data = query.data;
+
+  async function reverse(reason: string) {
+    if (!selected) return;
+    const fingerprint = JSON.stringify({ eventId: selected.id, reason });
+    const idempotencyKey = lifecycle.keyFor(fingerprint);
+    try {
+      const result = await reversal.mutateAsync({
+        id: selected.id,
+        reason,
+        idempotencyKey,
+      });
+      lifecycle.succeeded();
+      setFeedback(result.replayed ? "replayed" : "created");
+      setSelected(null);
+      await invalidateParticipantOperationQueries(
+        queryClient,
+        participantId,
+        selected.xpDelta !== 0,
+      );
+    } catch (error) {
+      lifecycle.failed(error instanceof ApiError && error.status === 409);
+      throw error;
+    }
+  }
 
   return (
     <Card className="min-w-0 bg-card/90">
@@ -90,6 +137,16 @@ export function ParticipantPointEvents({
         </div>
       </CardHeader>
       <CardContent className="grid gap-4">
+        {feedback ? (
+          <p
+            className="rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success"
+            role="status"
+          >
+            {feedback === "replayed"
+              ? "Este estorno já havia sido registrado; nenhum evento foi duplicado."
+              : "Estorno compensatório registrado."}
+          </p>
+        ) : null}
         {query.isLoading ? (
           <SectionSkeleton />
         ) : query.error ? (
@@ -102,7 +159,11 @@ export function ParticipantPointEvents({
           <>
             <div className="grid gap-3">
               {data.items.map((event) => (
-                <PointEvent event={event} key={event.id} />
+                <PointEvent
+                  event={event}
+                  key={event.id}
+                  onReverse={setSelected}
+                />
               ))}
             </div>
             <PaginationControls
@@ -117,17 +178,38 @@ export function ParticipantPointEvents({
           </div>
         )}
       </CardContent>
+      {selected ? (
+        <ReversalDialog
+          balance={balance}
+          event={{
+            pointsDelta:
+              selected.kind === "CREDIT"
+                ? Math.abs(selected.points)
+                : -Math.abs(selected.points),
+            xpDelta: selected.xpDelta,
+          }}
+          onClose={() => setSelected(null)}
+          onSubmit={reverse}
+        />
+      ) : null}
     </Card>
   );
 }
 
-function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
+export function PointEvent({
+  event,
+  onReverse,
+}: {
+  event: AdminParticipantPointEvent;
+  onReverse?: (event: AdminParticipantPointEvent) => void;
+}) {
   const credit = event.kind === "CREDIT";
-  const method = formatRedemptionMethod(event);
-  const detail =
-    (method ?? event.description?.trim()) || "Sem detalhe adicional";
+  const detail = formatPointEventDetail(event) ?? "Sem detalhe adicional";
   return (
-    <article className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <article
+      className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+      id={`point-event-${event.id}`}
+    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -136,19 +218,52 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
             {credit ? "Crédito" : "Débito"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {SOURCE_LABELS[event.source]}
+            {getPointEventSourceLabel(event.source)}
           </span>
         </div>
         <p className="mt-2 break-words font-bold">
-          {event.action?.name ?? SOURCE_LABELS[event.source]}
+          {event.action?.name ?? getPointEventSourceLabel(event.source)}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        {!event.isAudited &&
+        (event.origin === "LEGACY_UNKNOWN" ||
+          event.source === "ADMIN_GRANT" ||
+          event.source === "ADMIN_ADJUST") ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Sem auditoria histórica
+          </p>
+        ) : null}
         <time
           className="mt-2 block font-mono text-xs text-muted-foreground"
           dateTime={event.createdAt}
         >
           {date.format(new Date(event.createdAt))}
         </time>
+        {event.reversalOfPointEventId ? (
+          <a
+            className="mt-2 inline-block text-xs font-semibold text-primary underline"
+            href={`#point-event-${event.reversalOfPointEventId}`}
+          >
+            Compensa evento original
+          </a>
+        ) : event.reversalPointEventId ? (
+          <a
+            className="mt-2 inline-block text-xs font-semibold text-primary underline"
+            href={`#point-event-${event.reversalPointEventId}`}
+          >
+            Ver evento de estorno
+          </a>
+        ) : null}
+        {onReverse && isReversalEligible(event) ? (
+          <Button
+            className="mt-3"
+            onClick={() => onReverse(event)}
+            variant="outline"
+          >
+            <RotateCcw />
+            Estornar ajuste
+          </Button>
+        ) : null}
       </div>
       <dl className="grid grid-cols-2 gap-2 md:min-w-48">
         <Delta
@@ -161,15 +276,14 @@ function PointEvent({ event }: { event: AdminParticipantPointEvent }) {
   );
 }
 
-function formatRedemptionMethod(event: AdminParticipantPointEvent) {
-  if (event.redemptionMethod === "CLAIM_CODE")
-    return event.claimCode
-      ? `Código único · ${event.claimCode.code}`
-      : "Código único";
-  if (event.redemptionMethod === "REUSABLE_CODE")
-    return "Código reutilizável";
-  if (event.redemptionMethod === "DIRECT") return "Registro direto";
-  return null;
+export function isReversalEligible(event: AdminParticipantPointEvent) {
+  return (
+    event.isAudited &&
+    event.origin === "ADMIN" &&
+    (event.source === "ADMIN_GRANT" || event.source === "ADMIN_ADJUST") &&
+    !event.reversalOfPointEventId &&
+    !event.reversalPointEventId
+  );
 }
 
 function Delta({ label, value }: { label: string; value: number }) {

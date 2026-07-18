@@ -6,11 +6,13 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
@@ -42,6 +44,9 @@ import {
 } from './dto/reward-response.dto';
 import { UpdateRewardDto } from './dto/update-reward.dto';
 import { RewardsService } from './rewards.service';
+import { RedemptionTransitionDto } from './dto/redemption-transition.dto';
+import { getAdminOperationContext } from '../common/request-context';
+import type { AuthenticatedRequest } from '../common/request-context';
 
 @ApiTags('Admin Rewards')
 @ApiSecurity('access-token-cookie')
@@ -61,8 +66,13 @@ export class AdminRewardsController {
   })
   @ApiBody({ type: CreateRewardDto })
   @ApiCreatedResponse({ type: RewardResponseDto })
-  async create(@Body() dto: CreateRewardDto) {
-    return toRewardResponseDto(await this.rewards.create(dto));
+  async create(
+    @Body() dto: CreateRewardDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return toRewardResponseDto(
+      await this.rewards.create(dto, getAdminOperationContext(request)),
+    );
   }
 
   @Patch('rewards/:id')
@@ -74,8 +84,14 @@ export class AdminRewardsController {
   @ApiBody({ type: UpdateRewardDto })
   @ApiOkResponse({ type: RewardResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
-  async update(@Param('id') id: string, @Body() dto: UpdateRewardDto) {
-    return toRewardResponseDto(await this.rewards.update(id, dto));
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateRewardDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return toRewardResponseDto(
+      await this.rewards.update(id, dto, getAdminOperationContext(request)),
+    );
   }
 
   @Get('admin/redemptions/pending')
@@ -95,10 +111,19 @@ export class AdminRewardsController {
   })
   @ApiOkResponse({ type: RewardRedemptionResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
-  async deliverRedemption(@Param('id') id: string) {
+  async deliverRedemption(
+    @Param('id') id: string,
+    @Body() dto: RedemptionTransitionDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
     return toRewardRedemptionResponseDto(
-      await this.rewards.deliverRedemption(id),
+      await this.rewards.deliverRedemption(
+        id,
+        dto,
+        getAdminOperationContext(request),
+      ),
     );
   }
 
@@ -110,10 +135,19 @@ export class AdminRewardsController {
   })
   @ApiOkResponse({ type: RewardRedemptionResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
-  async cancelRedemption(@Param('id') id: string) {
+  async cancelRedemption(
+    @Param('id') id: string,
+    @Body() dto: RedemptionTransitionDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
     return toRewardRedemptionResponseDto(
-      await this.rewards.cancelRedemption(id),
+      await this.rewards.cancelRedemption(
+        id,
+        dto,
+        getAdminOperationContext(request),
+      ),
     );
   }
 

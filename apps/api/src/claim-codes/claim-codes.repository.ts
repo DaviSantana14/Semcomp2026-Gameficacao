@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuditRepository,
+  TransactionAuditWriter,
+} from '../audit/audit.repository';
 
 const claimCodeHistorySelect = {
   id: true,
@@ -29,15 +33,24 @@ export interface ClaimCodePageFilter {
 @Injectable()
 export class ClaimCodesRepository {
   private client: ClaimCodesDatabase;
+  auditWriter?: TransactionAuditWriter;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private auditRepository?: AuditRepository,
+  ) {
     this.client = prisma;
   }
 
   withTransaction<T>(
-    callback: (repository: ClaimCodesRepository) => Promise<T>,
+    callback: (
+      repository: ClaimCodesRepository,
+      transaction: Prisma.TransactionClient,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+    return this.prisma.$transaction((tx) =>
+      callback(this.transactional(tx), tx),
+    );
   }
 
   findActionForCodeBatch(actionId: string) {
@@ -90,9 +103,13 @@ export class ClaimCodesRepository {
     return { rows, total };
   }
 
-  updateClaimCodeStatus(id: string, isActive: boolean) {
+  updateClaimCodeStatus(
+    id: string,
+    isActive: boolean,
+    previousIsActive: boolean,
+  ) {
     return this.client.claimCode.updateMany({
-      where: { id, isUsed: false },
+      where: { id, isUsed: false, isActive: previousIsActive },
       data: { isActive },
     });
   }
@@ -109,7 +126,9 @@ export class ClaimCodesRepository {
       ClaimCodesRepository.prototype,
     ) as ClaimCodesRepository;
     repository.prisma = this.prisma;
+    repository.auditRepository = this.auditRepository;
     repository.client = tx;
+    repository.auditWriter = this.auditRepository?.bindTransaction(tx);
     return repository;
   }
 }

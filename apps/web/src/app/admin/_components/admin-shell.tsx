@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, KeyRound, LayoutDashboard, ShoppingBag, Trophy, UsersRound, Zap } from "lucide-react";
+import { Boxes, ClipboardList, KeyRound, LayoutDashboard, ShoppingBag, Trophy, UsersRound, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -18,6 +18,7 @@ const ADMIN_AREAS = [
   { href: "/admin/atividades", label: "Atividades", icon: Zap },
   { href: "/admin/codigos", label: "Códigos", icon: KeyRound },
   { href: "/admin/lojinha", label: "Lojinha", icon: ShoppingBag },
+  { href: "/admin/auditoria", label: "Auditoria", icon: ClipboardList },
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -74,8 +75,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="arcade-grid min-h-dvh lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="border-b border-border bg-card/95 px-4 py-4 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+    <div className="arcade-grid min-h-dvh w-full max-w-full overflow-x-hidden lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="min-w-0 border-b border-border bg-card/95 px-4 py-4 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
         <div className="flex h-full flex-col gap-5">
           <header className="flex items-center justify-between gap-3 lg:flex-col lg:items-start">
             <div className="flex items-center gap-3">
@@ -85,7 +86,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <Badge className="border-success/40 bg-success/10 font-mono text-success">OPERADOR // ONLINE</Badge>
           </header>
 
-          <nav aria-label="Areas administrativas" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+          <nav aria-label="Areas administrativas" className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
             {ADMIN_AREAS.map(({ href, icon: Icon, label }) => {
               const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
               return <Link aria-current={active ? "page" : undefined} className={cn("inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground")} href={href} key={href}><Icon aria-hidden="true" className="size-4" />{label}</Link>;

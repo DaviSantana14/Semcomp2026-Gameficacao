@@ -18,12 +18,15 @@ describe('semantic repository transactions', () => {
       ),
     };
     const repository = new ActionsRepository(prisma as never);
-    const result = await repository.withTransaction((transactional) =>
-      transactional.findActionById('action-1'),
-    );
+    let exposedTransaction: unknown;
+    const result = await repository.withTransaction((transactional, tx) => {
+      exposedTransaction = tx;
+      return transactional.findActionById('action-1');
+    });
     expect(result).toEqual({ id: 'action-1' });
     expect(transaction.action.findUnique.mock.calls).toHaveLength(1);
     expect(prisma.action.findUnique.mock.calls).toHaveLength(0);
+    expect(exposedTransaction).toBe(transaction);
   });
 
   it('binds RewardsRepository to the transaction client', async () => {
@@ -38,12 +41,15 @@ describe('semantic repository transactions', () => {
       ),
     };
     const repository = new RewardsRepository(prisma as never);
-    const result = await repository.withTransaction((transactional) =>
-      transactional.findRewardById('reward-1'),
-    );
+    let exposedTransaction: unknown;
+    const result = await repository.withTransaction((transactional, tx) => {
+      exposedTransaction = tx;
+      return transactional.findRewardById('reward-1');
+    });
     expect(result).toEqual({ id: 'reward-1' });
     expect(transaction.reward.findUnique.mock.calls).toHaveLength(1);
     expect(prisma.reward.findUnique.mock.calls).toHaveLength(0);
+    expect(exposedTransaction).toBe(transaction);
   });
 
   it('binds ClaimCodesRepository to the transaction client', async () => {
@@ -60,12 +66,42 @@ describe('semantic repository transactions', () => {
       ),
     };
     const repository = new ClaimCodesRepository(prisma as never);
-    const result = await repository.withTransaction((transactional) =>
-      transactional.findClaimCodeById('claim-code-1'),
-    );
+    let exposedTransaction: unknown;
+    const result = await repository.withTransaction((transactional, tx) => {
+      exposedTransaction = tx;
+      return transactional.findClaimCodeById('claim-code-1');
+    });
     expect(result).toEqual({ id: 'claim-code-1' });
     expect(transaction.claimCode.findUnique.mock.calls).toHaveLength(1);
     expect(prisma.claimCode.findUnique.mock.calls).toHaveLength(0);
+    expect(exposedTransaction).toBe(transaction);
+  });
+
+  it('binds the claim-code audit writer to the same transaction client', async () => {
+    const transaction = {
+      claimCode: { findUnique: jest.fn() },
+      adminAuditEvent: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+    };
+    const auditRepository = {
+      bindTransaction: jest.fn().mockReturnValue({ create: jest.fn() }),
+    };
+    const repository = new ClaimCodesRepository(
+      prisma as never,
+      auditRepository as never,
+    );
+
+    await repository.withTransaction((transactional) => {
+      expect(transactional.auditWriter).toBeDefined();
+      return Promise.resolve();
+    });
+
+    expect(auditRepository.bindTransaction).toHaveBeenCalledWith(transaction);
   });
 });
 

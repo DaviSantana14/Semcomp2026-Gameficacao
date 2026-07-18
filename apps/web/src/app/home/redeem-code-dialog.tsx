@@ -47,7 +47,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
   const redeemMutation = useMutation({
     mutationFn: ({ code }: RedeemCodeValues) => redeemActionCode(code),
     onSuccess: async (result) => {
-      toast.success(`${result.action.name}: +${result.awardedPoints} XP`);
+      toast.success(`${result.action.name}: +${result.awardedXp} XP`);
       await queryClient.invalidateQueries({ queryKey: ["me"] });
       reset();
       onClose();

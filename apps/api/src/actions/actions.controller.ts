@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
+import type { AuthenticatedRequest } from '../common/request-context';
 import { ActionsService } from './actions.service';
 import { toActionResponseDto } from './dto/action-response.dto';
 import { RedeemActionCodeDto } from './dto/redeem-action-code.dto';
@@ -104,7 +105,7 @@ export class ActionsController {
   })
   async redeemByCode(
     @Body() redeemActionCodeDto: RedeemActionCodeDto,
-    @Req() request: { user: { id: string } },
+    @Req() request: AuthenticatedRequest,
   ) {
     const redeemed = await this.actionsService.redeemByCode(
       redeemActionCodeDto.code,
@@ -171,10 +172,7 @@ export class ActionsController {
       error: 'Forbidden',
     },
   })
-  async redeem(
-    @Param('id') id: string,
-    @Req() request: { user: { id: string } },
-  ) {
+  async redeem(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
     const redeemed = await this.actionsService.redeem(id, request.user.id);
 
     return {

@@ -4,7 +4,13 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { AuditService } from '../../src/audit/audit.service';
+import { AdminReconciliationRepository } from '../../src/admin/admin-reconciliation.repository';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  assertDisposableTestDatabase,
+  truncateDisposableTestDatabase,
+} from './e2e-database-cleanup';
 
 export type AuthSession = { cookie: string; csrfToken: string };
 
@@ -16,10 +22,26 @@ export class AdminE2eHarness {
     readonly prisma: PrismaService,
   ) {}
 
-  static async create(): Promise<AdminE2eHarness> {
-    const moduleFixture = await Test.createTestingModule({
+  static async create(options?: {
+    auditService?: Pick<AuditService, 'record'>;
+    reconciliationRepository?: Pick<
+      AdminReconciliationRepository,
+      'withTransaction' | 'findByIdempotencyKey'
+    >;
+  }): Promise<AdminE2eHarness> {
+    assertDisposableTestDatabase();
+    const builder = Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    });
+    if (options?.auditService) {
+      builder.overrideProvider(AuditService).useValue(options.auditService);
+    }
+    if (options?.reconciliationRepository) {
+      builder
+        .overrideProvider(AdminReconciliationRepository)
+        .useValue(options.reconciliationRepository);
+    }
+    const moduleFixture = await builder.compile();
     const app: INestApplication<App> = moduleFixture.createNestApplication();
     app.use(cookieParser());
     app.useGlobalPipes(
@@ -30,7 +52,9 @@ export class AdminE2eHarness {
       }),
     );
     await app.init();
-    return new AdminE2eHarness(app, moduleFixture.get(PrismaService));
+    const harness = new AdminE2eHarness(app, moduleFixture.get(PrismaService));
+    await truncateDisposableTestDatabase(harness.prisma);
+    return harness;
   }
 
   async login(cpf: string, email: string): Promise<AuthSession> {
@@ -74,6 +98,10 @@ export class AdminE2eHarness {
   }
 
   async close(): Promise<void> {
-    await this.app.close();
+    try {
+      await truncateDisposableTestDatabase(this.prisma);
+    } finally {
+      await this.app.close();
+    }
   }
 }

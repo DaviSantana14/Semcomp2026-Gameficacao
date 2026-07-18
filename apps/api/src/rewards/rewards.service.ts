@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,19 +21,42 @@ import {
 } from './dto/admin-rewards-query.dto';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { UpdateRewardDto } from './dto/update-reward.dto';
+import { RedemptionTransitionDto } from './dto/redemption-transition.dto';
+import { AdminOperationContext } from '../common/request-context';
+import { AuditService } from '../audit/audit.service';
+import {
+  AuditActorType,
+  AuditEntityType,
+  AuditOperation,
+} from '../audit/audit.repository';
 
 @Injectable()
 export class RewardsService {
-  constructor(private readonly repository: RewardsRepository) {}
+  constructor(
+    private readonly repository: RewardsRepository,
+    private readonly audit: AuditService,
+  ) {}
 
-  create(dto: CreateRewardDto) {
-    return this.repository.createReward({
-      name: dto.name.trim(),
-      description: normalizeOptionalText(dto.description),
-      costInPoints: dto.costInPoints,
-      stock: dto.stock,
-      imageUrl: normalizeOptionalText(dto.imageUrl),
-      isActive: dto.isActive,
+  create(dto: CreateRewardDto, context: AdminOperationContext) {
+    return this.repository.withTransaction(async (repository) => {
+      const reward = await repository.createReward({
+        name: dto.name.trim(),
+        description: normalizeOptionalText(dto.description),
+        costInPoints: dto.costInPoints,
+        stock: dto.stock,
+        imageUrl: normalizeOptionalText(dto.imageUrl),
+        isActive: dto.isActive,
+      });
+      await this.audit.record(repository.auditWriter!, {
+        actor: { actorType: AuditActorType.ADMIN, ...context },
+        operation: AuditOperation.REWARD_CREATED,
+        entityType: AuditEntityType.REWARD,
+        entityId: reward.id,
+        reason: dto.reason,
+        before: null,
+        after: toRewardAuditSnapshot(reward),
+      });
+      return reward;
     });
   }
 
@@ -95,11 +119,45 @@ export class RewardsService {
     return this.repository.findRewardById(id);
   }
 
-  async update(id: string, dto: UpdateRewardDto) {
-    if (!(await this.repository.findRewardById(id))) {
-      throw new NotFoundException('Recompensa não encontrada.');
-    }
-    return this.repository.updateReward(id, normalizeRewardInput(dto));
+  update(id: string, dto: UpdateRewardDto, context: AdminOperationContext) {
+    return this.repository.withTransaction(async (repository) => {
+      const current = await repository.lockRewardState(id);
+      if (!current) throw new NotFoundException('Recompensa não encontrada.');
+      const candidate = normalizeRewardInput(dto);
+      const input = Object.fromEntries(
+        Object.entries(candidate).filter(
+          ([key, value]) =>
+            value !== undefined &&
+            current[key as keyof typeof current] !== value,
+        ),
+      ) as RewardWriteInput;
+      const changed = Object.keys(input);
+      if (!changed.length) return current;
+      const updated = await repository.updateReward(id, input);
+      const statusOnly = changed.length === 1 && changed[0] === 'isActive';
+      if (statusOnly) {
+        await this.audit.record(repository.auditWriter!, {
+          actor: { actorType: AuditActorType.ADMIN, ...context },
+          operation: AuditOperation.REWARD_STATUS_CHANGED,
+          entityType: AuditEntityType.REWARD,
+          entityId: id,
+          reason: dto.reason,
+          before: { isActive: current.isActive },
+          after: { isActive: updated.isActive },
+        });
+      } else {
+        await this.audit.record(repository.auditWriter!, {
+          actor: { actorType: AuditActorType.ADMIN, ...context },
+          operation: AuditOperation.REWARD_UPDATED,
+          entityType: AuditEntityType.REWARD,
+          entityId: id,
+          reason: dto.reason,
+          before: toRewardAuditSnapshot(current),
+          after: toRewardAuditSnapshot(updated),
+        });
+      }
+      return updated;
+    });
   }
 
   redeem(rewardId: string, userId: string) {
@@ -133,6 +191,7 @@ export class RewardsService {
         points: -reward.costInPoints,
         kind: 'DEBIT',
         description: `Resgate de recompensa: ${reward.name}`,
+        rewardRedemptionId: redemption.id,
       });
       return redemption;
     });
@@ -142,43 +201,116 @@ export class RewardsService {
     return this.repository.findPendingRedemptions();
   }
 
-  deliverRedemption(redemptionId: string) {
+  deliverRedemption(
+    redemptionId: string,
+    dto: RedemptionTransitionDto,
+    context: AdminOperationContext,
+  ) {
     return this.repository.withTransaction(async (repository) => {
-      await this.assertPending(repository, redemptionId);
-      await this.transition(repository, redemptionId, 'DELIVERED');
+      const redemption = this.assertPending(
+        await repository.lockRedemptionState(redemptionId),
+      );
+      const transitionedAt = new Date();
+      await this.transition(
+        repository,
+        redemptionId,
+        'DELIVERED',
+        context.actorAdminId,
+        transitionedAt,
+      );
       const delivered = await repository.findRedemptionById(redemptionId);
       if (!delivered) {
         throw new NotFoundException('Resgate de recompensa não encontrado.');
       }
+      await this.audit.record(repository.auditWriter!, {
+        actor: { actorType: AuditActorType.ADMIN, ...context },
+        operation: AuditOperation.REWARD_REDEMPTION_DELIVERED,
+        entityType: AuditEntityType.REWARD_REDEMPTION,
+        entityId: redemptionId,
+        participantId: redemption.userId,
+        reason: dto.reason,
+        before: {
+          id: redemptionId,
+          status: redemption.status,
+          deliveredAt: redemption.deliveredAt ?? null,
+          deliveredByAdminId: redemption.deliveredByAdminId ?? null,
+        },
+        after: {
+          id: redemptionId,
+          status: delivered.status,
+          deliveredAt: delivered.deliveredAt!,
+          deliveredByAdminId: delivered.deliveredByAdminId!,
+        },
+        metadata: { rewardRedemptionId: redemptionId },
+      });
       return delivered;
     });
   }
 
-  cancelRedemption(redemptionId: string) {
+  cancelRedemption(
+    redemptionId: string,
+    dto: RedemptionTransitionDto,
+    context: AdminOperationContext,
+  ) {
     return this.repository.withTransaction(async (repository) => {
-      const redemption = await this.assertPending(repository, redemptionId);
-      await this.transition(repository, redemptionId, 'CANCELLED');
-      await repository.creditUserPoints(
+      const redemption = this.assertPending(
+        await repository.lockCancellationState(redemptionId),
+      );
+      const transitionedAt = new Date();
+      await this.transition(
+        repository,
+        redemptionId,
+        'CANCELLED',
+        context.actorAdminId,
+        transitionedAt,
+      );
+      const user = await repository.creditUserPoints(
         redemption.userId,
         redemption.pointsSpent,
       );
-      await repository.incrementRewardStock(redemption.rewardId);
-      await repository.createRewardPointEvent({
+      const reward = await repository.incrementRewardStock(redemption.rewardId);
+      const refund = await repository.createRewardPointEvent({
         userId: redemption.userId,
         points: redemption.pointsSpent,
         kind: 'CREDIT',
         description: `Cancelamento de recompensa: ${redemption.reward.name}`,
+        rewardRedemptionId: redemptionId,
       });
       const cancelled = await repository.findRedemptionById(redemptionId);
       if (!cancelled) {
         throw new NotFoundException('Resgate de recompensa não encontrado.');
       }
+      await this.audit.record(repository.auditWriter!, {
+        actor: { actorType: AuditActorType.ADMIN, ...context },
+        operation: AuditOperation.REWARD_REDEMPTION_CANCELLED,
+        entityType: AuditEntityType.REWARD_REDEMPTION,
+        entityId: redemptionId,
+        participantId: redemption.userId,
+        reason: dto.reason,
+        before: {
+          id: redemptionId,
+          status: redemption.status,
+          stock: redemption.reward.stock,
+          points: redemption.user.points,
+        },
+        after: {
+          id: redemptionId,
+          status: cancelled.status,
+          stock: reward.stock,
+          points: user.points,
+          cancelledAt: cancelled.cancelledAt!,
+          cancelledByAdminId: cancelled.cancelledByAdminId!,
+          pointEventId: refund.id,
+        },
+        metadata: { rewardRedemptionId: redemptionId, pointEventId: refund.id },
+      });
       return cancelled;
     });
   }
 
-  private async assertPending(repository: RewardsRepository, id: string) {
-    const redemption = await repository.findRedemptionById(id);
+  private assertPending<T extends { status: RedemptionState }>(
+    redemption: T | null,
+  ): T {
     if (!redemption) {
       throw new NotFoundException('Resgate de recompensa não encontrado.');
     }
@@ -194,9 +326,20 @@ export class RewardsService {
     repository: RewardsRepository,
     id: string,
     status: RedemptionState,
+    adminId: string,
+    transitionedAt: Date,
   ) {
-    if ((await repository.transitionRedemption(id, status)).count === 0) {
-      throw new BadRequestException(
+    if (
+      (
+        await repository.transitionRedemption(
+          id,
+          status,
+          adminId,
+          transitionedAt,
+        )
+      ).count === 0
+    ) {
+      throw new ConflictException(
         'Apenas resgates pendentes podem mudar de status.',
       );
     }
@@ -220,6 +363,24 @@ function normalizeRewardInput(input: UpdateRewardDto): RewardWriteInput {
     stock: input.stock,
     imageUrl: normalizeNullableText(input.imageUrl),
     isActive: input.isActive,
+  };
+}
+
+function toRewardAuditSnapshot(reward: {
+  id: string;
+  name: string;
+  description: string | null;
+  costInPoints: number;
+  stock: number;
+  isActive: boolean;
+}) {
+  return {
+    id: reward.id,
+    name: reward.name,
+    description: reward.description,
+    costInPoints: reward.costInPoints,
+    stock: reward.stock,
+    isActive: reward.isActive,
   };
 }
 

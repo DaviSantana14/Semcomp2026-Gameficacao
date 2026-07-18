@@ -8,13 +8,16 @@ import {
 } from '@prisma/client';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
+import { AuditService } from '../../audit/audit.service';
 
 describe(AdminParticipantsService.name, () => {
+  const queryRaw = jest.fn();
   const prisma = {
     user: {
       count: jest.fn(),
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     pointEvent: { count: jest.fn(), findMany: jest.fn() },
@@ -24,10 +27,22 @@ describe(AdminParticipantsService.name, () => {
       findMany: jest.fn(),
       groupBy: jest.fn(),
     },
+    $queryRaw: queryRaw,
+    $transaction: jest.fn(),
   };
   let service: AdminParticipantsService;
   beforeEach(async () => {
     jest.clearAllMocks();
+    prisma.$transaction.mockImplementation(
+      (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+    );
+    queryRaw.mockImplementation(async () => {
+      const result = (await prisma.user.findFirst()) as {
+        id: string;
+        isActive: boolean;
+      } | null;
+      return result ? [result] : [];
+    });
     prisma.pointEvent.count.mockResolvedValue(0);
     prisma.claimCode.count.mockResolvedValue(0);
     prisma.rewardRedemption.groupBy.mockResolvedValue([]);
@@ -38,6 +53,7 @@ describe(AdminParticipantsService.name, () => {
           provide: AdminParticipantsRepository,
           useValue: new AdminParticipantsRepository(prisma as never),
         },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);
@@ -169,44 +185,53 @@ describe(AdminParticipantsService.name, () => {
   });
 
   it('returns 404 when status update targets an admin or missing id', async () => {
-    prisma.user.updateMany.mockResolvedValue({ count: 0 });
+    prisma.user.findFirst.mockResolvedValue(null);
     await expect(
-      service.updateStatus('admin', { isActive: false }),
+      service.updateStatus(
+        'admin',
+        { isActive: false, reason: 'Desativacao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.user.updateMany).toHaveBeenCalledWith({
-      where: { id: 'admin', role: UserRole.PARTICIPANT },
-      data: { isActive: false },
-    });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('updates participant status and returns the refreshed participant', async () => {
     const now = new Date('2026-07-11T12:00:00.000Z');
-    prisma.user.updateMany.mockResolvedValue({ count: 1 });
-    prisma.user.findFirst.mockResolvedValue({
-      id: 'p1',
-      name: 'Ana',
-      cpf: '1',
-      email: 'ana@example.com',
-      points: 5,
-      xp: 10,
-      level: 2,
-      isActive: false,
-      createdAt: now,
-      updatedAt: now,
-      _count: { pointEvents: 2, rewardRedemptions: 1 },
-    });
+    prisma.user.update.mockResolvedValue({ id: 'p1', isActive: false });
+    prisma.user.findFirst
+      .mockResolvedValueOnce({ id: 'p1', isActive: true })
+      .mockResolvedValueOnce({
+        id: 'p1',
+        name: 'Ana',
+        cpf: '1',
+        email: 'ana@example.com',
+        points: 5,
+        xp: 10,
+        level: 2,
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+        _count: { pointEvents: 2, rewardRedemptions: 1 },
+      });
 
     await expect(
-      service.updateStatus('p1', { isActive: false }),
+      service.updateStatus(
+        'p1',
+        { isActive: false, reason: 'Desativacao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
     ).resolves.toMatchObject({
       id: 'p1',
       isActive: false,
       actionRedemptionsCount: 2,
       pendingRewardRedemptionsCount: 1,
     });
-    expect(prisma.user.updateMany).toHaveBeenCalledWith({
-      where: { id: 'p1', role: UserRole.PARTICIPANT },
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
       data: { isActive: false },
+      select: { id: true, isActive: true },
     });
   });
 
@@ -254,19 +279,24 @@ describe(AdminParticipantsService.name, () => {
   });
 
   it('paginates point events, filters enums and returns a summarized claim code', async () => {
+    const createdAt = new Date('2026-07-12T12:00:00.000Z');
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
     prisma.pointEvent.count.mockResolvedValue(1);
     prisma.pointEvent.findMany.mockResolvedValue([
       {
         id: 'e1',
         points: 30,
+        xpDelta: 9,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
         redemptionMethod: 'CLAIM_CODE',
         description: null,
-        createdAt: new Date(),
+        createdAt,
         action: { id: 'a1', name: 'Check-in' },
         claimCode: { id: 'claim-1', code: 'ABC123' },
+        auditEventId: 'audit-1',
+        reversedEventId: null,
+        reversal: { id: 'reversal-1' },
       },
     ]);
     const result = await service.findPointEvents('p1', {
@@ -275,11 +305,24 @@ describe(AdminParticipantsService.name, () => {
       source: 'action_redeem',
       kind: 'credit',
     });
-    expect(result.items[0]).toMatchObject({
-      xpDelta: 30,
+    expect(result.items[0]).toEqual({
+      id: 'e1',
+      points: 30,
+      xpDelta: 9,
+      kind: PointEventKind.CREDIT,
+      source: PointEventSource.ACTION_REDEEM,
+      redemptionMethod: 'CLAIM_CODE',
+      description: null,
+      action: { id: 'a1', name: 'Check-in' },
       origin: 'UNIQUE_CODE',
       claimCode: { id: 'claim-1', code: 'ABC123' },
+      isAudited: true,
+      reversalOfPointEventId: null,
+      reversalPointEventId: 'reversal-1',
+      createdAt: createdAt.toISOString(),
     });
+    expect(result.items[0]).not.toHaveProperty('reversedEventId');
+    expect(result.items[0]).not.toHaveProperty('reversal');
     expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -296,25 +339,30 @@ describe(AdminParticipantsService.name, () => {
     );
   });
 
-  it('returns stable origin enums independently of legacy labels', async () => {
+  it('keeps unknown legacy origin explicit and exposes missing audit honestly', async () => {
     const createdAt = new Date('2026-07-12T12:00:00.000Z');
     prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
-    prisma.pointEvent.count.mockResolvedValue(2);
+    prisma.pointEvent.count.mockResolvedValue(3);
     prisma.pointEvent.findMany.mockResolvedValue([
       {
         id: 'e-empty',
         points: 10,
+        xpDelta: 3,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ACTION_REDEEM,
-        redemptionMethod: null,
+        redemptionMethod: 'LEGACY_UNKNOWN',
         description: '  Descrição preservada  ',
         createdAt,
         action: { id: 'a1', name: '' },
         claimCode: null,
+        auditEventId: null,
+        reversedEventId: null,
+        reversal: null,
       },
       {
         id: 'e-whitespace',
         points: 5,
+        xpDelta: 11,
         kind: PointEventKind.CREDIT,
         source: PointEventSource.ADMIN_GRANT,
         redemptionMethod: null,
@@ -322,6 +370,24 @@ describe(AdminParticipantsService.name, () => {
         createdAt,
         action: { id: 'a2', name: ' \t ' },
         claimCode: null,
+        auditEventId: 'audit-admin',
+        reversedEventId: null,
+        reversal: null,
+      },
+      {
+        id: 'e-unknown-source',
+        points: 2,
+        xpDelta: 1,
+        kind: PointEventKind.CREDIT,
+        source: 'LEGACY_UNKNOWN',
+        redemptionMethod: null,
+        description: 'Importação histórica',
+        createdAt,
+        action: null,
+        claimCode: null,
+        auditEventId: null,
+        reversedEventId: null,
+        reversal: null,
       },
     ]);
 
@@ -333,13 +399,54 @@ describe(AdminParticipantsService.name, () => {
     expect(result.items).toEqual([
       expect.objectContaining({
         id: 'e-empty',
-        origin: 'DIRECT_ACTION',
+        xpDelta: 3,
+        origin: 'LEGACY_UNKNOWN',
+        isAudited: false,
       }),
       expect.objectContaining({
         id: 'e-whitespace',
+        xpDelta: 11,
         origin: 'ADMIN',
+        isAudited: true,
+      }),
+      expect.objectContaining({
+        id: 'e-unknown-source',
+        origin: 'LEGACY_UNKNOWN',
+        isAudited: false,
       }),
     ]);
+  });
+
+  it('identifies reconciliation compensation separately in participant history', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'p1' });
+    prisma.pointEvent.count.mockResolvedValue(1);
+    prisma.pointEvent.findMany.mockResolvedValue([
+      {
+        id: 'compensation-1',
+        points: 4,
+        xpDelta: 2,
+        kind: PointEventKind.CREDIT,
+        source: PointEventSource.ADMIN_ADJUST,
+        redemptionMethod: null,
+        description: 'Correcao operacional confirmada',
+        createdAt: new Date('2026-07-14T12:00:00.000Z'),
+        action: null,
+        claimCode: null,
+        auditEventId: 'audit-1',
+        auditEvent: { operation: 'RECONCILIATION_ADJUSTMENT_CONFIRMED' },
+        reversedEventId: null,
+        reversal: null,
+      },
+    ]);
+
+    const result = await service.findPointEvents('p1', { page: 1, limit: 20 });
+
+    expect(result.items[0]).toMatchObject({
+      source: PointEventSource.ADMIN_ADJUST,
+      origin: 'RECONCILIATION_COMPENSATION',
+      isAudited: true,
+    });
+    expect(result.items[0]).not.toHaveProperty('auditEvent');
   });
 
   it.each(['admin', 'missing'])(

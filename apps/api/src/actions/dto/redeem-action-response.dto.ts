@@ -18,6 +18,11 @@ export class RedeemActionResponseDto {
   awardedPoints: number;
 
   @ApiProperty({
+    example: 10,
+  })
+  awardedXp: number;
+
+  @ApiProperty({
     example: 120,
   })
   currentPoints: number;

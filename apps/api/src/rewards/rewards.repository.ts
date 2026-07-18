@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PointEventSource, Prisma, RedemptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuditRepository,
+  TransactionAuditWriter,
+} from '../audit/audit.repository';
 
 const rewardSelect = {
   id: true,
@@ -15,14 +19,56 @@ const rewardSelect = {
 } as const;
 
 const redemptionInclude = {
-  user: { select: { id: true, name: true, email: true } },
-  reward: true,
+  user: { select: { id: true, name: true, email: true, points: true } },
+  reward: { select: rewardSelect },
+  pointEvents: {
+    select: {
+      id: true,
+      points: true,
+      xpDelta: true,
+      kind: true,
+      source: true,
+      rewardRedemptionId: true,
+      description: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
 } as const;
 
 type RewardsDatabase = Pick<
   Prisma.TransactionClient,
-  'reward' | 'rewardRedemption' | 'pointEvent' | 'user'
+  'reward' | 'rewardRedemption' | 'pointEvent' | 'user' | '$queryRaw'
 >;
+
+export type LockedRedemptionState = {
+  id: string;
+  userId: string;
+  rewardId: string;
+  pointsSpent: number;
+  status: RedemptionState;
+  deliveredAt: Date | null;
+  deliveredByAdminId: string | null;
+  cancelledAt: Date | null;
+  cancelledByAdminId: string | null;
+};
+
+export type LockedCancellationState = LockedRedemptionState & {
+  user: { id: string; points: number };
+  reward: { id: string; name: string; stock: number };
+};
+
+export type LockedRewardState = {
+  id: string;
+  name: string;
+  description: string | null;
+  costInPoints: number;
+  stock: number;
+  isActive: boolean;
+  imageUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export interface RewardWriteInput {
   name?: string;
@@ -53,15 +99,24 @@ export type RedemptionState = 'PENDING' | 'DELIVERED' | 'CANCELLED';
 @Injectable()
 export class RewardsRepository {
   private client: RewardsDatabase;
+  auditWriter?: TransactionAuditWriter;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private auditRepository?: AuditRepository,
+  ) {
     this.client = prisma;
   }
 
   withTransaction<T>(
-    callback: (repository: RewardsRepository) => Promise<T>,
+    callback: (
+      repository: RewardsRepository,
+      transaction: Prisma.TransactionClient,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+    return this.prisma.$transaction((tx) =>
+      callback(this.transactional(tx), tx),
+    );
   }
 
   createReward(
@@ -154,8 +209,13 @@ export class RewardsRepository {
           status: true,
           createdAt: true,
           updatedAt: true,
+          deliveredAt: true,
+          deliveredByAdminId: true,
+          cancelledAt: true,
+          cancelledByAdminId: true,
           user: { select: { id: true, name: true, email: true } },
           reward: { select: rewardSelect },
+          pointEvents: redemptionInclude.pointEvents,
         },
       }),
     ]);
@@ -167,6 +227,17 @@ export class RewardsRepository {
       where: { id },
       select: rewardSelect,
     });
+  }
+
+  async lockRewardState(id: string): Promise<LockedRewardState | null> {
+    const rows = await this.client.$queryRaw<LockedRewardState[]>`
+      SELECT "id", "name", "description", "costInPoints", "stock",
+             "isActive", "imageUrl", "createdAt", "updatedAt"
+      FROM "Reward"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `;
+    return rows[0] ?? null;
   }
 
   updateReward(id: string, input: RewardWriteInput) {
@@ -217,6 +288,7 @@ export class RewardsRepository {
     points: number;
     kind: 'CREDIT' | 'DEBIT';
     description: string;
+    rewardRedemptionId: string;
   }) {
     return this.client.pointEvent.create({
       data: {
@@ -241,10 +313,59 @@ export class RewardsRepository {
     });
   }
 
-  transitionRedemption(id: string, status: RedemptionState) {
+  async lockRedemptionState(id: string) {
+    const rows = await this.client.$queryRaw<LockedRedemptionState[]>`
+      SELECT "id", "userId", "rewardId", "pointsSpent", "status",
+             "deliveredAt", "deliveredByAdminId", "cancelledAt",
+             "cancelledByAdminId"
+      FROM "RewardRedemption"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `;
+    return rows[0] ?? null;
+  }
+
+  async lockCancellationState(
+    id: string,
+  ): Promise<LockedCancellationState | null> {
+    const redemption = await this.lockRedemptionState(id);
+    if (!redemption) return null;
+
+    // Shared purchase/cancellation rows are always locked User -> Reward.
+    const users = await this.client.$queryRaw<
+      Array<{ id: string; points: number }>
+    >`
+      SELECT "id", "points"
+      FROM "User"
+      WHERE "id" = ${redemption.userId}
+      FOR UPDATE
+    `;
+    const rewards = await this.client.$queryRaw<
+      Array<{ id: string; name: string; stock: number }>
+    >`
+      SELECT "id", "name", "stock"
+      FROM "Reward"
+      WHERE "id" = ${redemption.rewardId}
+      FOR UPDATE
+    `;
+    if (!users[0] || !rewards[0]) return null;
+    return { ...redemption, user: users[0], reward: rewards[0] };
+  }
+
+  transitionRedemption(
+    id: string,
+    status: RedemptionState,
+    adminId: string,
+    transitionedAt: Date,
+  ) {
     return this.client.rewardRedemption.updateMany({
       where: { id, status: RedemptionStatus.PENDING },
-      data: { status },
+      data: {
+        status,
+        ...(status === 'DELIVERED'
+          ? { deliveredAt: transitionedAt, deliveredByAdminId: adminId }
+          : { cancelledAt: transitionedAt, cancelledByAdminId: adminId }),
+      },
     });
   }
 
@@ -253,7 +374,9 @@ export class RewardsRepository {
       RewardsRepository.prototype,
     ) as RewardsRepository;
     repository.prisma = this.prisma;
+    repository.auditRepository = this.auditRepository;
     repository.client = tx;
+    repository.auditWriter = this.auditRepository?.bindTransaction(tx);
     return repository;
   }
 }

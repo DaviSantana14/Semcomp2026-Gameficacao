@@ -8,6 +8,9 @@ import { AdminRewardsController } from '../admin-rewards.controller';
 import { AdminRewardsQueryDto } from '../dto/admin-rewards-query.dto';
 import { AdminRedemptionsQueryDto } from '../dto/admin-redemptions-query.dto';
 import { AdminRewardsPageResponseDto } from '../dto/admin-reward-response.dto';
+import { RedemptionTransitionDto } from '../dto/redemption-transition.dto';
+import { toRewardRedemptionResponseDto } from '../dto/reward-redemption-response.dto';
+import { HttpErrorResponseDto } from '../../common/dto/http-error-response.dto';
 
 describe('AdminRewardsController', () => {
   it('guards the whole controller as admin', () => {
@@ -46,24 +49,128 @@ describe('AdminRewardsController', () => {
     };
     const controller = new AdminRewardsController(service as never);
     const createDto = {
+      reason: 'Inclusao aprovada pela coordenação',
       name: 'Camiseta',
       costInPoints: 25,
       stock: 5,
       isActive: true,
     };
-    const updateDto = { stock: 4 };
+    const updateDto = {
+      reason: 'Reposicao aprovada pela coordenação',
+      stock: 4,
+    };
+    const transitionDto = { reason: 'Atendimento confirmado pela coordenação' };
+    const request = { user: { id: 'admin-1' }, requestId: 'request-1' };
 
-    await controller.create(createDto);
-    await controller.update('reward-1', updateDto);
+    await controller.create(createDto, request as never);
+    await controller.update('reward-1', updateDto, request as never);
     await controller.findPendingRedemptions();
-    await controller.deliverRedemption('redemption-1');
-    await controller.cancelRedemption('redemption-1');
+    await controller.deliverRedemption(
+      'redemption-1',
+      transitionDto,
+      request as never,
+    );
+    await controller.cancelRedemption(
+      'redemption-1',
+      transitionDto,
+      request as never,
+    );
 
-    expect(service.create).toHaveBeenCalledWith(createDto);
-    expect(service.update).toHaveBeenCalledWith('reward-1', updateDto);
+    const context = { actorAdminId: 'admin-1', requestId: 'request-1' };
+    expect(service.create).toHaveBeenCalledWith(createDto, context);
+    expect(service.update).toHaveBeenCalledWith('reward-1', updateDto, context);
     expect(service.findPendingRedemptions).toHaveBeenCalledWith();
-    expect(service.deliverRedemption).toHaveBeenCalledWith('redemption-1');
-    expect(service.cancelRedemption).toHaveBeenCalledWith('redemption-1');
+    expect(service.deliverRedemption).toHaveBeenCalledWith(
+      'redemption-1',
+      transitionDto,
+      context,
+    );
+    expect(service.cancelRedemption).toHaveBeenCalledWith(
+      'redemption-1',
+      transitionDto,
+      context,
+    );
+  });
+
+  it.each(['deliverRedemption', 'cancelRedemption'] as const)(
+    'documents conflict responses for %s races',
+    (method) => {
+      const handler = Object.getOwnPropertyDescriptor(
+        AdminRewardsController.prototype,
+        method,
+      )?.value as object;
+      const responses = Reflect.getMetadata(
+        DECORATORS.API_RESPONSE,
+        handler,
+      ) as Record<number, { type?: unknown }>;
+
+      expect(responses[409].type).toBe(HttpErrorResponseDto);
+    },
+  );
+});
+
+describe('RedemptionTransitionDto', () => {
+  it('rejects a short reason', async () => {
+    expect(
+      await validate(
+        plainToInstance(RedemptionTransitionDto, { reason: 'curto' }),
+      ),
+    ).not.toHaveLength(0);
+  });
+});
+
+describe('RewardRedemptionResponseDto privacy', () => {
+  it('copies associated point events through an explicit allowlist', () => {
+    const response = toRewardRedemptionResponseDto({
+      id: 'redemption-1',
+      userId: 'user-1',
+      rewardId: 'reward-1',
+      pointsSpent: 50,
+      status: 'PENDING',
+      deliveredAt: null,
+      deliveredByAdminId: null,
+      cancelledAt: null,
+      cancelledByAdminId: null,
+      pointEvents: [
+        {
+          id: 'event-1',
+          points: -50,
+          xpDelta: 0,
+          kind: 'DEBIT',
+          source: 'REWARD_REDEMPTION',
+          rewardRedemptionId: 'redemption-1',
+          description: 'Resgate',
+          createdAt: new Date('2026-07-14T12:00:00.000Z'),
+          passwordHash: 'must-not-leak',
+        } as never,
+      ],
+      user: { id: 'user-1', name: 'Ada', email: 'ada@example.test' },
+      reward: {
+        id: 'reward-1',
+        name: 'Camiseta',
+        description: null,
+        costInPoints: 50,
+        stock: 1,
+        isActive: true,
+        imageUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    expect(response.pointEvents[0]).not.toHaveProperty('passwordHash');
+    expect(Object.keys(response.pointEvents[0] ?? {}).sort()).toEqual([
+      'createdAt',
+      'description',
+      'id',
+      'kind',
+      'points',
+      'rewardRedemptionId',
+      'source',
+      'xpDelta',
+    ]);
   });
 });
 

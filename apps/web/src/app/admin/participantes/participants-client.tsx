@@ -18,6 +18,7 @@ import type { AdminParticipant } from "@/features/participants/participants.type
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
+import { AdminReasonDialog } from "../_components/admin-reason-dialog";
 
 const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
 const number = new Intl.NumberFormat("pt-BR");
@@ -32,6 +33,9 @@ export function ParticipantsClient() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+  const [statusIntent, setStatusIntent] = useState<AdminParticipant | null>(
+    null,
+  );
   const filters = {
     page,
     limit: LIMIT,
@@ -44,8 +48,16 @@ export function ParticipantsClient() {
     retry: false,
   });
   const statusMutation = useMutation({
-    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      return updateParticipantStatus(id, { isActive });
+    mutationFn: async ({
+      id,
+      isActive,
+      reason,
+    }: {
+      id: string;
+      isActive: boolean;
+      reason: string;
+    }) => {
+      return updateParticipantStatus(id, { isActive, reason });
     },
     onSuccess: (participant) => {
       toast.success(
@@ -80,27 +92,22 @@ export function ParticipantsClient() {
     setPage(1);
   }
 
-  async function toggle(participant: AdminParticipant) {
-    if (
-      !participant.isActive ||
-      window.confirm(
-        `Desativar ${participant.name}? A sessão dessa pessoa deixará de funcionar imediatamente.`,
-      )
-    ) {
-      if (pendingIds.has(participant.id)) return;
-      setPendingIds((current) => new Set(current).add(participant.id));
-      try {
-        await statusMutation.mutateAsync({
-          id: participant.id,
-          isActive: !participant.isActive,
-        });
-      } finally {
-        setPendingIds((current) => {
-          const next = new Set(current);
-          next.delete(participant.id);
-          return next;
-        });
-      }
+  async function toggle(participant: AdminParticipant, reason: string) {
+    if (pendingIds.has(participant.id)) return;
+    setPendingIds((current) => new Set(current).add(participant.id));
+    try {
+      await statusMutation.mutateAsync({
+        id: participant.id,
+        isActive: !participant.isActive,
+        reason,
+      });
+      setStatusIntent(null);
+    } finally {
+      setPendingIds((current) => {
+        const next = new Set(current);
+        next.delete(participant.id);
+        return next;
+      });
     }
   }
   const data = participantsQuery.data;
@@ -193,7 +200,7 @@ export function ParticipantsClient() {
                 key={participant.id}
                 participant={participant}
                 pending={pendingIds.has(participant.id)}
-                toggle={() => void toggle(participant)}
+                toggle={() => setStatusIntent(participant)}
               />
             ))}
           </div>
@@ -229,6 +236,22 @@ export function ParticipantsClient() {
           ) : null}
         </div>
       )}
+      {statusIntent ? (
+        <AdminReasonDialog
+          confirmLabel={
+            statusIntent.isActive
+              ? "Confirmar desativação"
+              : "Confirmar reativação"
+          }
+          currentState={statusIntent.isActive ? "Ativo" : "Inativo"}
+          description={`Participante ${statusIntent.name}`}
+          intendedState={statusIntent.isActive ? "Inativo" : "Ativo"}
+          onClose={() => setStatusIntent(null)}
+          onSubmit={(reason) => toggle(statusIntent, reason)}
+          operationKey={`${statusIntent.id}:${String(!statusIntent.isActive)}`}
+          title="Alterar status do participante"
+        />
+      ) : null}
     </div>
   );
 }

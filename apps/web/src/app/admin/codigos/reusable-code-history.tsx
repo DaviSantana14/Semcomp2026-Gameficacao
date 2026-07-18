@@ -18,6 +18,7 @@ import type { AdminReusableCode } from "@/features/actions/actions.types";
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
+import { AdminReasonDialog } from "../_components/admin-reason-dialog";
 const status = {
   ACTIVE: ["Ativo", "active"],
   DISABLED: ["Desativado", "inactive"],
@@ -29,6 +30,9 @@ export function ReusableCodeHistory() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AdminReusableCode | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [toggleIntent, setToggleIntent] = useState<AdminReusableCode | null>(
+    null,
+  );
   const listRef = useRef<HTMLElement>(null);
   const usesTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const selectedOriginIdRef = useRef<string | null>(null);
@@ -40,11 +44,18 @@ export function ReusableCodeHistory() {
     placeholderData: keepPreviousData,
   });
   const toggle = useMutation({
-    mutationFn: async (c: AdminReusableCode) => {
-      return updateAction(c.id, { isCodeActive: !c.isCodeActive });
+    mutationFn: async ({
+      c,
+      reason,
+    }: {
+      c: AdminReusableCode;
+      reason: string;
+    }) => {
+      return updateAction(c.id, { isCodeActive: !c.isCodeActive, reason });
     },
-    onMutate: (c) => setPendingIds((ids) => new Set(ids).add(c.id)),
+    onMutate: ({ c }) => setPendingIds((ids) => new Set(ids).add(c.id)),
     onSuccess: async () => {
+      setToggleIntent(null);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
         qc.invalidateQueries({ queryKey: ["admin", "reusable-codes"] }),
@@ -55,7 +66,7 @@ export function ReusableCodeHistory() {
       toast.error(
         e instanceof ApiError ? e.message : "Não foi possível atualizar.",
       ),
-    onSettled: (_, __, c) =>
+    onSettled: (_, __, { c }) =>
       setPendingIds((ids) => {
         const next = new Set(ids);
         next.delete(c.id);
@@ -125,7 +136,7 @@ export function ReusableCodeHistory() {
                 <Button
                   disabled={pendingIds.has(c.id)}
                   variant="outline"
-                  onClick={() => toggle.mutate(c)}
+                  onClick={() => setToggleIntent(c)}
                 >
                   {pendingIds.has(c.id)
                     ? "Atualizando..."
@@ -155,6 +166,18 @@ export function ReusableCodeHistory() {
       )}
       {selected ? (
         <Redemptions code={selected} close={closeRedemptions} />
+      ) : null}
+      {toggleIntent ? (
+        <AdminReasonDialog
+          confirmLabel="Confirmar alteração"
+          currentState={toggleIntent.isCodeActive ? "Ativo" : "Desativado"}
+          description={`Código reutilizável ${toggleIntent.code} · ${toggleIntent.name}`}
+          intendedState={toggleIntent.isCodeActive ? "Desativado" : "Ativo"}
+          onClose={() => setToggleIntent(null)}
+          onSubmit={(reason) => toggle.mutateAsync({ c: toggleIntent, reason })}
+          operationKey={`${toggleIntent.id}:${String(!toggleIntent.isCodeActive)}`}
+          title="Alterar código reutilizável"
+        />
       ) : null}
     </section>
   );

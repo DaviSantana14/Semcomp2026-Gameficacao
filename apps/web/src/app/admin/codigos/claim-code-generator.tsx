@@ -19,10 +19,15 @@ import {
 } from "@/features/actions/actions.service";
 import type { GeneratedClaimCodesResponse } from "@/features/actions/actions.types";
 import { ApiError } from "@/lib/http/api-error";
+import {
+  isValidAdminReason,
+  normalizeAdminReason,
+} from "../_components/admin-reason-dialog";
 export function ClaimCodeGenerator() {
   const qc = useQueryClient();
   const [actionId, setActionId] = useState("");
   const [quantity, setQuantity] = useState(50);
+  const [reason, setReason] = useState("");
   const [last, setLast] = useState<GeneratedClaimCodesResponse | null>(null);
   const actions = useQuery({
     queryKey: ["admin", "actions", "generator"],
@@ -30,9 +35,14 @@ export function ClaimCodeGenerator() {
     retry: false,
   });
   const mutation = useMutation({
-    mutationFn: () => generateClaimCodes(actionId, { quantity }),
+    mutationFn: () =>
+      generateClaimCodes(actionId, {
+        quantity,
+        reason: normalizeAdminReason(reason),
+      }),
     onSuccess: async (batch) => {
       setLast(batch);
+      setReason("");
       toast.success(`${batch.quantity} códigos gerados.`);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
@@ -47,6 +57,7 @@ export function ClaimCodeGenerator() {
   });
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (!isValidAdminReason(reason) || mutation.isPending) return;
     mutation.mutate();
   }
   const text = last?.codes.join("\n") ?? "";
@@ -76,7 +87,7 @@ export function ClaimCodeGenerator() {
           </Button>
         ) : (
           <form
-            className="grid gap-4 md:grid-cols-[1fr_12rem_auto] md:items-end"
+            className="grid gap-4 md:grid-cols-[1fr_12rem]"
             onSubmit={submit}
           >
             <Label className="grid gap-2">
@@ -84,8 +95,13 @@ export function ClaimCodeGenerator() {
               <select
                 required
                 className="min-h-11 rounded-md border border-input bg-muted px-3"
+                disabled={mutation.isPending}
                 value={actionId}
-                onChange={(e) => setActionId(e.target.value)}
+                onChange={(e) => {
+                  const nextActionId = e.target.value;
+                  if (nextActionId !== actionId) setReason("");
+                  setActionId(nextActionId);
+                }}
               >
                 <option value="">Selecione</option>
                 {actions.data?.items.map((a) => (
@@ -100,12 +116,35 @@ export function ClaimCodeGenerator() {
               <Input
                 min={1}
                 max={500}
+                disabled={mutation.isPending}
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
               />
             </Label>
-            <Button disabled={mutation.isPending}>
+            <Label className="grid gap-2 md:col-span-2">
+              Motivo
+              <textarea
+                aria-label="Motivo"
+                aria-describedby="claim-code-reason-help"
+                className="min-h-24 rounded-md border border-input bg-muted px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={mutation.isPending}
+                maxLength={500}
+                onChange={(e) => setReason(e.target.value)}
+                value={reason}
+              />
+              <span
+                className="text-xs text-muted-foreground"
+                id="claim-code-reason-help"
+              >
+                Informe de 10 a 500 caracteres.
+              </span>
+            </Label>
+            <Button
+              className="w-fit md:col-span-2"
+              disabled={mutation.isPending || !isValidAdminReason(reason)}
+              type="submit"
+            >
               {mutation.isPending ? (
                 <LoaderCircle className="animate-spin" />
               ) : (

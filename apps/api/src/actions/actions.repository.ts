@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   ActionType,
   PointEventKind,
@@ -7,6 +7,10 @@ import {
 } from '@prisma/client';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuditRepository,
+  TransactionAuditWriter,
+} from '../audit/audit.repository';
 
 const actionSummarySelect = {
   id: true,
@@ -29,7 +33,7 @@ const userProgressSelect = {
 
 type ActionsDatabase = Pick<
   Prisma.TransactionClient,
-  'action' | 'claimCode' | 'pointEvent' | 'user'
+  '$queryRaw' | 'action' | 'claimCode' | 'pointEvent' | 'user'
 >;
 
 export type ActionSummary = Prisma.ActionGetPayload<{
@@ -67,15 +71,24 @@ export interface ReusableCodePageFilter {
 @Injectable()
 export class ActionsRepository {
   private client: ActionsDatabase;
+  auditWriter?: TransactionAuditWriter;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private auditRepository?: AuditRepository,
+  ) {
     this.client = prisma;
   }
 
   withTransaction<T>(
-    callback: (repository: ActionsRepository) => Promise<T>,
+    callback: (
+      repository: ActionsRepository,
+      transaction: Prisma.TransactionClient,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction((tx) => callback(this.transactional(tx)));
+    return this.prisma.$transaction((tx) =>
+      callback(this.transactional(tx), tx),
+    );
   }
 
   async createAction(input: ActionWriteInput) {
@@ -101,6 +114,18 @@ export class ActionsRepository {
       where: { id },
       select: actionSummarySelect,
     });
+  }
+
+  async lockActionById(id: string) {
+    const rows = await this.client.$queryRaw<ActionSummary[]>(Prisma.sql`
+      SELECT
+        "id", "name", "description", "type", "code", "points",
+        "isActive", "isCodeActive", "createdAt"
+      FROM "Action"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
   }
 
   findActionCodeState(id: string) {
@@ -277,6 +302,7 @@ export class ActionsRepository {
     userId: string;
     actionId: string;
     points: number;
+    xpDelta: number;
     redemptionMethod: 'DIRECT' | 'REUSABLE_CODE' | 'CLAIM_CODE';
     claimCodeId?: string;
     description: string;
@@ -295,10 +321,10 @@ export class ActionsRepository {
     }
   }
 
-  incrementUserProgress(userId: string, points: number) {
+  incrementUserProgress(userId: string, points: number, xpDelta: number) {
     return this.client.user.update({
       where: { id: userId },
-      data: { points: { increment: points }, xp: { increment: points } },
+      data: { points: { increment: points }, xp: { increment: xpDelta } },
       select: userProgressSelect,
     });
   }
@@ -308,7 +334,9 @@ export class ActionsRepository {
       ActionsRepository.prototype,
     ) as ActionsRepository;
     repository.prisma = this.prisma;
+    repository.auditRepository = this.auditRepository;
     repository.client = tx;
+    repository.auditWriter = this.auditRepository?.bindTransaction(tx);
     return repository;
   }
 

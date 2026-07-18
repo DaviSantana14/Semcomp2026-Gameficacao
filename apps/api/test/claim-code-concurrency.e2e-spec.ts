@@ -7,6 +7,10 @@ import { ActionsService } from '../src/actions/actions.service';
 import { AppModule } from '../src/app.module';
 import { generateClaimCode } from '../src/common/event-code';
 import { PrismaService } from '../src/prisma/prisma.service';
+import {
+  assertDisposableTestDatabase,
+  truncateDisposableTestDatabase,
+} from './support/e2e-database-cleanup';
 
 describe('Claim code transactional guarantees (e2e)', () => {
   const claimCodeCreationAttempts = 10;
@@ -18,6 +22,7 @@ describe('Claim code transactional guarantees (e2e)', () => {
   let createdClaimCodeIds: string[];
 
   beforeAll(async () => {
+    assertDisposableTestDatabase();
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -35,23 +40,7 @@ describe('Claim code transactional guarantees (e2e)', () => {
   });
 
   afterEach(async () => {
-    await prisma.pointEvent.deleteMany({
-      where: {
-        OR: [
-          { userId: { in: createdUserIds } },
-          { actionId: { in: createdActionIds } },
-        ],
-      },
-    });
-    await prisma.claimCode.deleteMany({
-      where: { id: { in: createdClaimCodeIds } },
-    });
-    await prisma.action.deleteMany({
-      where: { id: { in: createdActionIds } },
-    });
-    await prisma.user.deleteMany({
-      where: { id: { in: createdUserIds } },
-    });
+    await truncateDisposableTestDatabase(prisma);
   });
 
   afterAll(async () => {

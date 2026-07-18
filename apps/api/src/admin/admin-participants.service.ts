@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { paginate } from '../common/dto/pagination-response.dto';
-import { AdminParticipantsRepository } from './admin-participants.repository';
+import {
+  AdminParticipantsRepository,
+  ParticipantEventPageFilter,
+} from './admin-participants.repository';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
 import {
   AdminParticipantRedemptionsQueryDto,
@@ -11,10 +14,27 @@ import {
   ParticipantStatusFilter,
 } from './dto/admin-participants-query.dto';
 import { UpdateParticipantStatusDto } from './dto/update-participant-status.dto';
+import {
+  AuditActorType,
+  AuditEntityType,
+  AuditOperation,
+} from '../audit/audit.repository';
+import { AuditService } from '../audit/audit.service';
+import { AdminOperationContext } from '../common/request-context';
+
+type KnownPointEventSource = NonNullable<ParticipantEventPageFilter['source']>;
+type KnownActionRedemptionMethod =
+  | 'DIRECT'
+  | 'REUSABLE_CODE'
+  | 'CLAIM_CODE'
+  | 'LEGACY_UNKNOWN';
 
 @Injectable()
 export class AdminParticipantsService {
-  constructor(private readonly repository: AdminParticipantsRepository) {}
+  constructor(
+    private readonly repository: AdminParticipantsRepository,
+    private readonly audit: AuditService,
+  ) {}
 
   async findAll(query: AdminParticipantsQueryDto) {
     const page = await this.repository.findParticipantPage({
@@ -34,14 +54,33 @@ export class AdminParticipantsService {
     );
   }
 
-  async updateStatus(id: string, dto: UpdateParticipantStatusDto) {
-    const result = await this.repository.updateParticipantStatus(
-      id,
-      dto.isActive,
-    );
-    if (result.count === 0) {
-      throw new NotFoundException('Participante não encontrado.');
-    }
+  async updateStatus(
+    id: string,
+    dto: UpdateParticipantStatusDto,
+    context: AdminOperationContext,
+  ) {
+    await this.repository.withTransaction(async (repository) => {
+      const current = await repository.lockParticipantStatus(id);
+      if (!current) {
+        throw new NotFoundException('Participante não encontrado.');
+      }
+      if (current.isActive === dto.isActive) return;
+
+      const updated = await repository.updateParticipantStatus(
+        id,
+        dto.isActive,
+      );
+      await this.audit.record(repository.auditWriter!, {
+        actor: { actorType: AuditActorType.ADMIN, ...context },
+        operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
+        entityType: AuditEntityType.PARTICIPANT,
+        entityId: id,
+        participantId: id,
+        reason: dto.reason,
+        before: { id: current.id, isActive: current.isActive },
+        after: { id: updated.id, isActive: updated.isActive },
+      });
+    });
     return this.findOne(id);
   }
 
@@ -88,24 +127,27 @@ export class AdminParticipantsService {
           : undefined,
     });
     return paginate(
-      page.rows.map((row) => ({
-        ...row,
-        xpDelta:
-          row.source === 'ACTION_REDEEM' && row.kind === 'CREDIT'
-            ? row.points
-            : 0,
-        origin:
-          row.source === 'REWARD_REDEMPTION'
-            ? 'REWARD'
-            : row.source !== 'ACTION_REDEEM'
-              ? 'ADMIN'
-              : row.redemptionMethod === 'CLAIM_CODE'
-                ? 'UNIQUE_CODE'
-                : row.redemptionMethod === 'REUSABLE_CODE'
-                  ? 'REUSABLE_CODE'
-                  : 'DIRECT_ACTION',
-        createdAt: row.createdAt.toISOString(),
-      })),
+      page.rows.map((row) => {
+        const {
+          auditEventId,
+          auditEvent,
+          reversedEventId,
+          reversal,
+          ...pointEvent
+        } = row;
+        return {
+          ...pointEvent,
+          reversalOfPointEventId: reversedEventId,
+          reversalPointEventId: reversal?.id ?? null,
+          isAudited: auditEventId !== null,
+          origin:
+            auditEvent?.operation ===
+            AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED
+              ? ('RECONCILIATION_COMPENSATION' as const)
+              : mapPointEventOrigin(row.source, row.redemptionMethod),
+          createdAt: row.createdAt.toISOString(),
+        };
+      }),
       page.total,
       query.page,
       query.limit,
@@ -150,6 +192,49 @@ export class AdminParticipantsService {
       throw new NotFoundException('Participante não encontrado.');
     }
   }
+}
+
+function mapPointEventOrigin(
+  source: KnownPointEventSource,
+  redemptionMethod: KnownActionRedemptionMethod | null,
+) {
+  switch (source) {
+    case 'ACTION_REDEEM':
+      return mapActionRedemptionOrigin(redemptionMethod);
+    case 'REWARD_REDEMPTION':
+      return 'REWARD' as const;
+    case 'ADMIN_GRANT':
+    case 'ADMIN_ADJUST':
+      return 'ADMIN' as const;
+    default:
+      return unknownPointEventSource(source);
+  }
+}
+
+function mapActionRedemptionOrigin(method: KnownActionRedemptionMethod | null) {
+  switch (method) {
+    case 'CLAIM_CODE':
+      return 'UNIQUE_CODE' as const;
+    case 'REUSABLE_CODE':
+      return 'REUSABLE_CODE' as const;
+    case 'DIRECT':
+      return 'DIRECT_ACTION' as const;
+    case 'LEGACY_UNKNOWN':
+    case null:
+      return 'LEGACY_UNKNOWN' as const;
+    default:
+      return unknownActionRedemptionMethod(method);
+  }
+}
+
+function unknownPointEventSource(source: never) {
+  void source;
+  return 'LEGACY_UNKNOWN' as const;
+}
+
+function unknownActionRedemptionMethod(method: never) {
+  void method;
+  return 'LEGACY_UNKNOWN' as const;
 }
 
 function mapParticipant<

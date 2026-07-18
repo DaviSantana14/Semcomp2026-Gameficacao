@@ -7,7 +7,9 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 function optionalTrimmed(value: string | null | undefined) {
@@ -21,6 +23,15 @@ function optionalTrimmed(value: string | null | undefined) {
 }
 
 export class CreateRewardDto {
+  @ApiProperty({ minLength: 10, maxLength: 500 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason: string;
+
   @ApiProperty({ example: 'Camiseta Semcomp 2026' })
   @Transform(({ value }: { value: string }) => value?.trim())
   @IsString()

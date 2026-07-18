@@ -15,6 +15,7 @@ import type {
   RedeemActionResponse,
   ReusableCodeRedemption,
   UpdateActionPayload,
+  UpdateClaimCodeStatusPayload,
 } from "./actions.types";
 
 export function redeemActionCode(code: string) {
@@ -64,10 +65,13 @@ export function fetchAdminClaimCodes(filters: AdminClaimCodesFilters) {
   );
 }
 
-export function updateClaimCodeStatus(id: string, isActive: boolean) {
+export function updateClaimCodeStatus(
+  id: string,
+  payload: UpdateClaimCodeStatusPayload,
+) {
   return apiFetch<AdminClaimCode>(`/admin/claim-codes/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ isActive }),
+    body: JSON.stringify(payload),
   });
 }
 

@@ -31,16 +31,20 @@ export type CreateRewardPayload = {
   stock: number;
   isActive: boolean;
   imageUrl?: string;
+  reason: string;
 };
 
 export type UpdateRewardPayload = Partial<
-  Omit<CreateRewardPayload, "description" | "imageUrl">
-> & { description?: string | null; imageUrl?: string | null };
+  Omit<CreateRewardPayload, "description" | "imageUrl" | "reason">
+> & {
+  description?: string | null;
+  imageUrl?: string | null;
+  reason: string;
+};
 
-export type UpdateRewardDetailsPayload = Omit<
-  UpdateRewardPayload,
-  "isActive"
->;
+export type UpdateRewardDetailsPayload = Omit<UpdateRewardPayload, "isActive">;
+
+export type RedemptionTransitionPayload = { reason: string };
 
 export type AdminReward = Reward & {
   redemptionCounts: Record<RedemptionStatus, number>;

@@ -8,6 +8,10 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { generateClaimCode } from '../src/common/event-code';
 import { PrismaService } from '../src/prisma/prisma.service';
+import {
+  assertDisposableTestDatabase,
+  truncateDisposableTestDatabase,
+} from './support/e2e-database-cleanup';
 
 type AuthSession = {
   cookie: string;
@@ -28,7 +32,6 @@ describe('Player flow authorization matrix (e2e)', () => {
   let prisma: PrismaService;
   let adminSession: AuthSession;
   let participantSession: AuthSession;
-  let adminId: string;
   let participantId: string;
   let directActionId: string;
   let codedActionId: string;
@@ -38,6 +41,7 @@ describe('Player flow authorization matrix (e2e)', () => {
   let reusableCode: string;
 
   beforeAll(async () => {
+    assertDisposableTestDatabase();
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -71,7 +75,6 @@ describe('Player flow authorization matrix (e2e)', () => {
         },
       }),
     ]);
-    adminId = admin.id;
     participantId = participant.id;
 
     const [directAction, codedAction, reward] = await Promise.all([
@@ -129,24 +132,12 @@ describe('Player flow authorization matrix (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.pointEvent.deleteMany({
-      where: { userId: { in: [adminId, participantId] } },
-    });
-    await prisma.rewardRedemption.deleteMany({
-      where: { userId: { in: [adminId, participantId] } },
-    });
-    if (claimCodeId) {
-      await prisma.claimCode.deleteMany({ where: { id: claimCodeId } });
+    try {
+      await truncateDisposableTestDatabase(prisma);
+    } finally {
+      await app.close();
+      await prisma.$disconnect();
     }
-    await prisma.reward.deleteMany({ where: { id: rewardId } });
-    await prisma.action.deleteMany({
-      where: { id: { in: [directActionId, codedActionId] } },
-    });
-    await prisma.user.deleteMany({
-      where: { id: { in: [adminId, participantId] } },
-    });
-    await app.close();
-    await prisma.$disconnect();
   });
 
   it.each([

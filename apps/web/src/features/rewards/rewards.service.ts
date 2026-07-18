@@ -9,12 +9,12 @@ import type {
   CreateRewardPayload,
   Reward,
   RewardRedemption,
+  RedemptionTransitionPayload,
   UpdateRewardPayload,
 } from "./rewards.types";
 
 export const fetchRewards = () => apiFetch<Reward[]>("/rewards");
-export const fetchReward = (id: string) =>
-  apiFetch<Reward>(`/rewards/${id}`);
+export const fetchReward = (id: string) => apiFetch<Reward>(`/rewards/${id}`);
 
 export function createReward(payload: CreateRewardPayload) {
   return apiFetch<Reward>("/rewards", {
@@ -34,13 +34,21 @@ export const redeemReward = (id: string) =>
   apiFetch<RewardRedemption>(`/rewards/${id}/redeem`, { method: "POST" });
 export const fetchPendingRedemptions = () =>
   apiFetch<RewardRedemption[]>("/admin/redemptions/pending");
-export const deliverRedemption = (id: string) =>
+export const deliverRedemption = (
+  id: string,
+  payload: RedemptionTransitionPayload,
+) =>
   apiFetch<RewardRedemption>(`/admin/redemptions/${id}/deliver`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
   });
-export const cancelRedemption = (id: string) =>
+export const cancelRedemption = (
+  id: string,
+  payload: RedemptionTransitionPayload,
+) =>
   apiFetch<RewardRedemption>(`/admin/redemptions/${id}/cancel`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
   });
 
 export function fetchAdminRewards(

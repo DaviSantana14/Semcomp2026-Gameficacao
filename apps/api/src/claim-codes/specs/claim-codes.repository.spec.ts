@@ -15,9 +15,10 @@ function createRepository() {
     createManyAndReturn: jest.fn(),
     updateMany: jest.fn(),
   };
-  const tx = { claimCode };
+  const action = { findUnique: jest.fn() };
+  const tx = { action, claimCode };
   const prisma = {
-    action: { findUnique: jest.fn() },
+    action,
     claimCode,
     $transaction: jest.fn(
       (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
@@ -26,9 +27,37 @@ function createRepository() {
 
   const persistenceRepository = new ClaimCodesRepository(prisma as never);
   return {
-    repository: new ClaimCodesService(persistenceRepository),
+    repository: new ClaimCodesService(persistenceRepository, {
+      record: jest.fn(),
+    } as never),
     prisma,
   };
+}
+
+const context = { actorAdminId: 'admin-1', requestId: 'request-1' };
+
+function updateStatus(
+  service: ClaimCodesService,
+  id: string,
+  isActive: boolean,
+) {
+  return service.updateStatus(
+    id,
+    { isActive, reason: 'Alteracao administrativa do codigo' },
+    context,
+  );
+}
+
+function generateBatch(
+  service: ClaimCodesService,
+  actionId: string,
+  quantity: number,
+) {
+  return service.generateBatch(
+    actionId,
+    { quantity, reason: 'Geracao administrativa do lote' },
+    context,
+  );
 }
 
 describe('ClaimCodesRepository', () => {
@@ -58,8 +87,8 @@ describe('ClaimCodesRepository', () => {
         createdAt: new Date('2026-01-01'),
         usedAt: null,
         usedBy: null,
-        action: { id: 'a1', name: 'A', ...row.action },
         ...row,
+        action: { id: 'a1', name: 'A', ...row.action },
       },
     ]);
 
@@ -124,17 +153,26 @@ describe('ClaimCodesRepository', () => {
   ])('toggles an unused code to %s conditionally', async (isActive, status) => {
     const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 1 });
-    prisma.claimCode.findUnique.mockResolvedValue({
-      id: 'c1',
-      isUsed: false,
-      isActive,
-      action: { isActive: true },
-    });
+    prisma.claimCode.findUnique
+      .mockResolvedValueOnce({
+        id: 'c1',
+        code: 'AAAA-AAAA',
+        isUsed: false,
+        isActive: !isActive,
+        action: { isActive: true },
+      })
+      .mockResolvedValueOnce({
+        id: 'c1',
+        code: 'AAAA-AAAA',
+        isUsed: false,
+        isActive,
+        action: { isActive: true },
+      });
     await expect(
-      repository.updateStatus('c1', { isActive }),
+      updateStatus(repository, 'c1', isActive),
     ).resolves.toMatchObject({ status });
     expect(prisma.claimCode.updateMany).toHaveBeenCalledWith({
-      where: { id: 'c1', isUsed: false },
+      where: { id: 'c1', isUsed: false, isActive: !isActive },
       data: { isActive },
     });
   });
@@ -142,40 +180,49 @@ describe('ClaimCodesRepository', () => {
   it('allows activation while the action is inactive', async () => {
     const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 1 });
-    prisma.claimCode.findUnique.mockResolvedValue({
-      id: 'c1',
-      isUsed: false,
-      isActive: true,
-      action: { isActive: false },
+    prisma.claimCode.findUnique
+      .mockResolvedValueOnce({
+        id: 'c1',
+        code: 'AAAA-AAAA',
+        isUsed: false,
+        isActive: false,
+        action: { isActive: false },
+      })
+      .mockResolvedValueOnce({
+        id: 'c1',
+        code: 'AAAA-AAAA',
+        isUsed: false,
+        isActive: true,
+        action: { isActive: false },
+      });
+    await expect(updateStatus(repository, 'c1', true)).resolves.toMatchObject({
+      status: 'BLOCKED_BY_ACTION',
     });
-    await expect(
-      repository.updateStatus('c1', { isActive: true }),
-    ).resolves.toMatchObject({ status: 'BLOCKED_BY_ACTION' });
   });
 
   it('returns 404 when toggled code does not exist', async () => {
     const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 0 });
     prisma.claimCode.findUnique.mockResolvedValue(null);
-    await expect(
-      repository.updateStatus('missing', { isActive: false }),
-    ).rejects.toThrow(NotFoundException);
+    await expect(updateStatus(repository, 'missing', false)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('returns 409 for used code, including a concurrent consumption', async () => {
     const { repository, prisma } = createRepository();
     prisma.claimCode.updateMany.mockResolvedValue({ count: 0 });
     prisma.claimCode.findUnique.mockResolvedValue({ id: 'c1', isUsed: true });
-    await expect(
-      repository.updateStatus('c1', { isActive: false }),
-    ).rejects.toThrow(ConflictException);
+    await expect(updateStatus(repository, 'c1', false)).rejects.toThrow(
+      ConflictException,
+    );
   });
 
   it('throws when the action does not exist', async () => {
     const { repository, prisma } = createRepository();
     prisma.action.findUnique.mockResolvedValue(null);
 
-    await expect(repository.generateBatch('missing', 2)).rejects.toThrow(
+    await expect(generateBatch(repository, 'missing', 2)).rejects.toThrow(
       NotFoundException,
     );
     expect(prisma.claimCode.createManyAndReturn).not.toHaveBeenCalled();
@@ -198,7 +245,7 @@ describe('ClaimCodesRepository', () => {
       { code: 'BBBB-BBBB' },
     ]);
 
-    await expect(repository.generateBatch('action-1', 3)).resolves.toEqual({
+    await expect(generateBatch(repository, 'action-1', 3)).resolves.toEqual({
       action: { id: 'action-1', name: 'Credenciamento' },
       quantity: 3,
       codes: ['AAAA-AAAA', 'BBBB-BBBB', 'CCCC-CCCC'],
@@ -229,7 +276,7 @@ describe('ClaimCodesRepository', () => {
       { code: 'AAAA-AAAA' },
     ]);
 
-    await repository.generateBatch('action-1', 1);
+    await generateBatch(repository, 'action-1', 1);
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
@@ -246,7 +293,7 @@ describe('ClaimCodesRepository', () => {
     ]);
 
     await expect(
-      repository.generateBatch('inactive-action', 1),
+      generateBatch(repository, 'inactive-action', 1),
     ).resolves.toEqual({
       action: { id: 'inactive-action', name: 'Atividade encerrada' },
       quantity: 1,
@@ -275,7 +322,7 @@ describe('ClaimCodesRepository', () => {
       .mockResolvedValueOnce([{ code: 'AAAA-AAAA' }])
       .mockResolvedValueOnce([{ code: 'DDDD-DDDD' }, { code: 'EEEE-EEEE' }]);
 
-    const result = await repository.generateBatch('action-1', 3);
+    const result = await generateBatch(repository, 'action-1', 3);
 
     expect(result.quantity).toBe(3);
     expect(result.codes).toEqual(['AAAA-AAAA', 'DDDD-DDDD', 'EEEE-EEEE']);
@@ -299,7 +346,7 @@ describe('ClaimCodesRepository', () => {
     jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
     prisma.claimCode.createManyAndReturn.mockResolvedValue([]);
 
-    await expect(repository.generateBatch('action-1', 1)).rejects.toThrow(
+    await expect(generateBatch(repository, 'action-1', 1)).rejects.toThrow(
       ServiceUnavailableException,
     );
     expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledTimes(5);
@@ -311,6 +358,7 @@ describe('ClaimCodesRepository', () => {
     const committedCodes: string[] = [];
     let insertCalls = 0;
     const tx = {
+      action: prisma.action,
       claimCode: {
         createManyAndReturn: jest.fn(
           (args: {
@@ -340,7 +388,7 @@ describe('ClaimCodesRepository', () => {
         }),
     );
 
-    await expect(repository.generateBatch('action-1', 2)).rejects.toThrow(
+    await expect(generateBatch(repository, 'action-1', 2)).rejects.toThrow(
       ServiceUnavailableException,
     );
 
@@ -364,7 +412,7 @@ describe('ClaimCodesRepository', () => {
     });
     prisma.claimCode.createManyAndReturn.mockResolvedValue([]);
 
-    await expect(repository.generateBatch('action-1', 2)).rejects.toThrow(
+    await expect(generateBatch(repository, 'action-1', 2)).rejects.toThrow(
       ServiceUnavailableException,
     );
     expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledTimes(5);

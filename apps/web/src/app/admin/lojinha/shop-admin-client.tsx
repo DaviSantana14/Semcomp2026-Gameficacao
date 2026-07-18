@@ -33,6 +33,7 @@ import {
   finalizeRewardOptions,
   validateRewardOptionsPage,
 } from "./reward-options-pagination";
+import { AdminReasonDialog } from "../_components/admin-reason-dialog";
 
 const statuses: Array<{
   value: NonNullable<AdminRewardsFilters["status"]>;
@@ -53,6 +54,7 @@ export function ShopAdminClient() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AdminReward | null>(null);
   const [formVersion, setFormVersion] = useState(0);
+  const [toggleIntent, setToggleIntent] = useState<AdminReward | null>(null);
   const query = useQuery({
     queryKey: ["admin", "rewards", { page, limit: 10, status, search }],
     queryFn: ({ signal }) =>
@@ -87,10 +89,17 @@ export function ShopAdminClient() {
       ),
   });
   const toggle = useMutation({
-    mutationFn: async (reward: AdminReward) => {
-      return updateReward(reward.id, { isActive: !reward.isActive });
+    mutationFn: async ({
+      reward,
+      reason,
+    }: {
+      reward: AdminReward;
+      reason: string;
+    }) => {
+      return updateReward(reward.id, { isActive: !reward.isActive, reason });
     },
-    onSuccess: async (_, reward) => {
+    onSuccess: async (_, { reward }) => {
+      setToggleIntent(null);
       toast.success(
         reward.isActive ? "Recompensa desativada." : "Recompensa ativada.",
       );
@@ -113,14 +122,14 @@ export function ShopAdminClient() {
     setPage(1);
   }
   function toggleReward(reward: AdminReward) {
-    if (
-      reward.isActive &&
-      !window.confirm(
-        "Desativar esta recompensa? Ela deixará de aparecer para participantes, mas pedidos pendentes continuarão operáveis.",
-      )
-    )
-      return;
-    toggle.mutate(reward);
+    if (save.isPending) return;
+    setToggleIntent(reward);
+  }
+
+  function editReward(reward: AdminReward) {
+    if (save.isPending) return;
+    setEditing(reward);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -140,7 +149,9 @@ export function ShopAdminClient() {
         key={editing?.id ?? `new-${formVersion}`}
         reward={editing}
         pending={save.isPending}
-        onCancel={() => setEditing(null)}
+        onCancel={() => {
+          if (!save.isPending) setEditing(null);
+        }}
         onSubmit={(payload) => save.mutate(payload)}
       />
       <section aria-labelledby="catalog-title" className="grid gap-4">
@@ -206,7 +217,7 @@ export function ShopAdminClient() {
           <div className="grid gap-3 md:grid-cols-2">
             {query.data.items.map((reward) => {
               const toggling =
-                toggle.isPending && toggle.variables?.id === reward.id;
+                toggle.isPending && toggle.variables?.reward.id === reward.id;
               return (
                 <article
                   className="grid grid-cols-[5rem_minmax(0,1fr)] gap-4 rounded-lg border bg-card/90 p-4"
@@ -266,17 +277,15 @@ export function ShopAdminClient() {
                     </Badge>
                     <Button
                       className="ml-auto"
-                      onClick={() => {
-                        setEditing(reward);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
+                      disabled={save.isPending}
+                      onClick={() => editReward(reward)}
                       variant="outline"
                     >
                       <Pencil />
                       Editar
                     </Button>
                     <Button
-                      disabled={toggling}
+                      disabled={save.isPending || toggling}
                       onClick={() => toggleReward(reward)}
                       variant="outline"
                     >
@@ -314,6 +323,20 @@ export function ShopAdminClient() {
         onRetryOptions={() => void rewardOptions.refetch()}
         rewards={rewardOptions.data ?? []}
       />
+      {toggleIntent ? (
+        <AdminReasonDialog
+          confirmLabel="Confirmar alteração"
+          currentState={toggleIntent.isActive ? "Ativa" : "Inativa"}
+          description={`Recompensa ${toggleIntent.name}`}
+          intendedState={toggleIntent.isActive ? "Inativa" : "Ativa"}
+          onClose={() => setToggleIntent(null)}
+          onSubmit={(reason) =>
+            toggle.mutateAsync({ reward: toggleIntent, reason })
+          }
+          operationKey={`${toggleIntent.id}:${String(!toggleIntent.isActive)}`}
+          title="Alterar status da recompensa"
+        />
+      ) : null}
     </div>
   );
 }

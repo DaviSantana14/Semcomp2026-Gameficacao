@@ -3,6 +3,8 @@ import {
   ActionType,
   PointEventKind,
   PointEventSource,
+  AuditEntityType,
+  AuditOperation,
   RedemptionStatus,
   UserRole,
 } from '@prisma/client';
@@ -148,27 +150,7 @@ describe('Admin participants (e2e)', () => {
   });
 
   afterAll(async () => {
-    try {
-      if (!harness) return;
-      await harness.prisma.pointEvent.deleteMany({
-        where: { userId: { in: userIds } },
-      });
-      await harness.prisma.rewardRedemption.deleteMany({
-        where: { userId: { in: userIds } },
-      });
-      await harness.prisma.claimCode.deleteMany({
-        where: { id: { in: claimCodeIds } },
-      });
-      await harness.prisma.reward.deleteMany({
-        where: { id: { in: rewardIds } },
-      });
-      await harness.prisma.action.deleteMany({
-        where: { id: { in: actionIds } },
-      });
-      await harness.prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    } finally {
-      if (harness) await harness.close();
-    }
+    if (harness) await harness.close();
   });
 
   it('searches and paginates participants and rejects admin details', async () => {
@@ -265,7 +247,10 @@ describe('Admin participants (e2e)', () => {
   it('invalidates a disabled participant session and allows reactivation', async () => {
     await harness
       .patch(`/admin/participants/${first.id}/status`, adminSession)
-      .send({ isActive: false })
+      .send({
+        isActive: false,
+        reason: 'Desativacao administrativa do participante',
+      })
       .expect(200)
       .expect(({ body }: Response) =>
         expect(body).toMatchObject({ isActive: false }),
@@ -273,9 +258,56 @@ describe('Admin participants (e2e)', () => {
     await harness.get('/users/me', firstSession).expect(401);
     await harness
       .patch(`/admin/participants/${first.id}/status`, adminSession)
-      .send({ isActive: true })
+      .send({
+        isActive: true,
+        reason: 'Reativacao administrativa do participante',
+      })
       .expect(200);
     firstSession = await harness.login(first.cpf, first.email);
+  });
+
+  it('serializes concurrent participant status updates with one exact before snapshot', async () => {
+    const auditFilter = {
+      operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
+      entityType: AuditEntityType.PARTICIPANT,
+      entityId: first.id,
+    } as const;
+    const auditCountBefore = await harness.prisma.adminAuditEvent.count({
+      where: auditFilter,
+    });
+    const responses = await Promise.all([
+      harness
+        .patch(`/admin/participants/${first.id}/status`, adminSession)
+        .send({
+          isActive: false,
+          reason: 'Primeira desativacao concorrente do participante',
+        }),
+      harness
+        .patch(`/admin/participants/${first.id}/status`, adminSession)
+        .send({
+          isActive: false,
+          reason: 'Segunda desativacao concorrente do participante',
+        }),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    const events = await harness.prisma.adminAuditEvent.findMany({
+      where: auditFilter,
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(events).toHaveLength(auditCountBefore + 1);
+    expect(events[0]).toMatchObject({
+      before: { id: first.id, isActive: true },
+      after: { id: first.id, isActive: false },
+    });
+
+    await harness
+      .patch(`/admin/participants/${first.id}/status`, adminSession)
+      .send({
+        isActive: true,
+        reason: 'Reativacao apos teste concorrente do participante',
+      })
+      .expect(200);
   });
 
   it('records exact redemption methods in filtered participant history', async () => {

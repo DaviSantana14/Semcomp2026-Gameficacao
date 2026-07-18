@@ -58,9 +58,11 @@ function createRepository() {
   };
 
   const tx = {
-    action: {
-      findUnique: jest.fn(),
-    },
+    $queryRaw: jest.fn(async () => {
+      const result = (await action.findUnique()) as typeof activeAction | null;
+      return result ? [result] : [];
+    }),
+    action,
     claimCode: {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
@@ -93,9 +95,10 @@ function createRepository() {
     ),
   };
 
+  const audit = { record: jest.fn().mockResolvedValue({ id: 'audit-1' }) };
   const persistenceRepository = new ActionsRepository(prisma as never);
   return {
-    repository: new ActionsService(persistenceRepository),
+    repository: new ActionsService(persistenceRepository, audit as never),
     prisma,
     tx,
   };
@@ -115,6 +118,18 @@ function createUniqueConstraintError(target = ['userId', 'actionId']) {
 }
 
 describe('ActionsRepository', () => {
+  it('locks the action row before an audited update', async () => {
+    let sql = '';
+    const raw = jest.fn((query: { strings: readonly string[] }) => {
+      sql = query.strings.join('?');
+      return Promise.resolve([{ id: 'action-1' }]);
+    });
+    const repository = new ActionsRepository({ $queryRaw: raw } as never);
+
+    await repository.lockActionById('action-1');
+
+    expect(sql).toMatch(/FROM "Action"[\s\S]*FOR UPDATE/);
+  });
   describe('create', () => {
     it('normalizes reusable action codes before creating the action', async () => {
       const { repository, prisma } = createRepository();
@@ -232,7 +247,7 @@ describe('ActionsRepository', () => {
 
       expect(prisma.action.update).toHaveBeenCalledWith({
         where: { id: 'action-1' },
-        data: { name: 'Novo nome', code: 'NEW', isCodeActive: true },
+        data: { name: 'Novo nome', code: 'NEW' },
         select: actionSummarySelect,
       });
     });
@@ -250,7 +265,7 @@ describe('ActionsRepository', () => {
 
       expect(prisma.action.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { code: 'NEW', isCodeActive: false },
+          data: { code: 'NEW' },
         }),
       );
     });
@@ -277,7 +292,7 @@ describe('ActionsRepository', () => {
       });
       expect(prisma.action.update).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          data: { code: 'NEW', isCodeActive: false },
+          data: { code: 'NEW' },
         }),
       );
     });
@@ -548,6 +563,7 @@ describe('ActionsRepository', () => {
       tx.action.findUnique.mockResolvedValue(activeAction);
       tx.pointEvent.create.mockImplementation(() => {
         callOrder.push('pointEvent.create');
+        return { xpDelta: 7 };
       });
       tx.user.update.mockImplementation(() => {
         callOrder.push('user.update');
@@ -598,6 +614,7 @@ describe('ActionsRepository', () => {
       expect(result).toMatchObject({
         action: activeAction,
         awardedPoints: 10,
+        awardedXp: 7,
         currentPoints: 110,
         currentXp: 210,
         currentLevel: 1,
@@ -639,7 +656,7 @@ describe('ActionsRepository', () => {
         code: 'DIA1',
         isCodeActive: true,
       });
-      tx.pointEvent.create.mockResolvedValue(undefined);
+      tx.pointEvent.create.mockResolvedValue({ xpDelta: 10 });
       tx.user.update.mockResolvedValue({
         id: 'user-1',
         points: 110,
@@ -658,6 +675,7 @@ describe('ActionsRepository', () => {
           data: expect.objectContaining({
             actionId: 'action-1',
             userId: 'user-1',
+            xpDelta: 10,
             redemptionMethod: 'REUSABLE_CODE',
             claimCodeId: undefined,
           }) as object,
@@ -666,6 +684,7 @@ describe('ActionsRepository', () => {
       expect(result).toMatchObject({
         action: { ...activeAction, code: 'DIA1', isCodeActive: true },
         awardedPoints: 10,
+        awardedXp: 10,
         currentPoints: 110,
         currentXp: 210,
       });
@@ -810,6 +829,7 @@ describe('ActionsRepository', () => {
       });
       tx.pointEvent.create.mockImplementation(() => {
         callOrder.push('pointEvent.create');
+        return { xpDelta: 10 };
       });
       tx.user.update.mockImplementation(() => {
         callOrder.push('user.update');
@@ -828,6 +848,7 @@ describe('ActionsRepository', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             redemptionMethod: 'CLAIM_CODE',
+            xpDelta: 10,
             claimCodeId: 'claim-1',
           }) as object,
         }),
@@ -835,6 +856,7 @@ describe('ActionsRepository', () => {
       expect(result).toMatchObject({
         action: activeAction,
         awardedPoints: 10,
+        awardedXp: 10,
         currentPoints: 110,
         currentXp: 210,
         currentLevel: 2,

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
@@ -19,6 +20,8 @@ import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-q
 import { AdminParticipantRedemptionsQueryDto } from './dto/admin-participant-redemptions-query.dto';
 import { AdminParticipantsQueryDto } from './dto/admin-participants-query.dto';
 import { UpdateParticipantStatusDto } from './dto/update-participant-status.dto';
+import { getAdminOperationContext } from '../common/request-context';
+import type { AuthenticatedRequest } from '../common/request-context';
 
 @ApiTags('Admin')
 @ApiSecurity('access-token-cookie')
@@ -54,7 +57,12 @@ export class AdminController {
   @Patch('participants/:id/status') updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateParticipantStatusDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.participants.updateStatus(id, dto);
+    return this.participants.updateStatus(
+      id,
+      dto,
+      getAdminOperationContext(request),
+    );
   }
 }

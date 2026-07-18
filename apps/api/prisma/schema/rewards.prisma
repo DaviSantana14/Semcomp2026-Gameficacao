@@ -18,19 +18,28 @@ model Reward {
 }
 
 model RewardRedemption {
-  id          String           @id @default(cuid())
-  userId      String
-  rewardId    String
-  pointsSpent Int
-  status      RedemptionStatus @default(PENDING)
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reward      Reward           @relation(fields: [rewardId], references: [id], onDelete: Restrict)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id                 String           @id @default(cuid())
+  userId             String
+  rewardId           String
+  pointsSpent        Int
+  status             RedemptionStatus @default(PENDING)
+  deliveredAt        DateTime?
+  deliveredByAdminId String?
+  cancelledAt        DateTime?
+  cancelledByAdminId String?
+  user               User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reward             Reward           @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  deliveredByAdmin   User?            @relation("RewardRedemptionDeliveredBy", fields: [deliveredByAdminId], references: [id], onDelete: Restrict)
+  cancelledByAdmin   User?            @relation("RewardRedemptionCancelledBy", fields: [cancelledByAdminId], references: [id], onDelete: Restrict)
+  pointEvents        PointEvent[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   @@index([userId])
   @@index([rewardId])
   @@index([status])
   @@index([createdAt])
   @@index([status, createdAt])
+  @@index([deliveredByAdminId])
+  @@index([cancelledByAdminId])
 }

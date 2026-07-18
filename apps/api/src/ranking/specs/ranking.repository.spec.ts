@@ -279,8 +279,8 @@ describe('RankingRepository', () => {
       ),
     );
     prisma.pointEvent.groupBy.mockResolvedValue([
-      { userId: 'user-high', _sum: { points: 40 } },
-      { userId: 'user-current', _sum: { points: 20 } },
+      { userId: 'user-high', _sum: { xpDelta: 14 } },
+      { userId: 'user-current', _sum: { xpDelta: 7 } },
     ]);
 
     const result = await repository.getRanking('user-current', {
@@ -299,15 +299,24 @@ describe('RankingRepository', () => {
         },
       },
       _sum: {
-        points: true,
+        xpDelta: true,
+      },
+    });
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { role: UserRole.PARTICIPANT, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        xp: true,
+        createdAt: true,
       },
     });
     expect(result).toEqual({
       ranking: [
-        { position: 1, name: 'Grace Hopper', xp: 40 },
-        { position: 2, name: 'Mary Jackson', xp: 20 },
+        { position: 1, name: 'Grace Hopper', xp: 14 },
+        { position: 2, name: 'Mary Jackson', xp: 7 },
       ],
-      me: { position: 2, name: 'Mary Jackson', xp: 20 },
+      me: { position: 2, name: 'Mary Jackson', xp: 7 },
     });
   });
 

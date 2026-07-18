@@ -1,11 +1,31 @@
 import { Transform } from 'class-transformer';
-import { ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUrl } from 'class-validator';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
+import {
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { CreateRewardDto } from './create-reward.dto';
 
 export class UpdateRewardDto extends PartialType(
-  OmitType(CreateRewardDto, ['description', 'imageUrl'] as const),
+  OmitType(CreateRewardDto, ['reason', 'description', 'imageUrl'] as const),
 ) {
+  @ApiProperty({ minLength: 10, maxLength: 500 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason: string;
+
   @ApiPropertyOptional({
     example: 'Camiseta oficial do evento.',
     nullable: true,
