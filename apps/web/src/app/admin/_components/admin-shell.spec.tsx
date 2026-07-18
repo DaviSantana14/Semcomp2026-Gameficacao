@@ -11,6 +11,9 @@ vi.mock("@/hooks/use-auth", () => ({ useMe: vi.fn() }));
 vi.mock("@/components/logout-button", () => ({
   LogoutButton: () => <button type="button">Sair</button>,
 }));
+vi.mock("@/components/semcomp/brand-logo", () => ({
+  BrandLogo: () => <span aria-label="SEMCOMP 2026" role="img" />,
+}));
 
 const useMeMock = vi.mocked(useMe);
 
@@ -34,11 +37,31 @@ describe("AdminShell", () => {
       "overflow-x-hidden",
     );
     expect(container.querySelector("aside")).toHaveClass("min-w-0");
-    expect(screen.getByRole("navigation", { name: "Areas administrativas" })).toHaveClass(
+    expect(screen.getByRole("navigation", { name: "Áreas administrativas" })).toHaveClass(
       "min-w-0",
       "w-full",
       "max-w-full",
       "overflow-x-auto",
     );
+  });
+
+  it("apresenta a administração como parte da SEMCOMP", () => {
+    render(
+      <AdminShell>
+        <p>Conteúdo</p>
+      </AdminShell>,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "SEMCOMP 2026" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Administração SEMCOMP")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Visão geral/ })).toHaveAttribute(
+      "href",
+      "/admin",
+    );
+    expect(screen.queryByText("Semcomp OS")).not.toBeInTheDocument();
+    expect(screen.queryByText("Console admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("OPERADOR // ONLINE")).not.toBeInTheDocument();
   });
 });
