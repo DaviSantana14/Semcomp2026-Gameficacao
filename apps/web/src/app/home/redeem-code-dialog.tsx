@@ -48,7 +48,10 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
     mutationFn: ({ code }: RedeemCodeValues) => redeemActionCode(code),
     onSuccess: async (result) => {
       toast.success(`${result.action.name}: +${result.awardedXp} XP`);
-      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["me"] }),
+        queryClient.invalidateQueries({ queryKey: ["ranking"] }),
+      ]);
       reset();
       onClose();
     },

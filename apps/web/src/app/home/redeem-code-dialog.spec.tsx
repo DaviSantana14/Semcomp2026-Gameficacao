@@ -63,6 +63,7 @@ describe("RedeemCodeDialog", () => {
       expect(onClose).toHaveBeenCalledOnce();
     });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["me"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["ranking"] });
     expect(toast.success).toHaveBeenCalledWith("Check-in: +7 XP");
   });
 
