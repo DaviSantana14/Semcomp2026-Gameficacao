@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type {
   AdminAuditEvent,
   AuditSnapshot,
@@ -30,13 +31,13 @@ export function AuditEventList({
 }) {
   const selected = events.find((event) => event.id === selectedId);
   return (
-    <div className="grid gap-3">
-      <div className="hidden overflow-x-auto rounded-md border border-border bg-card/90 md:block">
+    <div className="grid gap-4">
+      <div className="hidden overflow-x-auto rounded-[18px] border border-border/80 bg-card/75 md:block">
         <table
           aria-label="Eventos de auditoria"
           className="w-full min-w-[64rem] border-collapse text-left text-sm"
         >
-          <thead className="border-b border-border bg-muted/50 font-mono text-xs uppercase text-muted-foreground">
+          <thead className="border-b border-border/80 bg-muted/35 font-mono text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
             <tr>
               <th className="px-3 py-3">Data</th>
               <th className="px-3 py-3">Operação</th>
@@ -51,7 +52,13 @@ export function AuditEventList({
           </thead>
           <tbody className="divide-y divide-border">
             {events.map((event) => (
-              <tr className="align-top hover:bg-muted/30" key={event.id}>
+              <tr
+                className={cn(
+                  "align-top transition-colors hover:bg-muted/30",
+                  selectedId === event.id && "bg-secondary/[0.08]",
+                )}
+                key={event.id}
+              >
                 <td className="whitespace-nowrap px-3 py-3 font-mono text-xs">
                   {formatDate(event.createdAt)}
                 </td>
@@ -90,7 +97,11 @@ export function AuditEventList({
       >
         {events.map((event) => (
           <li
-            className="grid min-w-0 gap-3 overflow-hidden rounded-md border border-border bg-card/90 p-4"
+            className={cn(
+              "grid min-w-0 gap-3 overflow-hidden rounded-[16px] border border-border/80 bg-card/75 p-4",
+              selectedId === event.id &&
+                "border-secondary/45 bg-secondary/[0.08]",
+            )}
             key={event.id}
           >
             <div className="flex items-start justify-between gap-3">
@@ -257,12 +268,12 @@ function AuditEventDetail({ event }: { event: AdminAuditEvent }) {
   return (
     <section
       aria-labelledby={titleId}
-      className="grid gap-5 rounded-md border border-primary/30 bg-card/95 p-4 md:p-5"
+      className="grid gap-5 rounded-[18px] border border-secondary/35 bg-secondary/[0.06] p-4 md:p-5"
       id={detailId}
       role="region"
     >
       <div className="grid gap-1">
-        <h3 className="font-black" id={titleId}>
+        <h3 className="text-lg font-semibold" id={titleId}>
           Detalhes do evento
         </h3>
         <p className="text-sm leading-6 text-muted-foreground">
@@ -280,7 +291,7 @@ function AuditEventDetail({ event }: { event: AdminAuditEvent }) {
           {formatDate(event.createdAt)}
         </MobileField>
       </dl>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 rounded-[13px] border border-border/70 bg-background/35 p-4 lg:grid-cols-3">
         <SafeFields title="Antes" snapshot={event.before} />
         <SafeFields title="Depois" snapshot={event.after} />
         <SafeFields title="Metadados" snapshot={event.metadata} />
