@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAdminParticipantRewardRedemptions } from "@/features/participants/participants.service";
@@ -13,6 +12,11 @@ import type { RedemptionStatus } from "@/features/rewards/rewards.types";
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { StatusBadge } from "../../_components/status-badge";
+import {
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+} from "../../_components/admin-page";
 
 const LIMIT = 10;
 const number = new Intl.NumberFormat("pt-BR");
@@ -57,18 +61,21 @@ export function ParticipantRewardHistory({
   const data = query.data;
 
   return (
-    <Card className="min-w-0 bg-card/90">
-      <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="font-mono text-xs uppercase text-accent">
-            Lojinha // pedidos
-          </p>
-          <CardTitle className="mt-1">Histórico de resgates</CardTitle>
-        </div>
+    <AdminPanel
+      aria-labelledby="participant-rewards-title"
+      className="overflow-hidden"
+    >
+      <div className="grid gap-4 border-b border-border/80 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end md:px-6">
+        <AdminSectionHeader
+          description="Pedidos feitos pelo participante e seu estado de retirada."
+          eyebrow="lojinha // pedidos"
+          id="participant-rewards-title"
+          title="Histórico de resgates"
+        />
         <div className="grid min-w-48 gap-2">
           <Label htmlFor="reward-status">Status</Label>
           <select
-            className="min-h-11 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={adminSelectClassName}
             id="reward-status"
             onChange={(event) => {
               setStatus(event.target.value as typeof status);
@@ -82,8 +89,8 @@ export function ParticipantRewardHistory({
             <option value="cancelled">Cancelados</option>
           </select>
         </div>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+      </div>
+      <div className="grid gap-4 p-5 md:p-6">
         {query.isLoading ? (
           <div
             aria-label="Carregando histórico da lojinha"
@@ -118,12 +125,12 @@ export function ParticipantRewardHistory({
           </div>
         ) : data && data.items.length > 0 ? (
           <>
-            <div className="grid gap-3">
+            <div className="divide-y divide-border/80 border-y border-border/80">
               {data.items.map((item) => {
                 const config = STATUS[item.status];
                 return (
                   <article
-                    className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    className="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                     key={item.id}
                   >
                     <div className="min-w-0">
@@ -136,7 +143,7 @@ export function ParticipantRewardHistory({
                           status={config.badge}
                         />
                       </div>
-                      <p className="mt-1 font-mono text-sm text-accent">
+                      <p className="mt-1 font-mono text-sm font-semibold text-secondary">
                         {number.format(item.pointsSpent)} PTS no resgate
                       </p>
                     </div>
@@ -173,7 +180,7 @@ export function ParticipantRewardHistory({
             Nenhum pedido corresponde ao status selecionado.
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </AdminPanel>
   );
 }

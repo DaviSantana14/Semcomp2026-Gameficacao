@@ -164,6 +164,9 @@ describe("participant point-event reversal flow", () => {
         />,
         { wrapper },
       );
+      expect(
+        await screen.findByRole("region", { name: "Extrato de pontos" }),
+      ).toBeVisible();
       const user = userEvent.setup();
       await user.click(
         await screen.findByRole("button", { name: "Estornar ajuste" }),

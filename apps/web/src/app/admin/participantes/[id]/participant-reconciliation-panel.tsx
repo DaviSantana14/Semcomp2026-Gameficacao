@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, RefreshCcw, Scale, Wrench } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   createIdempotencyLifecycle,
@@ -25,6 +24,7 @@ import {
   AdjustmentDialog,
   ReconciliationConfirmationDialog,
 } from "./participant-operation-dialogs";
+import { AdminPanel, AdminSectionHeader } from "../../_components/admin-page";
 
 const number = new Intl.NumberFormat("pt-BR", { signDisplay: "always" });
 
@@ -126,14 +126,18 @@ export function ParticipantReconciliationPanel({
   }
 
   return (
-    <Card className="min-w-0 bg-card/90">
-      <CardHeader>
-        <p className="font-mono text-xs uppercase text-primary">
-          Integridade // saldo
-        </p>
-        <CardTitle className="mt-1">Reconciliação</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+    <AdminPanel
+      aria-labelledby="reconciliation-title"
+      className="overflow-hidden"
+    >
+      <AdminSectionHeader
+        className="border-b border-border/80 px-5 py-5 md:px-6"
+        description="Compare o saldo atual com o histórico de movimentações antes de ajustar."
+        eyebrow="integridade // saldo"
+        id="reconciliation-title"
+        title="Reconciliação de saldo"
+      />
+      <div className="grid gap-5 p-5 md:p-6">
         {query.isLoading ? (
           <Skeleton className="h-40" />
         ) : query.error ? (
@@ -144,13 +148,13 @@ export function ParticipantReconciliationPanel({
           />
         ) : query.data ? (
           <>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3 rounded-[13px] border border-border/70 bg-background/35 px-4 py-3">
               {query.data.status === "CONSISTENT" ? (
                 <CheckCircle2 className="size-5 text-success" />
               ) : (
                 <Scale className="size-5 text-warning" />
               )}
-              <p className="font-bold">
+              <p className="font-semibold">
                 {query.data.status === "CONSISTENT"
                   ? "Saldo consistente"
                   : "Divergência encontrada"}
@@ -171,7 +175,7 @@ export function ParticipantReconciliationPanel({
               />
             </div>
             {query.data.status === "DIVERGENT" ? (
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="flex flex-col gap-2 border-t border-border/80 pt-4 sm:flex-row">
                 <Button
                   onClick={() => {
                     setPrepared({
@@ -192,6 +196,7 @@ export function ParticipantReconciliationPanel({
               </div>
             ) : (
               <Button
+                className="w-fit"
                 onClick={() => {
                   setPrepared({ pointsDelta: 0, xpDelta: 0 });
                   setDialog("adjust");
@@ -218,7 +223,7 @@ export function ParticipantReconciliationPanel({
             Sem dados de reconciliação.
           </p>
         )}
-      </CardContent>
+      </div>
       {dialog === "adjust" ? (
         <AdjustmentDialog
           balance={balance}
@@ -238,7 +243,7 @@ export function ParticipantReconciliationPanel({
           onSubmit={confirm}
         />
       ) : null}
-    </Card>
+    </AdminPanel>
   );
 }
 
@@ -254,20 +259,20 @@ function ReconciliationMetric({
   stored: number;
 }) {
   return (
-    <dl className="grid grid-cols-3 gap-2 rounded-md border border-border bg-muted/25 p-3">
-      <div>
+    <dl className="grid grid-cols-3 divide-x divide-border/80 rounded-[13px] border border-border/80 bg-muted/20 py-4">
+      <div className="px-3">
         <dt className="text-xs text-muted-foreground">{label} armazenado</dt>
         <dd className="mt-1 font-mono font-bold">
           {stored.toLocaleString("pt-BR")}
         </dd>
       </div>
-      <div>
+      <div className="px-3">
         <dt className="text-xs text-muted-foreground">No histórico</dt>
         <dd className="mt-1 font-mono font-bold">
           {ledger.toLocaleString("pt-BR")}
         </dd>
       </div>
-      <div>
+      <div className="px-3">
         <dt className="text-xs text-muted-foreground">Diferença</dt>
         <dd
           className={
