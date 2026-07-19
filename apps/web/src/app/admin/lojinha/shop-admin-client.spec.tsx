@@ -56,6 +56,12 @@ describe("ShopAdminClient audited reward status", () => {
     });
   });
 
+  it("expõe o catálogo como região operacional", () => {
+    renderWithQueryClient(<ShopAdminClient />);
+
+    expect(screen.getByRole("region", { name: "Catálogo" })).toBeVisible();
+  });
+
   it("envia status com contexto e preserva reason no erro", async () => {
     updateMock.mockRejectedValueOnce(new ApiError("Falha controlada", 400));
     const user = userEvent.setup();

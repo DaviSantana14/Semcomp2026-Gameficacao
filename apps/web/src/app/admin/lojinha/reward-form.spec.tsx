@@ -18,6 +18,21 @@ const reward: AdminReward = {
 };
 
 describe("RewardForm audited mutations", () => {
+  it("expõe o formulário como região de configuração", () => {
+    render(
+      <RewardForm
+        reward={null}
+        pending={false}
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Configurar recompensa" }),
+    ).toBeVisible();
+  });
+
   it("normaliza reason na criação e expõe a regra acessivelmente", async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();
