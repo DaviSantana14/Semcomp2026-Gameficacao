@@ -126,6 +126,21 @@ describe("RewardForm audited mutations", () => {
     expect(availability).toBeChecked();
   });
 
+  it("aplica o accent da identidade visual no checkbox de disponibilidade", () => {
+    render(
+      <RewardForm
+        reward={null}
+        pending={false}
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("checkbox", { name: "Disponível imediatamente" }),
+    ).toHaveClass("accent-primary");
+  });
+
   it("envia edição sem isActive e com reason obrigatório", async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();

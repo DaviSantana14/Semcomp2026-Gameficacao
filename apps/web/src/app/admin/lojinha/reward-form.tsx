@@ -155,6 +155,7 @@ export function RewardForm({
         {!reward ? (
           <Label className="flex min-h-11 w-fit items-center gap-3 rounded-[11px] border border-border/80 bg-muted/30 px-3">
             <input
+              className="size-4 accent-primary"
               checked={form.isActive}
               disabled={pending}
               onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
