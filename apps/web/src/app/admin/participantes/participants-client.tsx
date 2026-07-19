@@ -6,7 +6,6 @@ import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,6 +18,12 @@ import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
+import {
+  AdminPageHeader,
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+} from "../_components/admin-page";
 
 const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
 const number = new Intl.NumberFormat("pt-BR");
@@ -113,58 +118,60 @@ export function ParticipantsClient() {
   const data = participantsQuery.data;
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-6">
-      <header className="grid gap-2">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-primary">
-          Pessoas // credenciais
-        </p>
-        <h1 className="text-3xl font-black tracking-tight md:text-5xl">
-          Participantes
-        </h1>
-        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          Localize inscrições, consulte movimentações e controle o acesso ao
-          evento.
-        </p>
-      </header>
+    <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-8">
+      <AdminPageHeader
+        description={
+          <p>
+            Localize inscrições, consulte movimentações e controle o acesso ao
+            evento.
+          </p>
+        }
+        eyebrow="pessoas // credenciais"
+        title="Participantes"
+      />
 
-      <Card className="bg-card/90">
-        <CardContent className="p-4 md:p-5">
-          <form
-            className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem_auto] md:items-end"
-            onSubmit={submitSearch}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="participant-search">Nome, e-mail ou CPF</Label>
-              <Input
-                autoComplete="off"
-                id="participant-search"
-                onChange={(event) => setDraftSearch(event.target.value)}
-                placeholder="Buscar participante"
-                value={draftSearch}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="participant-status">Status</Label>
-              <select
-                className="min-h-11 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                id="participant-status"
-                onChange={(event) =>
-                  changeStatus(event.target.value as StatusFilter)
-                }
-                value={status}
-              >
-                <option value="all">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="inactive">Inativos</option>
-              </select>
-            </div>
-            <Button className="w-full" type="submit">
-              <Search aria-hidden="true" />
-              Buscar
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <AdminPanel
+        aria-labelledby="participant-filters-title"
+        className="p-4 md:p-5"
+      >
+        <h2 className="sr-only" id="participant-filters-title">
+          Filtros de participantes
+        </h2>
+        <form
+          className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem_auto] md:items-end"
+          onSubmit={submitSearch}
+        >
+          <div className="grid gap-2">
+            <Label htmlFor="participant-search">Nome, e-mail ou CPF</Label>
+            <Input
+              autoComplete="off"
+              id="participant-search"
+              onChange={(event) => setDraftSearch(event.target.value)}
+              placeholder="Buscar participante"
+              value={draftSearch}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="participant-status">Status</Label>
+            <select
+              className={adminSelectClassName}
+              id="participant-status"
+              onChange={(event) =>
+                changeStatus(event.target.value as StatusFilter)
+              }
+              value={status}
+            >
+              <option value="all">Todos</option>
+              <option value="active">Ativos</option>
+              <option value="inactive">Inativos</option>
+            </select>
+          </div>
+          <Button className="w-full" type="submit">
+            <Search aria-hidden="true" />
+            Buscar
+          </Button>
+        </form>
+      </AdminPanel>
 
       {participantsQuery.isLoading ? (
         <ListSkeleton />
@@ -177,33 +184,45 @@ export function ParticipantsClient() {
       ) : data && data.items.length > 0 ? (
         <section
           aria-labelledby="participants-result-title"
-          className="grid gap-4"
+          className="grid gap-5"
         >
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black" id="participants-result-title">
-                Resultado
-              </h2>
-              <p aria-live="polite" className="text-sm text-muted-foreground">
+          <AdminSectionHeader
+            action={
+              <p className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {data.items.filter((item) => item.isActive).length} ativos nesta
+                página
+              </p>
+            }
+            description={
+              <p aria-live="polite">
                 {number.format(data.meta.total)} participante
                 {data.meta.total === 1 ? "" : "s"}
               </p>
+            }
+            eyebrow="resultado"
+            id="participants-result-title"
+            title="Participantes cadastrados"
+          />
+          <AdminPanel className="overflow-hidden">
+            <div
+              aria-hidden="true"
+              className="hidden grid-cols-[minmax(18rem,1.3fr)_minmax(17rem,.8fr)_minmax(15rem,auto)] gap-5 border-b border-border/80 bg-muted/30 px-5 py-3 font-mono text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid"
+            >
+              <span>Participante</span>
+              <span>Dados operacionais</span>
+              <span className="text-right">Ações</span>
             </div>
-            <p className="font-mono text-xs uppercase text-muted-foreground">
-              {data.items.filter((item) => item.isActive).length} ativos nesta
-              página
-            </p>
-          </div>
-          <div className="grid gap-3">
-            {data.items.map((participant) => (
-              <ParticipantRow
-                key={participant.id}
-                participant={participant}
-                pending={pendingIds.has(participant.id)}
-                toggle={() => setStatusIntent(participant)}
-              />
-            ))}
-          </div>
+            <div className="divide-y divide-border/80">
+              {data.items.map((participant) => (
+                <ParticipantRow
+                  key={participant.id}
+                  participant={participant}
+                  pending={pendingIds.has(participant.id)}
+                  toggle={() => setStatusIntent(participant)}
+                />
+              ))}
+            </div>
+          </AdminPanel>
           <PaginationControls
             onPageChange={setPage}
             page={data.meta.page}
@@ -211,10 +230,10 @@ export function ParticipantsClient() {
           />
         </section>
       ) : (
-        <div className="grid justify-items-start gap-3 rounded-lg border border-dashed border-border bg-card/70 p-6">
+        <div className="grid justify-items-start gap-4 rounded-[20px] border border-dashed border-border bg-card/70 p-6 md:p-8">
           <UserRoundSearch aria-hidden="true" className="size-8 text-primary" />
           <div>
-            <h2 className="text-xl font-black">
+            <h2 className="text-xl font-bold">
               Nenhum participante encontrado
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -266,11 +285,11 @@ function ParticipantRow({
   toggle: () => void;
 }) {
   return (
-    <article className="grid min-w-0 gap-4 rounded-lg border border-border bg-card/90 p-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(11rem,.7fr)_auto] lg:items-center">
+    <article className="grid min-w-0 gap-5 px-4 py-5 transition-colors hover:bg-muted/25 sm:px-5 lg:grid-cols-[minmax(18rem,1.3fr)_minmax(17rem,.8fr)_minmax(15rem,auto)] lg:items-center">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            className="truncate font-bold text-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="truncate font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             href={`/admin/participantes/${participant.id}`}
           >
             {participant.name}
@@ -288,20 +307,20 @@ function ParticipantRow({
           {date.format(new Date(participant.createdAt))}
         </p>
       </div>
-      <dl className="grid grid-cols-3 gap-2">
+      <dl className="grid grid-cols-3 divide-x divide-border/80 rounded-[11px] border border-border/70 bg-background/35 py-2">
         <Counter label="PTS" value={participant.points} />
         <Counter
-          label="Actions resgatadas"
+          label="Atividades"
           value={participant.actionRedemptionsCount}
         />
         <Counter
-          label="Rewards pendentes"
+          label="Pendentes"
           value={participant.pendingRewardRedemptionsCount}
         />
       </dl>
-      <div className="grid grid-cols-2 gap-2 lg:flex">
+      <div className="grid grid-cols-2 gap-2 lg:flex lg:justify-end">
         <Link
-          className="inline-flex min-h-9 items-center justify-center rounded-md border border-border px-4 text-sm font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-11 items-center justify-center rounded-[11px] border border-border bg-card/50 px-4 text-sm font-semibold transition-colors hover:border-secondary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           href={`/admin/participantes/${participant.id}`}
         >
           Detalhes
@@ -335,11 +354,11 @@ function ParticipantRow({
 
 function Counter({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-0 rounded-md bg-muted/50 p-2 text-center">
-      <dt className="truncate font-mono text-[10px] uppercase text-muted-foreground">
+    <div className="min-w-0 px-2 text-center">
+      <dt className="truncate font-mono text-[0.6rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </dt>
-      <dd className="mt-1 truncate font-mono text-sm font-bold tabular-nums">
+      <dd className="mt-1 truncate font-mono text-sm font-bold tabular-nums text-foreground">
         {number.format(value)}
       </dd>
     </div>
@@ -359,7 +378,7 @@ function ListSkeleton() {
       role="status"
     >
       {Array.from({ length: 5 }, (_, index) => (
-        <Skeleton className="h-40 lg:h-24" key={index} />
+        <Skeleton className="h-40 rounded-[18px] lg:h-24" key={index} />
       ))}
     </div>
   );
@@ -375,11 +394,11 @@ function ErrorState({
 }) {
   return (
     <div
-      className="grid justify-items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-5"
+      className="grid justify-items-start gap-4 rounded-[18px] border border-destructive/40 bg-destructive/5 p-5"
       role="alert"
     >
       <div>
-        <h2 className="text-xl font-black">
+        <h2 className="text-xl font-bold">
           Não foi possível carregar participantes
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
