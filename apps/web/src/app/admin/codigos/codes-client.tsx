@@ -1,6 +1,7 @@
 "use client";
 import { type KeyboardEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AdminPageHeader, AdminPanel } from "../_components/admin-page";
 import { ClaimCodeGenerator } from "./claim-code-generator";
 import { ClaimCodeHistory } from "./claim-code-history";
 import { ReusableCodeHistory } from "./reusable-code-history";
@@ -14,7 +15,8 @@ export function CodesClient() {
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const currentIndex = tabs.indexOf(tab);
     let nextIndex: number | undefined;
-    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+    if (event.key === "ArrowRight")
+      nextIndex = (currentIndex + 1) % tabs.length;
     if (event.key === "ArrowLeft")
       nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
     if (event.key === "Home") nextIndex = 0;
@@ -24,20 +26,18 @@ export function CodesClient() {
     selectTab(tabs[nextIndex]);
   };
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <header>
-        <p className="font-mono text-xs uppercase text-primary">
-          Operação // Códigos
-        </p>
-        <h1 className="mt-2 text-3xl font-black md:text-5xl">
-          Central de códigos
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Gere lotes e acompanhe disponibilidade e uso.
-        </p>
-      </header>
+    <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-8">
+      <AdminPageHeader
+        description={<p>Gere lotes e acompanhe disponibilidade e uso.</p>}
+        eyebrow="operação // códigos"
+        title="Central de códigos"
+      />
       <ClaimCodeGenerator />
-      <div aria-label="Tipo de código" className="flex gap-2" role="tablist">
+      <AdminPanel
+        aria-label="Tipo de código"
+        className="flex w-fit gap-1 rounded-[14px] p-1.5"
+        role="tablist"
+      >
         <Button
           aria-controls="single-codes-panel"
           aria-selected={tab === "single"}
@@ -46,7 +46,7 @@ export function CodesClient() {
           onKeyDown={handleTabKeyDown}
           role="tab"
           tabIndex={tab === "single" ? 0 : -1}
-          variant={tab === "single" ? "primary" : "outline"}
+          variant={tab === "single" ? "secondary" : "ghost"}
         >
           Uso único
         </Button>
@@ -58,11 +58,11 @@ export function CodesClient() {
           onKeyDown={handleTabKeyDown}
           role="tab"
           tabIndex={tab === "reusable" ? 0 : -1}
-          variant={tab === "reusable" ? "primary" : "outline"}
+          variant={tab === "reusable" ? "secondary" : "ghost"}
         >
           Reutilizáveis
         </Button>
-      </div>
+      </AdminPanel>
       <div
         aria-labelledby={`${tab}-codes-tab`}
         id={`${tab}-codes-panel`}

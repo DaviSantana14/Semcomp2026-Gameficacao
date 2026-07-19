@@ -14,6 +14,11 @@ import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
+import {
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+} from "../_components/admin-page";
 const status = {
   AVAILABLE: ["Disponível", "active"],
   DISABLED: ["Desativado", "inactive"],
@@ -81,9 +86,14 @@ export function ClaimCodeHistory() {
       }),
   });
   return (
-    <section className="grid gap-4">
-      <h2 className="text-2xl font-black">Histórico de uso único</h2>
-      <div className="grid gap-2 sm:grid-cols-3">
+    <section aria-labelledby="single-code-history-title" className="grid gap-5">
+      <AdminSectionHeader
+        description="Localize códigos individuais por atividade, estado ou valor."
+        eyebrow="inventário // uso único"
+        id="single-code-history-title"
+        title="Histórico de uso único"
+      />
+      <AdminPanel className="grid gap-3 p-4 sm:grid-cols-3 md:p-5">
         <Input
           aria-label="Buscar código"
           placeholder="Buscar código"
@@ -95,7 +105,7 @@ export function ClaimCodeHistory() {
         />
         <select
           aria-label="Filtrar por atividade"
-          className="min-h-11 rounded-md border border-input bg-muted px-3"
+          className={adminSelectClassName}
           value={actionId}
           onChange={(e) => {
             setActionId(e.target.value);
@@ -111,7 +121,7 @@ export function ClaimCodeHistory() {
         </select>
         <select
           aria-label="Filtrar por status"
-          className="min-h-11 rounded-md border border-input bg-muted px-3"
+          className={adminSelectClassName}
           value={statusFilter}
           onChange={(e) => {
             setStatusFilter(e.target.value as typeof statusFilter);
@@ -124,7 +134,7 @@ export function ClaimCodeHistory() {
           <option value="blocked">Atividade bloqueada</option>
           <option value="used">Utilizados</option>
         </select>
-      </div>
+      </AdminPanel>
       {query.isPending ? (
         <p role="status">Carregando códigos...</p>
       ) : query.error ? (
@@ -132,42 +142,46 @@ export function ClaimCodeHistory() {
           Tentar novamente
         </Button>
       ) : query.data?.items.length ? (
-        <div className="grid gap-3">
-          {query.data.items.map((c) => (
-            <article
-              className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-[1fr_auto]"
-              key={c.id}
-            >
-              <div>
-                <div className="flex flex-wrap gap-2">
-                  <code className="font-bold">{c.code}</code>
-                  <StatusBadge
-                    label={status[c.status][0]}
-                    status={status[c.status][1]}
-                  />
+        <div className="grid gap-4">
+          <AdminPanel className="divide-y divide-border/80 overflow-hidden">
+            {query.data.items.map((c) => (
+              <article
+                className="grid gap-4 px-4 py-5 transition-colors hover:bg-muted/25 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-5"
+                key={c.id}
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="font-mono text-base font-bold tracking-[0.08em] text-foreground">
+                      {c.code}
+                    </code>
+                    <StatusBadge
+                      label={status[c.status][0]}
+                      status={status[c.status][1]}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {c.action.name} ·{" "}
+                    {c.usedBy
+                      ? `Usado por ${c.usedBy.name} (${c.usedBy.email}) em ${new Date(c.usedAt!).toLocaleString("pt-BR")}`
+                      : `Criado em ${new Date(c.createdAt).toLocaleString("pt-BR")}`}
+                  </p>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {c.action.name} ·{" "}
-                  {c.usedBy
-                    ? `Usado por ${c.usedBy.name} (${c.usedBy.email}) em ${new Date(c.usedAt!).toLocaleString("pt-BR")}`
-                    : `Criado em ${new Date(c.createdAt).toLocaleString("pt-BR")}`}
-                </p>
-              </div>
-              {c.status !== "USED" ? (
-                <Button
-                  disabled={pendingIds.has(c.id)}
-                  variant="outline"
-                  onClick={() => setToggleIntent(c)}
-                >
-                  {pendingIds.has(c.id)
-                    ? "Atualizando..."
-                    : c.isActive
-                      ? "Desativar"
-                      : "Ativar"}
-                </Button>
-              ) : null}
-            </article>
-          ))}
+                {c.status !== "USED" ? (
+                  <Button
+                    disabled={pendingIds.has(c.id)}
+                    variant="outline"
+                    onClick={() => setToggleIntent(c)}
+                  >
+                    {pendingIds.has(c.id)
+                      ? "Atualizando..."
+                      : c.isActive
+                        ? "Desativar"
+                        : "Ativar"}
+                  </Button>
+                ) : null}
+              </article>
+            ))}
+          </AdminPanel>
           <PaginationControls
             page={query.data.meta.page}
             totalPages={query.data.meta.totalPages}
@@ -175,7 +189,7 @@ export function ClaimCodeHistory() {
           />
         </div>
       ) : (
-        <p className="rounded-lg border border-dashed p-6">
+        <p className="rounded-[18px] border border-dashed border-border bg-card/60 p-6 text-sm text-muted-foreground">
           Nenhum código encontrado. Ajuste os filtros ou gere um lote.
         </p>
       )}

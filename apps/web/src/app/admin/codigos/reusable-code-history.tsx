@@ -19,6 +19,7 @@ import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
+import { AdminPanel, AdminSectionHeader } from "../_components/admin-page";
 const status = {
   ACTIVE: ["Ativo", "active"],
   DISABLED: ["Desativado", "inactive"],
@@ -83,17 +84,29 @@ export function ReusableCodeHistory() {
     });
   };
   return (
-    <section className="grid gap-4" ref={listRef} tabIndex={-1}>
-      <h2 className="text-2xl font-black">Códigos reutilizáveis</h2>
-      <Input
-        aria-label="Buscar código reutilizável"
-        placeholder="Buscar atividade ou código"
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setPage(1);
-        }}
+    <section
+      aria-labelledby="reusable-code-history-title"
+      className="grid gap-5"
+      ref={listRef}
+      tabIndex={-1}
+    >
+      <AdminSectionHeader
+        description="Consulte o estado do código e as pessoas que já o utilizaram."
+        eyebrow="inventário // reutilizável"
+        id="reusable-code-history-title"
+        title="Códigos reutilizáveis"
       />
+      <AdminPanel className="p-4 md:p-5">
+        <Input
+          aria-label="Buscar código reutilizável"
+          placeholder="Buscar atividade ou código"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+        />
+      </AdminPanel>
       {query.isPending ? (
         <p role="status">Carregando códigos...</p>
       ) : query.error ? (
@@ -101,58 +114,62 @@ export function ReusableCodeHistory() {
           Tentar novamente
         </Button>
       ) : query.data?.items.length ? (
-        <div className="grid gap-3">
-          {query.data.items.map((c) => (
-            <article
-              className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-[1fr_auto]"
-              key={c.id}
-            >
-              <div>
-                <div className="flex flex-wrap gap-2">
-                  <code className="font-bold">{c.code}</code>
-                  <StatusBadge
-                    label={status[c.status][0]}
-                    status={status[c.status][1]}
-                  />
+        <div className="grid gap-4">
+          <AdminPanel className="divide-y divide-border/80 overflow-hidden">
+            {query.data.items.map((c) => (
+              <article
+                className="grid gap-4 px-4 py-5 transition-colors hover:bg-muted/25 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-5"
+                key={c.id}
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="font-mono text-base font-bold tracking-[0.08em] text-foreground">
+                      {c.code}
+                    </code>
+                    <StatusBadge
+                      label={status[c.status][0]}
+                      status={status[c.status][1]}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {c.name} · {c.points} PTS · {c.totalUses} usos · Último uso:{" "}
+                    {c.lastUsedAt
+                      ? new Date(c.lastUsedAt).toLocaleString("pt-BR")
+                      : "nenhum"}
+                  </p>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {c.name} · {c.points} PTS · {c.totalUses} usos · Último uso:{" "}
-                  {c.lastUsedAt
-                    ? new Date(c.lastUsedAt).toLocaleString("pt-BR")
-                    : "nenhum"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={(event) => {
-                    usesTriggerRefs.current.set(c.id, event.currentTarget);
-                    selectedOriginIdRef.current = c.id;
-                    setSelected(c);
-                  }}
-                >
-                  Ver usos
-                </Button>
-                <Button
-                  disabled={pendingIds.has(c.id)}
-                  variant="outline"
-                  onClick={() => setToggleIntent(c)}
-                >
-                  {pendingIds.has(c.id)
-                    ? "Atualizando..."
-                    : c.isCodeActive
-                      ? "Desativar"
-                      : "Ativar"}
-                </Button>
-              </div>
-              {c.status === "BLOCKED_BY_ACTION" ? (
-                <p className="text-xs text-muted-foreground md:col-span-2">
-                  A atividade está inativa e bloqueia o uso deste código. O
-                  controle acima reflete o estado próprio do código.
-                </p>
-              ) : null}
-            </article>
-          ))}
+                <div className="flex flex-wrap gap-2 md:justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={(event) => {
+                      usesTriggerRefs.current.set(c.id, event.currentTarget);
+                      selectedOriginIdRef.current = c.id;
+                      setSelected(c);
+                    }}
+                  >
+                    Ver usos
+                  </Button>
+                  <Button
+                    disabled={pendingIds.has(c.id)}
+                    variant="outline"
+                    onClick={() => setToggleIntent(c)}
+                  >
+                    {pendingIds.has(c.id)
+                      ? "Atualizando..."
+                      : c.isCodeActive
+                        ? "Desativar"
+                        : "Ativar"}
+                  </Button>
+                </div>
+                {c.status === "BLOCKED_BY_ACTION" ? (
+                  <p className="text-xs text-muted-foreground md:col-span-2">
+                    A atividade está inativa e bloqueia o uso deste código. O
+                    controle acima reflete o estado próprio do código.
+                  </p>
+                ) : null}
+              </article>
+            ))}
+          </AdminPanel>
           <PaginationControls
             page={query.data.meta.page}
             totalPages={query.data.meta.totalPages}
@@ -160,7 +177,7 @@ export function ReusableCodeHistory() {
           />
         </div>
       ) : (
-        <p className="rounded-lg border border-dashed p-6">
+        <p className="rounded-[18px] border border-dashed border-border bg-card/60 p-6 text-sm text-muted-foreground">
           Nenhum código reutilizável encontrado.
         </p>
       )}
@@ -209,13 +226,13 @@ function Redemptions({
   return (
     <section
       aria-labelledby="uses-title"
-      className="grid gap-4 rounded-lg border border-primary/40 bg-card p-5"
+      className="grid gap-4 rounded-[18px] border border-secondary/40 bg-secondary/[0.06] p-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       tabIndex={-1}
       ref={sectionRef}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-xl font-black" id="uses-title">
+          <h3 className="text-xl font-semibold" id="uses-title">
             Usos de {code.code}
           </h3>
           <p className="text-sm text-muted-foreground">{code.name}</p>
@@ -233,10 +250,10 @@ function Redemptions({
       ) : query.error ? (
         <Button onClick={() => void query.refetch()}>Tentar novamente</Button>
       ) : query.data?.items.length ? (
-        <div className="grid gap-2">
+        <div className="divide-y divide-border/80 border-y border-border/80">
           {query.data.items.map((r) => (
-            <article className="rounded-md bg-muted p-3" key={r.id}>
-              <p className="font-bold">{r.participant.name}</p>
+            <article className="py-4" key={r.id}>
+              <p className="font-semibold">{r.participant.name}</p>
               <p className="text-sm text-muted-foreground">
                 {r.participant.email} · {r.points} PTS ·{" "}
                 {new Date(r.createdAt).toLocaleString("pt-BR")}

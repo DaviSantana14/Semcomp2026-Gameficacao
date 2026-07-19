@@ -4,13 +4,6 @@ import { Copy, Download, LoaderCircle, TicketCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,6 +16,12 @@ import {
   isValidAdminReason,
   normalizeAdminReason,
 } from "../_components/admin-reason-dialog";
+import {
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+  adminTextareaClassName,
+} from "../_components/admin-page";
 export function ClaimCodeGenerator() {
   const qc = useQueryClient();
   const [actionId, setActionId] = useState("");
@@ -71,14 +70,18 @@ export function ClaimCodeGenerator() {
     URL.revokeObjectURL(url);
   }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Gerar códigos de uso único</CardTitle>
-        <CardDescription>
-          O último lote permanece disponível até uma nova geração bem-sucedida.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+    <AdminPanel
+      aria-labelledby="claim-code-generator-title"
+      className="overflow-hidden border-secondary/35 bg-[radial-gradient(circle_at_90%_0%,color-mix(in_srgb,var(--secondary)_13%,transparent),transparent_34%),color-mix(in_srgb,var(--card)_92%,transparent)]"
+    >
+      <AdminSectionHeader
+        className="border-b border-secondary/20 px-5 py-5 md:px-6"
+        description="Escolha uma atividade e gere códigos individuais. O último lote permanece disponível até uma nova geração bem-sucedida."
+        eyebrow="emissão // uso único"
+        id="claim-code-generator-title"
+        title="Gerar lote de códigos"
+      />
+      <div className="grid gap-5 p-5 md:p-6">
         {actions.isPending ? (
           <p role="status">Carregando atividades...</p>
         ) : actions.error ? (
@@ -87,14 +90,14 @@ export function ClaimCodeGenerator() {
           </Button>
         ) : (
           <form
-            className="grid gap-4 md:grid-cols-[1fr_12rem]"
+            className="grid gap-4 md:grid-cols-[minmax(0,1fr)_12rem]"
             onSubmit={submit}
           >
             <Label className="grid gap-2">
               Atividade
               <select
                 required
-                className="min-h-11 rounded-md border border-input bg-muted px-3"
+                className={adminSelectClassName}
                 disabled={mutation.isPending}
                 value={actionId}
                 onChange={(e) => {
@@ -127,7 +130,7 @@ export function ClaimCodeGenerator() {
               <textarea
                 aria-label="Motivo"
                 aria-describedby="claim-code-reason-help"
-                className="min-h-24 rounded-md border border-input bg-muted px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={adminTextareaClassName}
                 disabled={mutation.isPending}
                 maxLength={500}
                 onChange={(e) => setReason(e.target.value)}
@@ -141,7 +144,7 @@ export function ClaimCodeGenerator() {
               </span>
             </Label>
             <Button
-              className="w-fit md:col-span-2"
+              className="w-full sm:w-fit md:col-span-2"
               disabled={mutation.isPending || !isValidAdminReason(reason)}
               type="submit"
             >
@@ -155,9 +158,16 @@ export function ClaimCodeGenerator() {
           </form>
         )}
         {last ? (
-          <section className="grid gap-3 rounded-lg border p-4">
-            <h3 className="font-black">Último lote · {last.action.name}</h3>
-            <div className="flex gap-2">
+          <section className="grid gap-4 rounded-[16px] border border-success/30 bg-success/[0.04] p-4 md:p-5">
+            <div>
+              <p className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-success">
+                lote pronto
+              </p>
+              <h3 className="mt-1 text-lg font-semibold">
+                {last.quantity} códigos · {last.action.name}
+              </h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 onClick={() =>
@@ -174,12 +184,12 @@ export function ClaimCodeGenerator() {
                 Baixar .txt
               </Button>
             </div>
-            <pre className="max-h-64 overflow-auto rounded-md bg-muted p-4 font-mono text-sm">
+            <pre className="max-h-64 overflow-auto rounded-[11px] border border-border/80 bg-background/65 p-4 font-mono text-sm leading-6">
               {text}
             </pre>
           </section>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </AdminPanel>
   );
 }

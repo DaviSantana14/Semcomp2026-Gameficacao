@@ -55,6 +55,14 @@ describe("ClaimCodeGenerator", () => {
     });
   });
 
+  it("expõe a geração como região principal da central", () => {
+    renderWithQueryClient(<ClaimCodeGenerator />);
+
+    expect(
+      screen.getByRole("region", { name: "Gerar lote de códigos" }),
+    ).toBeVisible();
+  });
+
   it("limpa o motivo ao mudar de atividade", async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<ClaimCodeGenerator />);
