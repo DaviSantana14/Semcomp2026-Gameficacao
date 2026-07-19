@@ -3,7 +3,6 @@
 import {
   ArrowUpRight,
   Coins,
-  Gauge,
   Home,
   Medal,
   QrCode,
@@ -53,6 +52,7 @@ export function ParticipantDashboard({
 }: ParticipantDashboardProps) {
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const levelProgress = Math.max(0, Math.min(100, user.xp % 100));
+  const remainingXp = 100 - levelProgress;
 
   const metrics = [
     {
@@ -66,12 +66,6 @@ export function ParticipantDashboard({
       icon: Coins,
       label: "Seus pontos",
       value: `${numberFormatter.format(user.points)} PTS`,
-    },
-    {
-      detail: "etapa atual",
-      icon: Gauge,
-      label: "Progresso",
-      value: `Nível ${formatTwoDigits(user.level)}`,
     },
     {
       detail: "entre participantes",
@@ -140,7 +134,7 @@ export function ParticipantDashboard({
           <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
             <div>
               <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                jornada // nível {formatTwoDigits(user.level)}
+                jornada // SEMCOMP 2026
               </p>
               <h1 className="max-w-3xl font-display text-5xl font-bold uppercase leading-[0.82] tracking-wide text-foreground sm:text-6xl xl:text-7xl">
                 Sua jornada está em movimento.
@@ -177,6 +171,10 @@ export function ParticipantDashboard({
                 <QrCode aria-hidden="true" data-icon="inline-start" />
                 Resgatar código
               </Button>
+
+              <span className="sr-only">
+                Nível atual: {formatTwoDigits(user.level)}
+              </span>
 
               <div
                 aria-hidden="true"
@@ -221,15 +219,16 @@ export function ParticipantDashboard({
                 />
               </Link>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {metrics.map((metric, index) => {
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {metrics.map((metric) => {
                 const Icon = metric.icon;
+                const isPosition = metric.label === "Posição geral";
 
                 return (
                   <article
                     className={cn(
                       "rounded-[18px] border border-border/80 bg-card/75 p-5 backdrop-blur",
-                      index === 3 && "border-primary/25",
+                      isPosition && "border-primary/25",
                     )}
                     key={metric.label}
                   >
@@ -241,7 +240,7 @@ export function ParticipantDashboard({
                         aria-hidden="true"
                         className={cn(
                           "size-4 text-secondary",
-                          index === 3 && "text-primary",
+                          isPosition && "text-primary",
                         )}
                       />
                     </div>
@@ -265,7 +264,7 @@ export function ParticipantDashboard({
                     evolução
                   </p>
                   <h2 className="mt-2 text-xl font-bold">
-                    Rumo ao próximo nível
+                    Rumo ao nível {formatTwoDigits(user.level + 1)}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Continue resgatando atividades para fortalecer seu percurso.
@@ -277,8 +276,8 @@ export function ParticipantDashboard({
               </div>
               <Progress className="mt-7" value={levelProgress} />
               <div className="mt-3 flex justify-between font-mono text-xs text-muted-foreground">
-                <span>{numberFormatter.format(user.xp)} XP total</span>
-                <span>Nível {formatTwoDigits(user.level + 1)}</span>
+                <span>{levelProgress}/100 XP nesta etapa</span>
+                <span>{remainingXp} XP restantes</span>
               </div>
             </article>
 
