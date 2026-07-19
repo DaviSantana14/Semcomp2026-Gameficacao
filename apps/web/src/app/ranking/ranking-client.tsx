@@ -35,13 +35,13 @@ const RANKING_PERIOD_COPY: Record<
 > = {
   all: {
     description:
-      "Acompanhe quem mais avançou com a experiência acumulada durante o evento.",
+      "XP define este ranking. Seus PTS continuam reservados para a lojinha.",
     label: "jornada completa",
     listDescription: "Participantes ativos por XP acumulado",
   },
   daily: {
     description:
-      "Veja quem mais avançou hoje com os resgates de atividades da SEMCOMP.",
+      "O XP conquistado hoje define este ranking. Seus PTS continuam reservados para a lojinha.",
     label: "movimento de hoje",
     listDescription: "Participantes ativos por XP conquistado hoje",
   },
@@ -190,7 +190,7 @@ function ParticipantRanking({
               </>
             ) : (
               <div className="rounded-[20px] border border-border/80 bg-card/70 p-6 text-sm text-muted-foreground">
-                Nenhum participante pontuou ainda.
+                Ninguém pontuou neste período ainda.
               </div>
             )}
           </section>
@@ -214,7 +214,7 @@ function ParticipantRanking({
                 </div>
               ) : (
                 <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  Participe para entrar no placar.
+                  Participe de uma atividade para entrar no placar.
                 </p>
               )}
             </section>
@@ -297,7 +297,7 @@ function AdminRankingObserver({
           </section>
         ) : (
           <p className="rounded-[20px] border border-border/80 bg-card/70 p-6 text-sm text-muted-foreground">
-            Nenhum participante pontuou ainda.
+            Ninguém pontuou neste período ainda.
           </p>
         )}
       </div>

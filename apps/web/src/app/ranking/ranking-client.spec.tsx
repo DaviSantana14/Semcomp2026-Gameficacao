@@ -91,6 +91,11 @@ describe("RankingClient", () => {
     expect(within(podium).getByText("#03")).toBeInTheDocument();
     expect(screen.getByText("#04")).toBeInTheDocument();
     expect(screen.getByText("#08")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "XP define este ranking. Seus PTS continuam reservados para a lojinha.",
+      ),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Hoje" }));
     await waitFor(() =>
@@ -109,7 +114,7 @@ describe("RankingClient", () => {
     expect(within(podium).getByText("#01")).toBeInTheDocument();
     expect(within(podium).queryByText("#02")).not.toBeInTheDocument();
     expect(
-      screen.getByText("Participe para entrar no placar."),
+      screen.getByText("Participe de uma atividade para entrar no placar."),
     ).toBeInTheDocument();
   });
 
@@ -118,7 +123,7 @@ describe("RankingClient", () => {
     renderWithQueryClient(<RankingClient />);
 
     expect(
-      await screen.findByText("Nenhum participante pontuou ainda."),
+      await screen.findByText("Ninguém pontuou neste período ainda."),
     ).toBeInTheDocument();
   });
 
