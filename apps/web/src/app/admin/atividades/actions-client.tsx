@@ -5,13 +5,6 @@ import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,6 +25,13 @@ import {
   isValidAdminReason,
   normalizeAdminReason,
 } from "../_components/admin-reason-dialog";
+import {
+  AdminPageHeader,
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+  adminTextareaClassName,
+} from "../_components/admin-page";
 
 const types: ActionType[] = [
   "CHECKIN",
@@ -206,246 +206,276 @@ export function ActionsClient() {
     save.mutate();
   }
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <header>
-        <p className="font-mono text-xs uppercase text-primary">
-          Operação // Atividades
-        </p>
-        <h1 className="mt-2 text-3xl font-black md:text-5xl">
-          Atividades pontuáveis
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Crie, edite e controle separadamente a atividade e seu código
-          reutilizável.
-        </p>
-      </header>
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {editing ? "Editar atividade" : "Nova atividade"}
-          </CardTitle>
-          <CardDescription>
-            O código é opcional e não pode usar o formato XXXX-XXXX.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4" onSubmit={submit}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Nome">
-                <Input
-                  disabled={save.isPending}
-                  required
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-              </Field>
-              <Field label="Tipo">
-                <select
-                  className="min-h-11 rounded-md border border-input bg-muted px-3"
-                  disabled={save.isPending}
-                  value={form.type}
-                  onChange={(e) =>
-                    setForm({ ...form, type: e.target.value as ActionType })
-                  }
-                >
-                  {types.map((t) => (
-                    <option key={t} value={t}>
-                      {labels[t]}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Pontos">
-                <Input
-                  disabled={save.isPending}
-                  min={0}
-                  required
-                  type="number"
-                  value={form.points}
-                  onChange={(e) =>
-                    setForm({ ...form, points: Number(e.target.value) })
-                  }
-                />
-              </Field>
-              <Field label="Código reutilizável">
-                <Input
-                  disabled={save.isPending}
-                  placeholder="Ex.: PALESTRA1"
-                  value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
-                />
-              </Field>
-            </div>
-            <Field label="Descrição">
+    <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-8">
+      <AdminPageHeader
+        description={
+          <p>
+            Crie, edite e controle separadamente a atividade e seu código
+            reutilizável.
+          </p>
+        }
+        eyebrow="operação // atividades"
+        title="Atividades pontuáveis"
+      />
+      <AdminPanel
+        aria-labelledby="activity-form-title"
+        className="overflow-hidden"
+      >
+        <AdminSectionHeader
+          className="border-b border-border/80 px-5 py-5 md:px-6"
+          description={
+            editing
+              ? `Editando ${editing.name}. O código é opcional e não pode usar o formato XXXX-XXXX.`
+              : "Crie uma atividade. O código reutilizável é opcional e não pode usar o formato XXXX-XXXX."
+          }
+          eyebrow={editing ? "modo // edição" : "novo registro"}
+          id="activity-form-title"
+          title="Configurar atividade"
+        />
+        <form className="grid gap-5 p-5 md:p-6" onSubmit={submit}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Nome">
               <Input
                 disabled={save.isPending}
-                value={form.description}
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </Field>
+            <Field label="Tipo">
+              <select
+                className={adminSelectClassName}
+                disabled={save.isPending}
+                value={form.type}
                 onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
+                  setForm({ ...form, type: e.target.value as ActionType })
+                }
+              >
+                {types.map((t) => (
+                  <option key={t} value={t}>
+                    {labels[t]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Pontos">
+              <Input
+                disabled={save.isPending}
+                min={0}
+                required
+                type="number"
+                value={form.points}
+                onChange={(e) =>
+                  setForm({ ...form, points: Number(e.target.value) })
                 }
               />
             </Field>
-            <Field label="Motivo">
-              <textarea
-                aria-label="Motivo"
-                aria-describedby="action-reason-help"
-                className="min-h-24 rounded-md border border-input bg-muted px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <Field label="Código reutilizável">
+              <Input
                 disabled={save.isPending}
-                maxLength={500}
-                required
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                placeholder="Ex.: PALESTRA1"
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
               />
-              <span
-                className="text-xs text-muted-foreground"
-                id="action-reason-help"
-              >
-                Informe de 10 a 500 caracteres.
-              </span>
             </Field>
-            {editing && form.points !== editing.points ? (
-              <p className="text-sm text-accent">
-                A alteração de pontos afeta somente resgates futuros.
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                disabled={save.isPending || !isValidAdminReason(form.reason)}
-              >
-                <Plus />
-                {save.isPending
-                  ? "Salvando..."
-                  : editing
-                    ? "Salvar alterações"
-                    : "Criar atividade"}
-              </Button>
-              {editing ? (
-                <Button
-                  disabled={save.isPending}
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setEditing(null);
-                    setForm(empty);
-                  }}
-                >
-                  Cancelar
-                </Button>
-              ) : null}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setSearch(draft.trim());
-          setPage(1);
-        }}
-      >
-        <Input
-          aria-label="Buscar atividade"
-          placeholder="Buscar por nome ou código"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <Button type="submit" variant="outline">
-          Buscar
-        </Button>
-      </form>
-      {query.isPending ? (
-        <div role="status">
-          <LoaderCircle className="animate-spin" /> Carregando atividades...
-        </div>
-      ) : query.error ? (
-        <LoadError retry={() => void query.refetch()} />
-      ) : query.data?.items.length ? (
-        <section className="grid gap-3">
-          {query.data.items.map((a) => (
-            <article
-              className="grid min-w-0 gap-4 rounded-lg border bg-card/90 p-4 lg:grid-cols-[1fr_auto]"
-              key={a.id}
+          </div>
+          <Field label="Descrição">
+            <Input
+              disabled={save.isPending}
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Motivo">
+            <textarea
+              aria-label="Motivo"
+              aria-describedby="action-reason-help"
+              className={adminTextareaClassName}
+              disabled={save.isPending}
+              maxLength={500}
+              required
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+            />
+            <span
+              className="text-xs text-muted-foreground"
+              id="action-reason-help"
             >
-              <div className="min-w-0">
-                <div className="flex flex-wrap gap-2">
-                  <h2 className="min-w-0 break-words font-black">{a.name}</h2>
-                  <StatusBadge
-                    label={a.isActive ? "Ativa" : "Inativa"}
-                    status={a.isActive ? "active" : "inactive"}
-                  />
-                  {a.code ? <Badge>{a.code}</Badge> : <Badge>Sem código</Badge>}
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {labels[a.type]} · {a.points} PTS · {a.redemptionsCount}{" "}
-                  resgates · {a.claimCodes.total} códigos únicos (
-                  {a.claimCodes.used} usados, {a.claimCodes.available}{" "}
-                  disponíveis)
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={save.isPending}
-                  variant="outline"
-                  onClick={() => edit(a)}
-                >
-                  <Pencil />
-                  Editar
-                </Button>
-                <Button
-                  disabled={
-                    save.isPending || pendingToggles.has(`${a.id}:isActive`)
-                  }
-                  variant="outline"
-                  onClick={() => setToggleIntent({ a, field: "isActive" })}
-                >
-                  {pendingToggles.has(`${a.id}:isActive`)
-                    ? "Atualizando atividade..."
-                    : a.isActive
-                      ? "Desativar atividade"
-                      : "Ativar atividade"}
-                </Button>
-                {a.code ? (
-                  <Button
-                    disabled={
-                      save.isPending ||
-                      pendingToggles.has(`${a.id}:isCodeActive`)
-                    }
-                    variant="outline"
-                    onClick={() =>
-                      setToggleIntent({ a, field: "isCodeActive" })
-                    }
+              Informe de 10 a 500 caracteres.
+            </span>
+          </Field>
+          {editing && form.points !== editing.points ? (
+            <p className="text-sm text-accent">
+              A alteração de pontos afeta somente resgates futuros.
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2 border-t border-border/80 pt-4">
+            <Button
+              type="submit"
+              disabled={save.isPending || !isValidAdminReason(form.reason)}
+            >
+              <Plus />
+              {save.isPending
+                ? "Salvando..."
+                : editing
+                  ? "Salvar alterações"
+                  : "Criar atividade"}
+            </Button>
+            {editing ? (
+              <Button
+                disabled={save.isPending}
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditing(null);
+                  setForm(empty);
+                }}
+              >
+                Cancelar
+              </Button>
+            ) : null}
+          </div>
+        </form>
+      </AdminPanel>
+      <section aria-labelledby="activities-list-title" className="grid gap-5">
+        <AdminSectionHeader
+          description="Consulte os resgates e controle separadamente a atividade e o código associado."
+          eyebrow="cadastro operacional"
+          id="activities-list-title"
+          title="Atividades cadastradas"
+        />
+        <AdminPanel className="overflow-hidden">
+          <form
+            className="flex gap-2 border-b border-border/80 p-4 md:p-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSearch(draft.trim());
+              setPage(1);
+            }}
+          >
+            <Input
+              aria-label="Buscar atividade"
+              placeholder="Buscar por nome ou código"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <Button type="submit" variant="outline">
+              Buscar
+            </Button>
+          </form>
+          {query.isPending ? (
+            <div className="flex items-center gap-2 p-5" role="status">
+              <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+              Carregando atividades...
+            </div>
+          ) : query.error ? (
+            <div className="p-5">
+              <LoadError retry={() => void query.refetch()} />
+            </div>
+          ) : query.data?.items.length ? (
+            <>
+              <div className="divide-y divide-border/80">
+                {query.data.items.map((a) => (
+                  <article
+                    className="grid min-w-0 gap-4 px-4 py-5 transition-colors hover:bg-muted/25 md:px-5 lg:grid-cols-[minmax(0,1fr)_auto]"
+                    key={a.id}
                   >
-                    {pendingToggles.has(`${a.id}:isCodeActive`)
-                      ? "Atualizando código..."
-                      : a.isCodeActive
-                        ? "Desativar código"
-                        : "Ativar código"}
-                  </Button>
-                ) : null}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-2">
+                        <h2 className="min-w-0 break-words font-semibold">
+                          {a.name}
+                        </h2>
+                        <StatusBadge
+                          label={a.isActive ? "Ativa" : "Inativa"}
+                          status={a.isActive ? "active" : "inactive"}
+                        />
+                        {a.code ? (
+                          <Badge>{a.code}</Badge>
+                        ) : (
+                          <Badge>Sem código</Badge>
+                        )}
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {labels[a.type]} · {a.points} PTS · {a.redemptionsCount}{" "}
+                        resgates · {a.claimCodes.total} códigos únicos (
+                        {a.claimCodes.used} usados, {a.claimCodes.available}{" "}
+                        disponíveis)
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                      <Button
+                        disabled={save.isPending}
+                        variant="outline"
+                        onClick={() => edit(a)}
+                      >
+                        <Pencil />
+                        Editar
+                      </Button>
+                      <Button
+                        disabled={
+                          save.isPending ||
+                          pendingToggles.has(`${a.id}:isActive`)
+                        }
+                        variant="outline"
+                        onClick={() =>
+                          setToggleIntent({ a, field: "isActive" })
+                        }
+                      >
+                        {pendingToggles.has(`${a.id}:isActive`)
+                          ? "Atualizando atividade..."
+                          : a.isActive
+                            ? "Desativar atividade"
+                            : "Ativar atividade"}
+                      </Button>
+                      {a.code ? (
+                        <Button
+                          disabled={
+                            save.isPending ||
+                            pendingToggles.has(`${a.id}:isCodeActive`)
+                          }
+                          variant="outline"
+                          onClick={() =>
+                            setToggleIntent({ a, field: "isCodeActive" })
+                          }
+                        >
+                          {pendingToggles.has(`${a.id}:isCodeActive`)
+                            ? "Atualizando código..."
+                            : a.isCodeActive
+                              ? "Desativar código"
+                              : "Ativar código"}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-muted-foreground lg:col-span-2">
+                      Atividade controla todos os resgates; código reutilizável
+                      controla apenas o uso repetido deste código.
+                    </p>
+                  </article>
+                ))}
               </div>
-              <p className="text-xs text-muted-foreground lg:col-span-2">
-                Atividade controla todos os resgates; código reutilizável
-                controla apenas o uso repetido deste código.
+              <div className="p-5">
+                <PaginationControls
+                  page={query.data.meta.page}
+                  totalPages={query.data.meta.totalPages}
+                  onPageChange={setPage}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="m-5 rounded-[16px] border border-dashed border-border p-6">
+              <Zap className="text-primary" />
+              <h2 className="mt-3 font-semibold">
+                Nenhuma atividade encontrada
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Crie a primeira atividade ou revise a busca.
               </p>
-            </article>
-          ))}
-          <PaginationControls
-            page={query.data.meta.page}
-            totalPages={query.data.meta.totalPages}
-            onPageChange={setPage}
-          />
-        </section>
-      ) : (
-        <div className="rounded-lg border border-dashed p-6">
-          <Zap />
-          <h2 className="mt-2 font-black">Nenhuma atividade encontrada</h2>
-          <p className="text-sm text-muted-foreground">
-            Crie a primeira atividade ou revise a busca.
-          </p>
-        </div>
-      )}
+            </div>
+          )}
+        </AdminPanel>
+      </section>
       {toggleIntent ? (
         <AdminReasonDialog
           confirmLabel="Confirmar alteração"
