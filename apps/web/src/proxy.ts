@@ -12,9 +12,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/home", request.url));
   }
 
+  if (pathname.startsWith("/admin") && !hasSession) {
+    return NextResponse.redirect(new URL("/login/admin", request.url));
+  }
+
   if (
     (pathname.startsWith("/home") ||
-      pathname.startsWith("/admin") ||
       pathname.startsWith("/ranking") ||
       pathname.startsWith("/lojinha")) &&
     !hasSession
@@ -27,7 +30,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/login",
+    "/login/:path*",
     "/cadastro",
     "/home/:path*",
     "/admin/:path*",

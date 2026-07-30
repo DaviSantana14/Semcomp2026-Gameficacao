@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
+import { AdminPasswordService } from './admin-password.service';
 import { AuthService } from './auth.service';
 import { AllowedOriginGuard } from './allowed-origin.guard';
 import { CsrfGuard } from './csrf.guard';
@@ -16,6 +17,12 @@ import { ensureJwtSecret } from './jwt-env';
     JwtModule.register({ secret: ensureJwtSecret() }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, CsrfGuard, AllowedOriginGuard],
+  providers: [
+    AuthService,
+    AdminPasswordService,
+    JwtStrategy,
+    CsrfGuard,
+    AllowedOriginGuard,
+  ],
 })
 export class AuthModule {}

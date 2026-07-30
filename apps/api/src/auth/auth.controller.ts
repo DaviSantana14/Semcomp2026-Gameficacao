@@ -31,6 +31,7 @@ import {
 } from './cookie-options';
 import { CsrfGuard } from './csrf.guard';
 import { CsrfTokenResponseDto } from './dto/csrf-token-response.dto';
+import { AdminLoginDto } from './dto/admin-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -82,6 +83,28 @@ export class AuthController {
   ) {
     const { accessToken, csrfToken, user } =
       await this.authService.login(loginDto);
+
+    response.cookie('access_token', accessToken, getAuthCookieOptions(true));
+
+    return { csrfToken, user };
+  }
+
+  @Post('admin/login')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AllowedOriginGuard)
+  @ApiOperation({ summary: 'Autenticar administrador e gerar JWT' })
+  @ApiBody({ type: AdminLoginDto })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'CPF, email ou senha inválidos.',
+    type: HttpErrorResponseDto,
+  })
+  async adminLogin(
+    @Body() loginDto: AdminLoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken, csrfToken, user } =
+      await this.authService.adminLogin(loginDto);
 
     response.cookie('access_token', accessToken, getAuthCookieOptions(true));
 

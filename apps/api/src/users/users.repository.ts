@@ -17,6 +17,11 @@ const userSummarySelect = {
   createdAt: true,
 } as const;
 
+const adminAuthenticationSelect = {
+  ...userSummarySelect,
+  passwordHash: true,
+} as const;
+
 @Injectable()
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -50,12 +55,16 @@ export class UsersRepository {
       where: {
         OR: [{ cpf }, { email }],
       },
+      select: userSummarySelect,
     });
   }
 
   async create(data: { name: string; cpf: string; email: string }) {
     try {
-      return await this.prisma.user.create({ data });
+      return await this.prisma.user.create({
+        data,
+        select: userSummarySelect,
+      });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -73,7 +82,36 @@ export class UsersRepository {
         cpf,
         email,
         isActive: true,
+        role: 'PARTICIPANT',
       },
+      select: userSummarySelect,
+    });
+  }
+
+  findByCredentialsWithPasswordHash(cpf: string, email: string) {
+    return this.prisma.user.findFirst({
+      where: { cpf, email },
+      select: adminAuthenticationSelect,
+    });
+  }
+
+  async setAdminPassword(cpf: string, email: string, passwordHash: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const admin = await tx.user.findFirst({
+        where: { cpf, email, role: 'ADMIN' },
+        select: { id: true },
+      });
+
+      if (!admin) {
+        return false;
+      }
+
+      await tx.user.update({
+        where: { id: admin.id },
+        data: { passwordHash, passwordChangedAt: new Date() },
+      });
+
+      return true;
     });
   }
 

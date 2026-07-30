@@ -66,6 +66,7 @@ async function upsertUser(user: Prisma.UserCreateInput) {
       isActive: true,
     },
     create: user,
+    select: { id: true },
   });
 }
 
