@@ -196,7 +196,7 @@ describe("ShopClient", () => {
       data: undefined,
       error: new ApiError("Sessão expirada", 401),
       isLoading: false,
-    } as ReturnType<typeof useMe>);
+    } as unknown as ReturnType<typeof useMe>);
     const { unmount } = renderWithQueryClient(<ShopClient />);
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/login"));
     unmount();
