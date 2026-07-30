@@ -29,20 +29,9 @@ export class AuthService {
     );
 
     if (existingUser) {
-      if (
-        existingUser.cpf === registerDto.cpf &&
-        existingUser.email === registerDto.email
-      ) {
-        throw new ConflictException(
-          'Já existe um usuário com este CPF e este email.',
-        );
-      }
-
-      if (existingUser.cpf === registerDto.cpf) {
-        throw new ConflictException('Já existe um usuário com este CPF.');
-      }
-
-      throw new ConflictException('Já existe um usuário com este email.');
+      throw new ConflictException(
+        'Já existe um usuário com este CPF ou email.',
+      );
     }
 
     try {

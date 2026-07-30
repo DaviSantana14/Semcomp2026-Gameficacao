@@ -185,4 +185,36 @@ describe(AuthService.name, () => {
       new ConflictException('Já existe um usuário com este CPF ou email.'),
     );
   });
+
+  it('returns the same generic conflict when a CPF or email is already registered', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        {
+          provide: UsersService,
+          useValue: {
+            findByCpfOrEmail: jest.fn().mockResolvedValue({
+              id: 'existing-user',
+              cpf: '12345678900',
+              email: 'ada@example.com',
+            }),
+            create: jest.fn(),
+          },
+        },
+        { provide: JwtService, useValue: { signAsync: jest.fn() } },
+        { provide: AdminPasswordService, useValue: { verify: jest.fn() } },
+      ],
+    }).compile();
+    const service = module.get(AuthService);
+
+    await expect(
+      service.register({
+        name: 'Ada',
+        cpf: '12345678900',
+        email: 'ada@example.com',
+      }),
+    ).rejects.toEqual(
+      new ConflictException('Já existe um usuário com este CPF ou email.'),
+    );
+  });
 });

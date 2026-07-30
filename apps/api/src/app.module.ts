@@ -10,6 +10,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RankingModule } from './ranking/ranking.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { RewardsModule } from './rewards/rewards.module';
+import { SecurityModule } from './security/security.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     ClaimCodesModule,
     RankingModule,
     RewardsModule,
+    SecurityModule,
   ],
   controllers: [AppController],
   providers: [AppService],
