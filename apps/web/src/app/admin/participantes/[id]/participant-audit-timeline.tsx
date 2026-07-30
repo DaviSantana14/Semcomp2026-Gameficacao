@@ -1,15 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCcw, ShieldCheck } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchParticipantAuditEvents } from "@/features/audit/audit.service";
 import type { AuditSnapshot } from "@/features/audit/audit.types";
 import { participantQueryKeys } from "@/features/participants/participant-query-keys";
 import { PaginationControls } from "../../_components/pagination-controls";
+import { AdminPanel, AdminSectionHeader } from "../../_components/admin-page";
 import {
   operationLabels,
   snapshotFieldLabels,
@@ -48,14 +48,18 @@ export function ParticipantAuditTimeline({
     retry: false,
   });
   return (
-    <Card className="min-w-0 bg-card/90">
-      <CardHeader>
-        <p className="font-mono text-xs uppercase text-primary">
-          Auditoria // participante
-        </p>
-        <CardTitle className="mt-1">Linha do tempo administrativa</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+    <AdminPanel
+      aria-labelledby="participant-audit-title"
+      className="overflow-hidden"
+    >
+      <AdminSectionHeader
+        className="border-b border-border/80 px-5 py-5 md:px-6"
+        description="Ações administrativas que alteraram este cadastro ou seus saldos."
+        eyebrow="auditoria // participante"
+        id="participant-audit-title"
+        title="Linha do tempo administrativa"
+      />
+      <div className="grid gap-4 p-5 md:p-6">
         {query.isLoading ? (
           <div
             aria-label="Carregando linha do tempo"
@@ -72,15 +76,18 @@ export function ParticipantAuditTimeline({
           />
         ) : query.data?.items.length ? (
           <>
-            <ol className="grid gap-3">
+            <ol className="relative grid gap-0 before:absolute before:bottom-3 before:left-[0.3rem] before:top-3 before:w-px before:bg-gradient-to-b before:from-secondary/70 before:via-secondary/25 before:to-transparent">
               {query.data.items.map((event) => (
                 <li
-                  className="relative grid gap-2 border-l-2 border-primary/30 pl-4"
+                  className="relative grid gap-2 py-4 pl-7 first:pt-0 last:pb-0"
                   key={event.id}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <ShieldCheck className="size-4 text-primary" />
-                    <p className="font-bold">
+                    <span
+                      aria-hidden="true"
+                      className="semcomp-checkpoint absolute left-0 top-[1.35rem] z-10 bg-card text-primary first:top-1"
+                    />
+                    <p className="font-semibold">
                       {operationLabels[event.operation] ??
                         "Operação administrativa"}
                     </p>
@@ -109,8 +116,8 @@ export function ParticipantAuditTimeline({
             Nenhuma ação administrativa registrada para este participante.
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </AdminPanel>
   );
 }
 

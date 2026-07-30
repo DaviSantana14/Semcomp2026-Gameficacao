@@ -101,6 +101,9 @@ describe("participant reconciliation operations", () => {
     async (replayed, message) => {
       services.adjust.mockResolvedValue(result(replayed));
       const { invalidate } = setup();
+      expect(
+        await screen.findByRole("region", { name: "Reconciliação de saldo" }),
+      ).toBeVisible();
       const { user } = await fillAdjustment();
       await user.click(
         screen.getByRole("button", { name: "Confirmar ajuste" }),

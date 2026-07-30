@@ -5,7 +5,6 @@ import { Filter, ListRestart, SearchX } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +25,12 @@ import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { AuditEventList } from "./audit-event-list";
 import { actorLabels, entityLabels, operationLabels } from "./audit-labels";
+import {
+  AdminPageHeader,
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+} from "../_components/admin-page";
 
 type DraftFilters = {
   actorType: string;
@@ -129,22 +134,31 @@ export function AuditClient() {
   );
 
   return (
-    <div className="mx-auto grid w-full max-w-[96rem] gap-5">
-      <header className="grid gap-2">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-primary">
-          Operação // rastreabilidade
-        </p>
-        <h1 className="text-3xl font-black tracking-tight md:text-5xl">
-          Auditoria
-        </h1>
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-          Investigue alterações administrativas por ator, entidade, participante
-          e requisição.
-        </p>
-      </header>
+    <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-8">
+      <AdminPageHeader
+        description={
+          <p>
+            Investigue alterações administrativas por ator, entidade,
+            participante e requisição.
+          </p>
+        }
+        eyebrow="operação // rastreabilidade"
+        title="Auditoria"
+      />
 
-      <Card className="bg-card/90">
-        <CardContent className="p-4 md:p-5">
+      <AdminPanel
+        aria-labelledby="audit-filters-title"
+        className="overflow-hidden"
+      >
+        <div className="border-b border-border/80 px-4 py-3 md:px-5">
+          <h2
+            className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-secondary"
+            id="audit-filters-title"
+          >
+            Filtros de auditoria
+          </h2>
+        </div>
+        <div className="p-4 md:p-5">
           <form className="grid gap-4" onSubmit={submit}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <SelectField
@@ -257,8 +271,8 @@ export function AuditClient() {
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminPanel>
 
       {auditQuery.isPending || canonicalPage !== null ? (
         <AuditSkeleton />
@@ -270,25 +284,27 @@ export function AuditClient() {
         />
       ) : data && data.items.length > 0 ? (
         <section aria-labelledby="audit-result-title" className="grid gap-3">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black" id="audit-result-title">
-                Eventos encontrados
-              </h2>
-              <p aria-live="polite" className="text-sm text-muted-foreground">
+          <AdminSectionHeader
+            action={
+              auditQuery.isFetching ? (
+                <p
+                  className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-primary"
+                  role="status"
+                >
+                  Atualizando resultados...
+                </p>
+              ) : null
+            }
+            description={
+              <p aria-live="polite">
                 {data.meta.total.toLocaleString("pt-BR")} evento
                 {data.meta.total === 1 ? "" : "s"}
               </p>
-            </div>
-            {auditQuery.isFetching ? (
-              <p
-                className="font-mono text-xs uppercase text-primary"
-                role="status"
-              >
-                Atualizando resultados...
-              </p>
-            ) : null}
-          </div>
+            }
+            eyebrow="investigação // resultado"
+            id="audit-result-title"
+            title="Eventos encontrados"
+          />
           <AuditEventList
             events={data.items}
             onSelect={setSelectedId}
@@ -358,7 +374,7 @@ function SelectField({
     <div className="grid min-w-0 gap-2">
       <Label htmlFor={id}>{label}</Label>
       <select
-        className="min-h-11 min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={adminSelectClassName}
         id={id}
         onChange={(event) => onChange(event.target.value)}
         value={value}
@@ -408,9 +424,9 @@ const emptyDraft: DraftFilters = {
 function AuditSkeleton() {
   return (
     <div aria-label="Carregando auditoria" className="grid gap-3" role="status">
-      <Skeleton className="h-10" />
+      <Skeleton className="h-10 rounded-[13px]" />
       {Array.from({ length: 6 }, (_, index) => (
-        <Skeleton className="h-20" key={index} />
+        <Skeleton className="h-20 rounded-[16px]" key={index} />
       ))}
     </div>
   );
@@ -427,11 +443,11 @@ function ErrorState({
 }) {
   return (
     <div
-      className="grid justify-items-start gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-5"
+      className="grid justify-items-start gap-4 rounded-[18px] border border-destructive/40 bg-destructive/5 p-5"
       role="alert"
     >
       <div>
-        <h2 className="text-xl font-black">
+        <h2 className="text-xl font-bold">
           Não foi possível carregar a auditoria
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -455,10 +471,10 @@ function EmptyState({
   onClear: () => void;
 }) {
   return (
-    <div className="grid justify-items-start gap-3 rounded-md border border-dashed border-border bg-card/70 p-6">
+    <div className="grid justify-items-start gap-4 rounded-[18px] border border-dashed border-border bg-card/70 p-6">
       <SearchX aria-hidden="true" className="size-8 text-primary" />
       <div>
-        <h2 className="text-xl font-black">Nenhum evento encontrado</h2>
+        <h2 className="text-xl font-bold">Nenhum evento encontrado</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {hasFilters
             ? "Revise ou remova parte dos filtros da investigação."

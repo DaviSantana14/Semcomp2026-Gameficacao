@@ -18,7 +18,7 @@ const redeemCodeSchema = z.object({
     .string()
     .transform((value) => value.trim().toUpperCase())
     .refine((value) => /^[A-Z0-9-]+$/.test(value), {
-      message: "Use apenas letras, numeros e hifen.",
+      message: "Use apenas letras, números e hífen.",
     }),
 });
 
@@ -48,7 +48,10 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
     mutationFn: ({ code }: RedeemCodeValues) => redeemActionCode(code),
     onSuccess: async (result) => {
       toast.success(`${result.action.name}: +${result.awardedXp} XP`);
-      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["me"] }),
+        queryClient.invalidateQueries({ queryKey: ["ranking"] }),
+      ]);
       reset();
       onClose();
     },
@@ -56,7 +59,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
       const message =
         error instanceof ApiError && [400, 404, 409].includes(error.status)
           ? error.message
-          : "Nao foi possivel resgatar este codigo.";
+          : "Não foi possível resgatar este código.";
       toast.error(message);
     },
   });
@@ -78,19 +81,19 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur"
       role="dialog"
     >
-      <div className="scanline w-full max-w-md rounded-lg border border-primary/30 bg-card p-5 shadow-[0_0_80px_color-mix(in_srgb,var(--primary)_18%,transparent)]">
-        <div className="relative z-10 flex flex-col gap-5">
+      <div className="w-full max-w-md rounded-[18px] border border-secondary/35 bg-card p-5 shadow-[0_24px_90px_rgba(0,0,0,0.55)] sm:p-6">
+        <div className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
               <p className="font-mono text-xs font-semibold uppercase text-primary">
-                resgate
+                checkpoint // resgate
               </p>
-              <h2 id="redeem-code-title" className="text-2xl font-black">
-                Digite o codigo
+              <h2 id="redeem-code-title" className="text-2xl font-bold">
+                Digite o código
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                Use um codigo de atividade ou seu codigo individual para receber
-                points e XP.
+                Use um código de atividade ou seu código individual para receber
+                pontos e XP.
               </p>
             </div>
             <Button
@@ -109,7 +112,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
             onSubmit={handleSubmit((values) => redeemMutation.mutate(values))}
           >
             <div className="flex flex-col gap-2">
-              <Label htmlFor="redeem-code">Codigo</Label>
+              <Label htmlFor="redeem-code">Código</Label>
               <Input
                 id="redeem-code"
                 autoComplete="off"
@@ -126,7 +129,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
                 className="text-sm text-muted-foreground"
                 id="redeem-code-help"
               >
-                Aceita letras, numeros e hifen.
+                Aceita letras, números e hífen.
               </p>
               {errors.code ? (
                 <p
@@ -145,7 +148,7 @@ export function RedeemCodeDialog({ isOpen, onClose }: RedeemCodeDialogProps) {
               type="submit"
             >
               <ScanLine aria-hidden="true" data-icon="inline-start" />
-              {redeemMutation.isPending ? "Resgatando..." : "Resgatar codigo"}
+              {redeemMutation.isPending ? "Resgatando..." : "Resgatar código"}
             </Button>
           </form>
         </div>

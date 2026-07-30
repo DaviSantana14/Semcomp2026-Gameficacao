@@ -40,6 +40,11 @@ describe("participant audit timeline", () => {
     renderWithQueryClient(
       <ParticipantAuditTimeline participantId="participant-1" />,
     );
+    expect(
+      await screen.findByRole("region", {
+        name: "Linha do tempo administrativa",
+      }),
+    ).toBeVisible();
     expect(await screen.findByText("42")).toBeInTheDocument();
     expect(screen.queryByText("segredo")).not.toBeInTheDocument();
     expect(screen.queryByText(/password/i)).not.toBeInTheDocument();

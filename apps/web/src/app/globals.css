@@ -1,27 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #060912;
-  --foreground: #f7fbff;
-  --card: #0c1324;
-  --card-foreground: #f7fbff;
-  --popover: #0c1324;
-  --popover-foreground: #f7fbff;
-  --primary: #22d3ee;
-  --primary-foreground: #031018;
-  --secondary: #17233a;
-  --secondary-foreground: #dbeafe;
-  --muted: #101827;
-  --muted-foreground: #94a3b8;
-  --accent: #fbbf24;
-  --accent-foreground: #1b1302;
-  --destructive: #fb7185;
-  --destructive-foreground: #2a030b;
-  --success: #34d399;
-  --success-foreground: #03140e;
-  --border: #26344f;
-  --input: #2d3a55;
-  --ring: #22d3ee;
+  --background: #050205;
+  --foreground: #f8f4fa;
+  --card: #0f0f0f;
+  --card-foreground: #f8f4fa;
+  --popover: #171019;
+  --popover-foreground: #f8f4fa;
+  --primary: #8cff00;
+  --primary-foreground: #091300;
+  --secondary: #912cbc;
+  --secondary-foreground: #ffffff;
+  --muted: #171019;
+  --muted-foreground: #afa5b2;
+  --accent: #c42db5;
+  --accent-foreground: #ffffff;
+  --destructive: #ff6b81;
+  --destructive-foreground: #210108;
+  --success: #8cff00;
+  --success-foreground: #091300;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 14%);
+  --ring: #8cff00;
+  --semcomp-purple-deep: #54025c;
+  --semcomp-purple: #912cbc;
+  --semcomp-pink: #c42db5;
+  --semcomp-lime: #8cff00;
+  --semcomp-blue: #6b77ff;
+  --semcomp-surface: #171019;
 }
 
 @theme inline {
@@ -46,14 +52,22 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-semcomp-purple-deep: var(--semcomp-purple-deep);
+  --color-semcomp-purple: var(--semcomp-purple);
+  --color-semcomp-pink: var(--semcomp-pink);
+  --color-semcomp-lime: var(--semcomp-lime);
+  --color-semcomp-blue: var(--semcomp-blue);
+  --color-semcomp-surface: var(--semcomp-surface);
+  --font-display: var(--font-thunder);
+  --font-sans: var(--font-outfit);
+  --font-reading: var(--font-ibm-plex-sans);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-outfit), Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -65,14 +79,372 @@ body {
   color: var(--foreground);
 }
 
+.semcomp-atmosphere {
+  background:
+    radial-gradient(
+      circle at 90% -12%,
+      color-mix(in srgb, var(--semcomp-purple) 28%, transparent),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at -12% 82%,
+      color-mix(in srgb, var(--semcomp-purple-deep) 22%, transparent),
+      transparent 34rem
+    ),
+    var(--background);
+}
+
+.semcomp-checkpoint {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 0.1rem;
+  transform: rotate(45deg);
+}
+
+[aria-current="page"] .semcomp-checkpoint {
+  border-color: var(--semcomp-lime);
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 0.75rem
+    color-mix(in srgb, var(--semcomp-lime) 65%, transparent);
+}
+
+.semcomp-orbit {
+  position: absolute;
+  width: 11.5rem;
+  height: 11.5rem;
+  border: 1px solid color-mix(in srgb, var(--semcomp-pink) 32%, transparent);
+  border-radius: 999px;
+}
+
+.semcomp-orbit::before,
+.semcomp-orbit::after {
+  position: absolute;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.18rem;
+  background: var(--semcomp-pink);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--semcomp-pink) 78%, transparent);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.semcomp-orbit::before {
+  top: 1.15rem;
+  right: 1.45rem;
+}
+
+.semcomp-orbit::after {
+  bottom: 1.55rem;
+  left: 0.75rem;
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--semcomp-lime) 72%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .semcomp-orbit {
+    animation: semcomp-orbit 14s linear infinite;
+  }
+}
+
+@keyframes semcomp-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.journey-hero {
+  background:
+    radial-gradient(
+      circle at 17% 48%,
+      color-mix(in srgb, var(--semcomp-purple) 34%, transparent),
+      transparent 31rem
+    ),
+    radial-gradient(
+      circle at 79% 52%,
+      color-mix(in srgb, var(--semcomp-purple-deep) 30%, transparent),
+      transparent 22rem
+    ),
+    linear-gradient(110deg, #100817 0%, #08040b 58%, #050205 100%);
+}
+
+.journey-orbit-stage {
+  position: relative;
+  display: flex;
+  width: 7.5rem;
+  height: 7.5rem;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.journey-orbit-outer,
+.journey-orbit-inner,
+.journey-level-badge {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.journey-orbit-outer {
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 999px;
+  background: conic-gradient(
+    from 20deg,
+    color-mix(in srgb, var(--semcomp-purple) 30%, transparent) 0 28%,
+    transparent 28% 54%,
+    color-mix(in srgb, var(--semcomp-pink) 18%, transparent) 54% 76%,
+    transparent 76% 100%
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 1rem),
+    #000 calc(100% - 1rem + 1px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 1rem),
+    #000 calc(100% - 1rem + 1px)
+  );
+}
+
+.journey-orbit-inner {
+  width: 6.65rem;
+  height: 6.65rem;
+  border: 1px solid color-mix(in srgb, var(--semcomp-purple) 68%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 0 1.5rem
+    color-mix(in srgb, var(--semcomp-purple) 22%, transparent);
+}
+
+.journey-orbit-inner::before,
+.journey-orbit-inner::after {
+  position: absolute;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 0.14rem;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.journey-orbit-inner::before {
+  top: 0.55rem;
+  right: 0.55rem;
+  background: var(--semcomp-pink);
+  box-shadow: 0 0 0.85rem
+    color-mix(in srgb, var(--semcomp-pink) 85%, transparent);
+}
+
+.journey-orbit-inner::after {
+  bottom: 0.65rem;
+  left: 0.35rem;
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 0.85rem
+    color-mix(in srgb, var(--semcomp-lime) 82%, transparent);
+}
+
+.journey-level-badge {
+  z-index: 2;
+  display: flex;
+  width: 5.5rem;
+  height: 5.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--semcomp-lime) 52%, transparent);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #100817, #050205 72%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--semcomp-purple) 26%, transparent),
+    0 1rem 3rem rgba(0, 0, 0, 0.45);
+}
+
+@media (min-width: 64rem) {
+  .journey-orbit-stage {
+    width: 20rem;
+    height: 16rem;
+  }
+
+  .journey-orbit-outer {
+    width: 17rem;
+    height: 17rem;
+    -webkit-mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - 2.75rem),
+      #000 calc(100% - 2.75rem + 1px)
+    );
+    mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - 2.75rem),
+      #000 calc(100% - 2.75rem + 1px)
+    );
+  }
+
+  .journey-orbit-inner {
+    width: 11.5rem;
+    height: 11.5rem;
+  }
+
+  .journey-orbit-inner::before,
+  .journey-orbit-inner::after {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.18rem;
+  }
+
+  .journey-orbit-inner::before {
+    top: 1.15rem;
+    right: 1.45rem;
+  }
+
+  .journey-orbit-inner::after {
+    bottom: 1.55rem;
+    left: 0.75rem;
+  }
+
+  .journey-level-badge {
+    width: 7rem;
+    height: 7rem;
+    border-radius: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .journey-orbit-inner {
+    animation: journey-orbit-clockwise 14s linear infinite;
+  }
+
+  .journey-orbit-outer {
+    animation: journey-orbit-counterclockwise 22s linear infinite;
+  }
+}
+
+@keyframes journey-orbit-clockwise {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes journey-orbit-counterclockwise {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.auth-orbit-stage {
+  position: absolute;
+  top: 3.25rem;
+  right: -4rem;
+  width: 15rem;
+  height: 15rem;
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.auth-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--semcomp-purple) 62%, transparent);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 2.35rem
+      color-mix(in srgb, var(--semcomp-purple-deep) 11%, transparent),
+    0 0 5rem color-mix(in srgb, var(--semcomp-purple) 16%, transparent);
+}
+
+.auth-orbit-ring::before,
+.auth-orbit-ring::after,
+.auth-orbit-node {
+  position: absolute;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 0.18rem;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.auth-orbit-ring::before {
+  top: 1.1rem;
+  right: 1.45rem;
+  background: var(--semcomp-pink);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--semcomp-pink) 78%, transparent);
+}
+
+.auth-orbit-ring::after {
+  bottom: 1.65rem;
+  left: 0.8rem;
+  background: var(--semcomp-lime);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--semcomp-lime) 72%, transparent);
+}
+
+.auth-orbit-node {
+  top: 48%;
+  left: -0.35rem;
+  background: var(--semcomp-purple);
+  box-shadow: 0 0 1rem
+    color-mix(in srgb, var(--semcomp-purple) 78%, transparent);
+}
+
+@media (min-width: 64rem) {
+  .auth-orbit-stage {
+    top: 5.2rem;
+    right: -1rem;
+    width: 25rem;
+    height: 25rem;
+    opacity: 0.82;
+  }
+
+  .auth-orbit-ring {
+    box-shadow:
+      0 0 0 4.5rem
+        color-mix(in srgb, var(--semcomp-purple-deep) 11%, transparent),
+      0 0 8rem color-mix(in srgb, var(--semcomp-purple) 18%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .auth-orbit-ring {
+    animation: auth-orbit-spin 18s linear infinite;
+  }
+}
+
+@keyframes auth-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .arcade-grid {
   background:
-    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 26rem),
-    radial-gradient(circle at 82% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 22rem),
-    linear-gradient(color-mix(in srgb, var(--border) 32%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--border) 28%, transparent) 1px, transparent 1px),
+    radial-gradient(
+      circle at 18% 12%,
+      color-mix(in srgb, var(--primary) 20%, transparent),
+      transparent 26rem
+    ),
+    radial-gradient(
+      circle at 82% 0%,
+      color-mix(in srgb, var(--accent) 18%, transparent),
+      transparent 22rem
+    ),
+    linear-gradient(
+      color-mix(in srgb, var(--border) 32%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--border) 28%, transparent) 1px,
+      transparent 1px
+    ),
     var(--background);
-  background-size: auto, auto, 44px 44px, 44px 44px, auto;
+  background-size:
+    auto,
+    auto,
+    44px 44px,
+    44px 44px,
+    auto;
 }
 
 .scanline {

@@ -24,8 +24,11 @@ const loginSchema = z.object({
   cpf: z
     .string()
     .transform((value) => normalizeCpf(value))
-    .refine((value) => /^\d{11}$/.test(value), "Informe um CPF com 11 digitos."),
-  email: z.string().email("Informe um email valido."),
+    .refine(
+      (value) => /^\d{11}$/.test(value),
+      "Informe um CPF com 11 dígitos.",
+    ),
+  email: z.string().email("Informe um e-mail válido."),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -67,10 +70,12 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full border-primary/20">
+    <Card className="relative z-10 w-full border-secondary/25 bg-card/85 shadow-[0_2rem_6rem_rgba(0,0,0,0.38)] backdrop-blur-xl">
       <CardHeader>
         <CardTitle>Entrar</CardTitle>
-        <CardDescription>Use CPF e email cadastrados no evento.</CardDescription>
+        <CardDescription>
+          Use o CPF e o e-mail cadastrados no evento.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-5" onSubmit={handleSubmit(onSubmit)}>
@@ -81,26 +86,38 @@ export function LoginForm() {
               autoComplete="username"
               inputMode="numeric"
               placeholder="00000000000"
+              aria-describedby={errors.cpf ? "cpf-error" : undefined}
               aria-invalid={Boolean(errors.cpf)}
               {...register("cpf")}
             />
             {errors.cpf ? (
-              <p className="text-sm font-medium text-destructive">{errors.cpf.message}</p>
+              <p
+                className="text-sm font-medium text-destructive"
+                id="cpf-error"
+                role="alert"
+              >
+                {errors.cpf.message}
+              </p>
             ) : null}
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">E-mail</Label>
             <Input
               id="email"
               autoComplete="email"
               inputMode="email"
               placeholder="voce@email.com"
+              aria-describedby={errors.email ? "email-error" : undefined}
               aria-invalid={Boolean(errors.email)}
               {...register("email")}
             />
             {errors.email ? (
-              <p className="text-sm font-medium text-destructive">
+              <p
+                className="text-sm font-medium text-destructive"
+                id="email-error"
+                role="alert"
+              >
                 {errors.email.message}
               </p>
             ) : null}
@@ -108,12 +125,15 @@ export function LoginForm() {
 
           <Button className="w-full" disabled={isSubmitting} type="submit">
             <LogIn aria-hidden="true" data-icon="inline-start" />
-            {isSubmitting ? "Entrando..." : "Entrar"}
+            {isSubmitting ? "Entrando..." : "Entrar na jornada"}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground">
-            Ainda nao entrou no jogo?{" "}
-            <Link className="font-semibold text-primary hover:underline" href="/cadastro">
+            Ainda não se cadastrou?{" "}
+            <Link
+              className="font-semibold text-primary hover:underline"
+              href="/cadastro"
+            >
               Criar cadastro
             </Link>
           </p>

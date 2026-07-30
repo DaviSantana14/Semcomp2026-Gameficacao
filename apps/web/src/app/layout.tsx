@@ -1,21 +1,34 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Sans, JetBrains_Mono, Outfit } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const ibmPlexSans = IBM_Plex_Sans({
+  variable: "--font-ibm-plex-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const thunder = localFont({
+  src: "./fonts/Thunder-VF.ttf",
+  variable: "--font-thunder",
 });
 
 export const metadata: Metadata = {
-  title: "Semcomp Game",
-  description: "Experiencia gamificada da Semcomp.",
+  title: "SEMCOMP Game",
+  description: "Experiência gamificada da SEMCOMP 2026.",
 };
 
 export default function RootLayout({
@@ -26,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${outfit.variable} ${ibmPlexSans.variable} ${jetBrainsMono.variable} ${thunder.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>

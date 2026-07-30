@@ -49,6 +49,17 @@ describe("ActionsClient", () => {
     setupActionsQuery();
   });
 
+  it("separa configuração e atividades cadastradas em regiões", async () => {
+    renderWithQueryClient(<ActionsClient />);
+
+    expect(
+      screen.getByRole("region", { name: "Configurar atividade" }),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole("region", { name: "Atividades cadastradas" }),
+    ).toBeVisible();
+  });
+
   it("permite que cards com nomes longos encolham no viewport mobile", async () => {
     const longName = "AtividadeComNomeMuitoLongoSemQualquerEspacoParaQuebra";
     fetchAdminActionsMock.mockResolvedValueOnce({

@@ -69,4 +69,15 @@ describe("ParticipantsClient audited status", () => {
       "Acesso suspenso",
     );
   });
+
+  it("organiza filtros e participantes em regiões operacionais", async () => {
+    renderWithQueryClient(<ParticipantsClient />);
+
+    expect(
+      screen.getByRole("region", { name: "Filtros de participantes" }),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole("region", { name: "Participantes cadastrados" }),
+    ).toBeVisible();
+  });
 });

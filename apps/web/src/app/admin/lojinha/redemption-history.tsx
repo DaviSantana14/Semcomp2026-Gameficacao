@@ -13,13 +13,6 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   cancelRedemption,
@@ -34,6 +27,11 @@ import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
+import {
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+} from "../_components/admin-page";
 
 const tabs = ["all", "pending", "delivered", "cancelled"] as const;
 const labels = {
@@ -142,17 +140,18 @@ export function RedemptionHistory({
     setPage(1);
   }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Histórico de pedidos</CardTitle>
-        <CardDescription>
-          Acompanhe a fila e conclua cada retirada presencial.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-5">
+    <AdminPanel aria-labelledby="redemptions-title" className="overflow-hidden">
+      <AdminSectionHeader
+        className="border-b border-border/80 px-5 py-5 md:px-6"
+        description="Acompanhe a fila e conclua cada retirada presencial."
+        eyebrow="atendimento // pedidos"
+        id="redemptions-title"
+        title="Retiradas"
+      />
+      <div className="grid gap-5 p-5 md:p-6">
         <div
           aria-label="Status do pedido"
-          className="flex gap-2 overflow-x-auto pb-1"
+          className="flex gap-1 overflow-x-auto rounded-[13px] bg-background/35 p-1.5"
           role="tablist"
         >
           {tabs.map((tab) => (
@@ -165,7 +164,7 @@ export function RedemptionHistory({
               onKeyDown={keyDown}
               role="tab"
               tabIndex={status === tab ? 0 : -1}
-              variant={status === tab ? "primary" : "outline"}
+              variant={status === tab ? "secondary" : "ghost"}
             >
               {labels[tab]}
             </Button>
@@ -184,7 +183,7 @@ export function RedemptionHistory({
           <select
             aria-describedby={optionsError ? "reward-options-error" : undefined}
             aria-label="Filtrar por recompensa"
-            className="min-h-11 rounded-md border border-input bg-muted px-3"
+            className={adminSelectClassName}
             disabled={optionsLoading || optionsError}
             value={rewardId}
             onChange={(e) => {
@@ -235,13 +234,16 @@ export function RedemptionHistory({
           role="tabpanel"
         >
           {query.isPending ? (
-            <div className="flex items-center gap-2" role="status">
-              <LoaderCircle className="animate-spin" />
+            <div
+              className="flex items-center gap-2 rounded-[13px] border border-border/70 bg-background/35 p-4"
+              role="status"
+            >
+              <LoaderCircle className="animate-spin motion-reduce:animate-none" />
               Carregando pedidos...
             </div>
           ) : query.error ? (
             <div
-              className="rounded-lg border border-destructive/40 p-5"
+              className="rounded-[16px] border border-destructive/40 bg-destructive/5 p-5"
               role="alert"
             >
               <p>Não foi possível carregar os pedidos.</p>
@@ -255,18 +257,18 @@ export function RedemptionHistory({
               </Button>
             </div>
           ) : query.data?.items.length ? (
-            <div className="grid gap-3">
+            <div className="divide-y divide-border/80 border-y border-border/80">
               {query.data.items.map((item) => {
                 const pending =
                   action.isPending && action.variables?.id === item.id;
                 return (
                   <article
-                    className="grid gap-3 rounded-lg border bg-muted/30 p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+                    className="grid gap-4 py-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
                     key={item.id}
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-black">{item.reward.name}</h3>
+                        <h3 className="font-semibold">{item.reward.name}</h3>
                         <StatusBadge
                           label={
                             item.status === "PENDING"
@@ -291,12 +293,12 @@ export function RedemptionHistory({
                         Solicitado em {formatDate(item.createdAt)} · atualizado
                         em {formatDate(item.updatedAt)}
                       </p>
-                      <Badge className="mt-2">
+                      <Badge className="mt-2 font-mono">
                         {item.pointsSpent} PTS gastos
                       </Badge>
                     </div>
                     {item.status === "PENDING" ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 lg:justify-end">
                         <Button
                           disabled={pending}
                           onClick={() =>
@@ -309,6 +311,7 @@ export function RedemptionHistory({
                             : "Marcar entregue"}
                         </Button>
                         <Button
+                          className="border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
                           disabled={pending}
                           onClick={() =>
                             setActionIntent({ item, kind: "cancel" })
@@ -336,16 +339,16 @@ export function RedemptionHistory({
               />
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed p-6">
-              <RotateCcw />
-              <h3 className="mt-2 font-black">Nenhum pedido encontrado</h3>
+            <div className="rounded-[16px] border border-dashed border-border p-6">
+              <RotateCcw className="text-primary" />
+              <h3 className="mt-3 font-semibold">Nenhum pedido encontrado</h3>
               <p className="text-sm text-muted-foreground">
                 Revise os filtros ou aguarde novos resgates.
               </p>
             </div>
           )}
         </div>
-      </CardContent>
+      </div>
       {actionIntent ? (
         <AdminReasonDialog
           confirmLabel={
@@ -376,7 +379,7 @@ export function RedemptionHistory({
           }
         />
       ) : null}
-    </Card>
+    </AdminPanel>
   );
 }
 

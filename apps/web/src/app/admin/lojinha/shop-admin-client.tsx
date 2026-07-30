@@ -34,6 +34,11 @@ import {
   validateRewardOptionsPage,
 } from "./reward-options-pagination";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
+import {
+  AdminPageHeader,
+  AdminPanel,
+  AdminSectionHeader,
+} from "../_components/admin-page";
 
 const statuses: Array<{
   value: NonNullable<AdminRewardsFilters["status"]>;
@@ -133,18 +138,17 @@ export function ShopAdminClient() {
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <header>
-        <p className="font-mono text-xs uppercase text-primary">
-          Operação // Lojinha
-        </p>
-        <h1 className="mt-2 text-3xl font-black md:text-5xl">
-          Estoque & retiradas
-        </h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Gerencie o catálogo sem interromper a fila de pedidos já confirmados.
-        </p>
-      </header>
+    <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-8">
+      <AdminPageHeader
+        description={
+          <p>
+            Gerencie o catálogo sem interromper a fila de pedidos já
+            confirmados.
+          </p>
+        }
+        eyebrow="operação // lojinha"
+        title="Estoque & retiradas"
+      />
       <RewardForm
         key={editing?.id ?? `new-${formVersion}`}
         reward={editing}
@@ -154,53 +158,56 @@ export function ShopAdminClient() {
         }}
         onSubmit={(payload) => save.mutate(payload)}
       />
-      <section aria-labelledby="catalog-title" className="grid gap-4">
-        <div>
-          <h2 className="text-2xl font-black" id="catalog-title">
-            Catálogo administrativo
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Itens inativos e esgotados continuam visíveis aqui.
-          </p>
-        </div>
-        <form
-          className="flex flex-col gap-2 sm:flex-row"
-          onSubmit={submitSearch}
-        >
-          <Input
-            aria-label="Buscar recompensa"
-            placeholder="Buscar por nome ou descrição"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <Button variant="outline">
-            <Search />
-            Buscar
-          </Button>
-        </form>
-        <div
-          aria-label="Filtrar catálogo por status"
-          className="flex gap-2 overflow-x-auto pb-1"
-        >
-          {statuses.map((item) => (
-            <Button
-              aria-pressed={status === item.value}
-              key={item.value}
-              onClick={() => changeStatus(item.value)}
-              variant={status === item.value ? "primary" : "outline"}
-            >
-              {item.label}
+      <section aria-labelledby="catalog-title" className="grid gap-5">
+        <AdminSectionHeader
+          description="Itens inativos e esgotados continuam visíveis para operação."
+          eyebrow="estoque // catálogo"
+          id="catalog-title"
+          title="Catálogo"
+        />
+        <AdminPanel className="grid gap-4 p-4 md:p-5">
+          <form
+            className="flex flex-col gap-2 sm:flex-row"
+            onSubmit={submitSearch}
+          >
+            <Input
+              aria-label="Buscar recompensa"
+              placeholder="Buscar por nome ou descrição"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <Button variant="outline">
+              <Search />
+              Buscar
             </Button>
-          ))}
-        </div>
+          </form>
+          <div
+            aria-label="Filtrar catálogo por status"
+            className="flex gap-1 overflow-x-auto rounded-[13px] bg-background/35 p-1.5"
+          >
+            {statuses.map((item) => (
+              <Button
+                aria-pressed={status === item.value}
+                key={item.value}
+                onClick={() => changeStatus(item.value)}
+                variant={status === item.value ? "secondary" : "ghost"}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+        </AdminPanel>
         {query.isPending ? (
-          <div className="flex items-center gap-2" role="status">
-            <LoaderCircle className="animate-spin" />
+          <div
+            className="flex items-center gap-2 rounded-[18px] border border-border/80 bg-card/60 p-5"
+            role="status"
+          >
+            <LoaderCircle className="animate-spin motion-reduce:animate-none" />
             Carregando catálogo...
           </div>
         ) : query.error ? (
           <div
-            className="rounded-lg border border-destructive/40 p-5"
+            className="rounded-[18px] border border-destructive/40 bg-destructive/5 p-5"
             role="alert"
           >
             <p>Não foi possível carregar o catálogo.</p>
@@ -214,13 +221,13 @@ export function ShopAdminClient() {
             </Button>
           </div>
         ) : query.data?.items.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {query.data.items.map((reward) => {
               const toggling =
                 toggle.isPending && toggle.variables?.reward.id === reward.id;
               return (
                 <article
-                  className="grid grid-cols-[5rem_minmax(0,1fr)] gap-4 rounded-lg border bg-card/90 p-4"
+                  className="grid grid-cols-[5rem_minmax(0,1fr)] gap-4 rounded-[18px] border border-border/80 bg-card/75 p-4 transition-colors hover:border-secondary/35"
                   key={reward.id}
                 >
                   <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-md border bg-muted">
@@ -241,8 +248,8 @@ export function ShopAdminClient() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap gap-2">
-                      <h3 className="font-black">{reward.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{reward.name}</h3>
                       <StatusBadge
                         label={
                           !reward.isActive
@@ -263,11 +270,11 @@ export function ShopAdminClient() {
                     <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                       {reward.description || "Sem descrição"}
                     </p>
-                    <p className="mt-2 font-mono text-xs uppercase">
+                    <p className="mt-2 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-secondary">
                       {reward.costInPoints} PTS · {reward.stock} em estoque
                     </p>
                   </div>
-                  <div className="col-span-2 flex flex-wrap gap-2 border-t pt-3">
+                  <div className="col-span-2 flex flex-wrap gap-2 border-t border-border/80 pt-3">
                     <Badge>Pendentes: {reward.redemptionCounts.PENDING}</Badge>
                     <Badge>
                       Entregues: {reward.redemptionCounts.DELIVERED}
@@ -308,9 +315,11 @@ export function ShopAdminClient() {
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed p-6">
-            <PackageSearch />
-            <h3 className="mt-2 font-black">Nenhuma recompensa encontrada</h3>
+          <div className="rounded-[18px] border border-dashed border-border bg-card/60 p-6">
+            <PackageSearch className="text-primary" />
+            <h3 className="mt-3 font-semibold">
+              Nenhuma recompensa encontrada
+            </h3>
             <p className="text-sm text-muted-foreground">
               Crie o primeiro item ou revise os filtros.
             </p>

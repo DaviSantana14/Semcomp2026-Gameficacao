@@ -50,6 +50,14 @@ describe("AuditClient", () => {
     });
   });
 
+  it("expõe os filtros como região operacional", () => {
+    renderWithQueryClient(<AuditClient />);
+
+    expect(
+      screen.getByRole("region", { name: "Filtros de auditoria" }),
+    ).toBeVisible();
+  });
+
   it("carrega os filtros da URL e aplica combinacoes resetando a pagina", async () => {
     currentSearch =
       "page=3&actorType=ADMIN&operation=ACTION_UPDATED&actorSearch=Ada";
@@ -152,7 +160,7 @@ describe("AuditClient", () => {
     const view = renderWithQueryClient(<AuditClient />);
 
     await user.click(
-      await screen.findByRole("button", { name: "Proxima pagina" }),
+      await screen.findByRole("button", { name: "Próxima página" }),
     );
     expect(push).toHaveBeenCalledWith(
       "/admin/auditoria?limit=50&page=2&requestId=req-atual",
@@ -289,6 +297,7 @@ describe("AuditClient", () => {
     expect(details).toHaveAttribute("aria-expanded", "true");
     expect(details).toHaveAttribute("aria-controls", region.id);
     expect(details).toHaveFocus();
+    expect(details.closest("tr")).toHaveClass("bg-secondary/[0.08]");
     expect(within(region).getAllByText("Ativo")).toHaveLength(2);
     expect(region).toHaveTextContent("Credenciamento");
     expect(region).toHaveTextContent("Administrador");

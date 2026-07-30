@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAdminParticipantPointEvents } from "@/features/participants/participants.service";
@@ -24,6 +23,11 @@ import type {
 import { ApiError } from "@/lib/http/api-error";
 import { reverseParticipantPointEvent } from "@/features/reconciliation/reconciliation.service";
 import { PaginationControls } from "../../_components/pagination-controls";
+import {
+  AdminPanel,
+  AdminSectionHeader,
+  adminSelectClassName,
+} from "../../_components/admin-page";
 import { ReversalDialog } from "./participant-operation-dialogs";
 
 const LIMIT = 10;
@@ -99,14 +103,17 @@ export function ParticipantPointEvents({
   }
 
   return (
-    <Card className="min-w-0 bg-card/90">
-      <CardHeader className="gap-4">
-        <div>
-          <p className="font-mono text-xs uppercase text-primary">
-            Conta // razão
-          </p>
-          <CardTitle className="mt-1">Extrato de pontos</CardTitle>
-        </div>
+    <AdminPanel
+      aria-labelledby="point-events-title"
+      className="overflow-hidden"
+    >
+      <div className="grid gap-5 border-b border-border/80 px-5 py-5 md:px-6">
+        <AdminSectionHeader
+          description="Créditos, débitos, ajustes e estornos registrados para esta conta."
+          eyebrow="conta // razão"
+          id="point-events-title"
+          title="Extrato de pontos"
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Filter
             label="Movimento"
@@ -135,8 +142,8 @@ export function ParticipantPointEvents({
             <option value="reward_redemption">Lojinha</option>
           </Filter>
         </div>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+      </div>
+      <div className="grid gap-4 p-5 md:p-6">
         {feedback ? (
           <p
             className="rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success"
@@ -157,7 +164,7 @@ export function ParticipantPointEvents({
           />
         ) : data && data.items.length > 0 ? (
           <>
-            <div className="grid gap-3">
+            <div className="divide-y divide-border/80 border-y border-border/80">
               {data.items.map((event) => (
                 <PointEvent
                   event={event}
@@ -177,7 +184,7 @@ export function ParticipantPointEvents({
             Nenhuma movimentação corresponde aos filtros.
           </div>
         )}
-      </CardContent>
+      </div>
       {selected ? (
         <ReversalDialog
           balance={balance}
@@ -192,7 +199,7 @@ export function ParticipantPointEvents({
           onSubmit={reverse}
         />
       ) : null}
-    </Card>
+    </AdminPanel>
   );
 }
 
@@ -207,7 +214,7 @@ export function PointEvent({
   const detail = formatPointEventDetail(event) ?? "Sem detalhe adicional";
   return (
     <article
-      className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+      className="grid gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
       id={`point-event-${event.id}`}
     >
       <div className="min-w-0">
@@ -288,7 +295,7 @@ export function isReversalEligible(event: AdminParticipantPointEvent) {
 
 function Delta({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md bg-background/60 p-3 text-right">
+    <div className="rounded-[11px] border border-border/70 bg-background/45 p-3 text-right">
       <dt className="font-mono text-[10px] uppercase text-muted-foreground">
         {label}
       </dt>
@@ -316,7 +323,7 @@ function Filter({
     <div className="grid gap-2">
       <Label htmlFor={id}>{label}</Label>
       <select
-        className="min-h-11 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={adminSelectClassName}
         id={id}
         onChange={(event) => onChange(event.target.value)}
         value={value}

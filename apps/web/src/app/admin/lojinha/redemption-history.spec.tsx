@@ -53,6 +53,19 @@ describe("RedemptionHistory audited transitions", () => {
     });
   });
 
+  it("expõe a fila como região de retiradas", () => {
+    renderWithQueryClient(
+      <RedemptionHistory
+        rewards={[]}
+        optionsLoading={false}
+        optionsError={false}
+        onRetryOptions={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "Retiradas" })).toBeVisible();
+  });
+
   it("preserva reason em erro de entrega e limpa ao trocar para cancelamento", async () => {
     deliverMock.mockRejectedValueOnce(new ApiError("Falha na entrega", 400));
     cancelMock.mockResolvedValueOnce({ ...redemption, status: "CANCELLED" });
