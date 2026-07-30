@@ -24,10 +24,12 @@ import type { Response } from 'express';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import type { AuthenticatedRequest } from '../common/request-context';
 import { AuthService } from './auth.service';
+import { AllowedOriginGuard } from './allowed-origin.guard';
 import {
   getAuthCookieOptions,
   getClearAuthCookieOptions,
 } from './cookie-options';
+import { CsrfGuard } from './csrf.guard';
 import { CsrfTokenResponseDto } from './dto/csrf-token-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -61,6 +63,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AllowedOriginGuard)
   @ApiOperation({ summary: 'Autenticar participante e gerar JWT' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: LoginResponseDto })
@@ -105,6 +108,7 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, CsrfGuard, AllowedOriginGuard)
   @ApiOperation({ summary: 'Encerrar sessão autenticada' })
   @ApiNoContentResponse({ description: 'Sessão encerrada.' })
   logout(@Res({ passthrough: true }) response: Response) {

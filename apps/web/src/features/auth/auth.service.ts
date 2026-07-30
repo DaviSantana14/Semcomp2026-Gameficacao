@@ -28,7 +28,6 @@ export function register(payload: RegisterPayload) {
 export async function logout() {
   await apiFetch<void>("/auth/logout", {
     method: "POST",
-    skipCsrf: true,
   });
   clearCsrfToken();
 }

@@ -1,5 +1,9 @@
 import type { CookieOptions, Response } from 'express';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { AllowedOriginGuard } from '../allowed-origin.guard';
 import { AuthController } from '../auth.controller';
+import { CsrfGuard } from '../csrf.guard';
+import { JwtAuthGuard } from '../jwt-auth.guard';
 
 const user = {
   id: 'user-1',
@@ -16,6 +20,30 @@ const user = {
 };
 
 describe('AuthController', () => {
+  it('requires the configured origin for participant login', () => {
+    const loginHandler = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'login',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(GUARDS_METADATA, loginHandler)).toEqual([
+      AllowedOriginGuard,
+    ]);
+  });
+
+  it('requires authentication, CSRF and the configured origin for logout', () => {
+    const logoutHandler = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'logout',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(GUARDS_METADATA, logoutHandler)).toEqual([
+      JwtAuthGuard,
+      CsrfGuard,
+      AllowedOriginGuard,
+    ]);
+  });
+
   it('delegates register to AuthService', async () => {
     const authService = {
       register: jest.fn().mockResolvedValue(user),
