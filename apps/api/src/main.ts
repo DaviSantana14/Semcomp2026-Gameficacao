@@ -11,6 +11,7 @@ import {
 } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { getRuntimeOptions } from './config/runtime-options';
 
 function rejectUnexpectedContentType(
   request: Request,
@@ -35,6 +36,7 @@ function rejectUnexpectedContentType(
 }
 
 async function bootstrap() {
+  const runtimeOptions = getRuntimeOptions();
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   const expressApp = app.getHttpAdapter().getInstance() as Express;
 
@@ -68,21 +70,23 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Semcomp Gamification API')
-    .setDescription(
-      'API para autenticação, usuários e ações de gamificação da Semcomp.',
-    )
-    .setVersion('1.0.0')
-    .addSecurity('access-token-cookie', {
-      type: 'apiKey',
-      in: 'cookie',
-      name: 'access_token',
-    })
-    .build();
+  if (runtimeOptions.swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Semcomp Gamification API')
+      .setDescription(
+        'API para autenticação, usuários e ações de gamificação da Semcomp.',
+      )
+      .setVersion('1.0.0')
+      .addSecurity('access-token-cookie', {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'access_token',
+      })
+      .build();
 
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, swaggerDocument);
+    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, swaggerDocument);
+  }
 
   await app.listen(process.env.PORT ?? 3001);
 }
