@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { Pool } from 'pg';
 import { buildDatabaseUrl } from '../src/prisma/database-url';
+import { getSeedConfig } from './seed-config';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg(
@@ -17,13 +18,6 @@ const prisma = new PrismaClient({
     }),
   ),
 });
-
-const adminUser = {
-  name: 'Semcomp Admin',
-  cpf: '11111111111',
-  email: 'admin@semcomp.dev',
-  role: UserRole.ADMIN,
-} satisfies Prisma.UserCreateInput;
 
 const sampleParticipant = {
   name: 'Participante Demo',
@@ -91,20 +85,29 @@ async function upsertAction(action: Prisma.ActionCreateInput) {
 }
 
 async function main() {
-  await upsertUser(adminUser);
-  await upsertUser(sampleParticipant);
+  const { admin, mode } = getSeedConfig();
 
-  for (const action of sampleActions) {
-    await upsertAction(action);
+  const adminUser = {
+    ...admin,
+    role: UserRole.ADMIN,
+  } satisfies Prisma.UserCreateInput;
+
+  await upsertUser(adminUser);
+
+  if (mode === 'demo') {
+    await upsertUser(sampleParticipant);
+
+    for (const action of sampleActions) {
+      await upsertAction(action);
+    }
   }
 
   console.log('Seed completed successfully.');
 }
 
 main()
-  .catch((error) => {
+  .catch(() => {
     console.error('Seed failed.');
-    console.error(error);
     process.exitCode = 1;
   })
   .finally(async () => {
