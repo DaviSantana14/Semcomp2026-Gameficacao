@@ -1,0 +1,347 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Disposable single-host infrastructure for the Semcomp rehearsal
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.large
+    AllowedValues:
+      - t3.large
+      - t3.xlarge
+    Description: EC2 capacity for the disposable rehearsal
+    ConstraintDescription: must be t3.large or t3.xlarge
+
+  BudgetEmail:
+    Type: String
+    MinLength: 3
+    MaxLength: 254
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    Description: Email address that receives the monthly rehearsal budget alert
+    ConstraintDescription: must be a valid email address
+
+Resources:
+  RehearsalVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.90.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+        - Key: Environment
+          Value: rehearsal
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-igw'
+        - Key: Environment
+          Value: rehearsal
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref RehearsalVpc
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.90.0.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref RehearsalVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-subnet'
+        - Key: Environment
+          Value: rehearsal
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref RehearsalVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-routes'
+        - Key: Environment
+          Value: rehearsal
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+
+  RehearsalSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow public HTTP for the disposable rehearsal
+      VpcId: !Ref RehearsalVpc
+      SecurityGroupIngress:
+        - Description: Public HTTP
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - Description: Required outbound access for packages, SSM, S3, and images
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-http-only'
+        - Key: Environment
+          Value: rehearsal
+
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-staging-backups
+            Status: Enabled
+            Prefix: backups/.staging/
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: expire-rehearsal-backups
+            Status: Enabled
+            Prefix: backups/
+            ExpirationInDays: 14
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: expire-rehearsal-releases
+            Status: Enabled
+            Prefix: releases/
+            ExpirationInDays: 14
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-artifacts'
+        - Key: Environment
+          Value: rehearsal
+
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  RehearsalInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: rehearsal-parameter-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRehearsalParameters
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/semcomp/rehearsal/*'
+        - PolicyName: rehearsal-artifact-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListOperationalPrefixes
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt BackupBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - backups/*
+                      - releases/*
+              - Sid: ManageOperationalObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${BackupBucket.Arn}/backups/*'
+                  - !Sub '${BackupBucket.Arn}/releases/*'
+      Tags:
+        - Key: Environment
+          Value: rehearsal
+
+  RehearsalInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref RehearsalInstanceRole
+
+  RehearsalInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: DefaultPublicRoute
+    Properties:
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/noble/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref RehearsalInstanceProfile
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 1
+        HttpTokens: required
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref RehearsalSecurityGroup
+          SubnetId: !Ref PublicSubnet
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeSize: 40
+            VolumeType: gp3
+      PropagateTagsToVolumeOnCreation: true
+      UserData:
+        Fn::Base64: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          export DEBIAN_FRONTEND=noninteractive
+
+          apt-get update
+          apt-get install -y ca-certificates curl
+
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+            -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+
+          docker_arch="$(dpkg --print-architecture)"
+          ubuntu_codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
+          cat > /etc/apt/sources.list.d/docker.sources <<EOF
+          Types: deb
+          URIs: https://download.docker.com/linux/ubuntu
+          Suites: $ubuntu_codename
+          Components: stable
+          Architectures: $docker_arch
+          Signed-By: /etc/apt/keyrings/docker.asc
+          EOF
+
+          apt-get update
+          apt-get install -y \
+            docker-ce \
+            docker-ce-cli \
+            containerd.io \
+            docker-buildx-plugin \
+            docker-compose-plugin
+
+          systemctl enable --now docker
+          usermod -aG docker ubuntu
+
+          if systemctl cat snap.amazon-ssm-agent.amazon-ssm-agent.service \
+            > /dev/null 2>&1; then
+            systemctl enable --now \
+              snap.amazon-ssm-agent.amazon-ssm-agent.service
+          elif systemctl cat amazon-ssm-agent.service > /dev/null 2>&1; then
+            systemctl enable --now amazon-ssm-agent.service
+          elif command -v snap > /dev/null 2>&1; then
+            snap install amazon-ssm-agent --classic
+            systemctl enable --now \
+              snap.amazon-ssm-agent.amazon-ssm-agent.service
+          else
+            printf 'amazon-ssm-agent is unavailable\n' >&2
+            exit 1
+          fi
+
+          install -d -m 0750 -o root -g docker \
+            /opt/semcomp \
+            /opt/semcomp/releases \
+            /opt/semcomp/shared
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-host'
+        - Key: Environment
+          Value: rehearsal
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-monthly-cost'
+        BudgetLimit:
+          Amount: 20
+          Unit: USD
+        BudgetType: COST
+        CostTypes:
+          IncludeCredit: false
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref BudgetEmail
+              SubscriptionType: EMAIL
+
+Outputs:
+  InstanceId:
+    Description: EC2 instance managed through Systems Manager Session Manager
+    Value: !Ref RehearsalInstance
+
+  PublicDnsName:
+    Description: Temporary public HTTP hostname for the disposable rehearsal
+    Value: !GetAtt RehearsalInstance.PublicDnsName
+
+  BackupBucketName:
+    Description: Private bucket for rehearsal backups and release artifacts
+    Value: !Ref BackupBucket
