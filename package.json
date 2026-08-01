@@ -11,6 +11,7 @@
     "dev:api": "npm --workspace api run dev",
     "dev:web": "npm --workspace web run dev",
     "build": "turbo run build",
+    "test:deployment-scripts": "bash deploy/aws/scripts/scripts.test.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
