@@ -4,12 +4,13 @@ Description: Disposable single-host infrastructure for the Semcomp rehearsal
 Parameters:
   InstanceType:
     Type: String
-    Default: t3.large
+    Default: m7i-flex.large
     AllowedValues:
+      - m7i-flex.large
       - t3.large
       - t3.xlarge
     Description: EC2 capacity for the disposable rehearsal
-    ConstraintDescription: must be t3.large or t3.xlarge
+    ConstraintDescription: must be m7i-flex.large, t3.large, or t3.xlarge
 
   BudgetEmail:
     Type: String
