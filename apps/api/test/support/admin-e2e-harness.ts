@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { hash } from 'bcrypt';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -15,6 +16,47 @@ import {
 export type AuthSession = { cookie: string; csrfToken: string };
 
 type LoginBody = { csrfToken: string };
+
+const E2E_ADMIN_PASSWORD = 'Semcomp-E2e-Admin-2026!';
+
+export async function loginForE2e(
+  app: INestApplication<App>,
+  prisma: PrismaService,
+  cpf: string,
+  email: string,
+): Promise<AuthSession> {
+  const user = await prisma.user.findFirstOrThrow({
+    where: { cpf, email },
+    select: { id: true, role: true },
+  });
+  const isAdmin = user.role === 'ADMIN';
+
+  if (isAdmin) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await hash(E2E_ADMIN_PASSWORD, 12) },
+    });
+  }
+
+  const response = await request(app.getHttpServer())
+    .post(isAdmin ? '/auth/admin/login' : '/auth/login')
+    .set('Origin', process.env.FRONTEND_URL ?? 'http://localhost:3000')
+    .send({
+      cpf,
+      email,
+      ...(isAdmin ? { password: E2E_ADMIN_PASSWORD } : {}),
+    })
+    .expect(200);
+  const setCookie = response.headers['set-cookie'] as string[] | undefined;
+  if (!Array.isArray(setCookie) || !setCookie[0]) {
+    throw new Error('Login did not return an access token cookie.');
+  }
+
+  return {
+    cookie: setCookie[0].split(';')[0],
+    csrfToken: (response.body as LoginBody).csrfToken,
+  };
+}
 
 export class AdminE2eHarness {
   private constructor(
@@ -58,18 +100,7 @@ export class AdminE2eHarness {
   }
 
   async login(cpf: string, email: string): Promise<AuthSession> {
-    const response = await request(this.app.getHttpServer())
-      .post('/auth/login')
-      .send({ cpf, email })
-      .expect(200);
-    const setCookie = response.headers['set-cookie'] as string[] | undefined;
-    if (!Array.isArray(setCookie) || !setCookie[0]) {
-      throw new Error('Login did not return an access token cookie.');
-    }
-    return {
-      cookie: setCookie[0].split(';')[0],
-      csrfToken: (response.body as LoginBody).csrfToken,
-    };
+    return loginForE2e(this.app, this.prisma, cpf, email);
   }
 
   get(path: string, session: AuthSession) {

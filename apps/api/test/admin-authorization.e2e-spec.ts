@@ -12,15 +12,7 @@ import {
   assertDisposableTestDatabase,
   truncateDisposableTestDatabase,
 } from './support/e2e-database-cleanup';
-
-type AuthSession = {
-  cookie: string;
-  csrfToken: string;
-};
-
-type LoginBody = {
-  csrfToken: string;
-};
+import { AuthSession, loginForE2e } from './support/admin-e2e-harness';
 
 type RankingBody = {
   ranking: Array<{ name: string }>;
@@ -127,8 +119,13 @@ describe('Player flow authorization matrix (e2e)', () => {
     claimCodeId = claimCode.id;
     pendingRedemptionId = pendingRedemption.id;
 
-    adminSession = await login(admin.cpf, admin.email);
-    participantSession = await login(participant.cpf, participant.email);
+    adminSession = await loginForE2e(app, prisma, admin.cpf, admin.email);
+    participantSession = await loginForE2e(
+      app,
+      prisma,
+      participant.cpf,
+      participant.email,
+    );
   });
 
   afterAll(async () => {
@@ -298,24 +295,6 @@ describe('Player flow authorization matrix (e2e)', () => {
     return request(app.getHttpServer())
       .get('/ranking')
       .set('Cookie', session.cookie);
-  }
-
-  async function login(cpf: string, email: string): Promise<AuthSession> {
-    const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ cpf, email })
-      .expect(200);
-    const setCookie = response.headers['set-cookie'] as string[] | undefined;
-    const body = response.body as LoginBody;
-
-    if (!Array.isArray(setCookie) || !setCookie[0]) {
-      throw new Error('Login did not return an access token cookie.');
-    }
-
-    return {
-      cookie: setCookie[0].split(';')[0],
-      csrfToken: body.csrfToken,
-    };
   }
 });
 

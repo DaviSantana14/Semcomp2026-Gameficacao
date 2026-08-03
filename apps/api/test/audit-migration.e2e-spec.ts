@@ -21,7 +21,14 @@ describe('Marco 10 migration (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (client) await client.end();
+    if (!client) return;
+
+    try {
+      await resetSchema();
+      await applyMigrations();
+    } finally {
+      await client.end();
+    }
   });
 
   it('applies all migrations to an empty database', async () => {
