@@ -11,7 +11,7 @@ compose_env_file="${COMPOSE_ENV_FILE:-}"
 status_log="${HTTP_STATUS_LOG:-}"
 aws_instance_id="${AWS_INSTANCE_ID:-}"
 aws_region="${AWS_REGION:-sa-east-1}"
-aws_lookback_minutes="${AWS_METRICS_LOOKBACK_MINUTES:-5}"
+aws_lookback_minutes="${AWS_METRICS_LOOKBACK_MINUTES:-15}"
 
 fail() {
   printf 'metrics capture failed: %s\n' "$1" >&2
@@ -43,6 +43,49 @@ if [[ -n "$compose_file" ]]; then
   fi
   compose_command+=(-f "$compose_file")
 fi
+
+capture_bcrypt_benchmark() {
+  [[ "${#compose_command[@]}" -gt 0 ]] ||
+    fail 'COMPOSE_FILE is required to benchmark bcrypt on the rehearsal host'
+  command -v docker >/dev/null 2>&1 ||
+    fail 'Docker is required to benchmark bcrypt on the rehearsal host'
+
+  local sample
+  if ! sample="$(
+    "${compose_command[@]}" exec -T api node --input-type=module -e '
+      const bcryptModule = await import("bcrypt");
+      const bcrypt = bcryptModule.default ?? bcryptModule;
+      const password = "marco-9-bcrypt-benchmark-value";
+      let hash;
+      try {
+        const hashStartedAt = performance.now();
+        hash = await bcrypt.hash(password, 12);
+        const hashMs = performance.now() - hashStartedAt;
+        const compareStartedAt = performance.now();
+        const passed = await bcrypt.compare(password, hash);
+        const compareMs = performance.now() - compareStartedAt;
+        process.stdout.write(JSON.stringify({
+          "type":"bcrypt",
+          source: "api-container-on-rehearsal-host",
+          cost: 12,
+          hash_ms: Number(hashMs.toFixed(2)),
+          compare_ms: Number(compareMs.toFixed(2)),
+          passed,
+        }));
+      } finally {
+        hash = undefined;
+      }
+    ' 2>/dev/null
+  )"; then
+    fail 'unable to benchmark bcrypt inside the API container'
+  fi
+
+  [[ "$sample" == *'"type":"bcrypt"'* && "$sample" == *'"passed":true'* ]] ||
+    fail 'bcrypt benchmark returned an invalid result'
+  printf '%s\n' "$sample" >> "$output_path"
+}
+
+capture_bcrypt_benchmark
 
 read_cpu_snapshot() {
   local line
@@ -127,40 +170,33 @@ count_status() {
 
 aws_metric_value() {
   local metric_name="$1"
-  if [[ -z "$aws_instance_id" ]] || ! command -v aws >/dev/null 2>&1; then
+  local statistic="${2:-Average}"
+  if [[ -z "$aws_instance_id" ]]; then
     printf 'null\n'
     return
   fi
+  command -v aws >/dev/null 2>&1 || fail 'AWS CLI is required to capture configured EC2 metrics'
 
-  local end_time start_time raw value
+  local end_time start_time query value
   end_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   start_time="$(date -u -d "-${aws_lookback_minutes} minutes" +%Y-%m-%dT%H:%M:%SZ)"
-  raw="$(
+  query="sort_by(Datapoints,&Timestamp)[-1].${statistic}"
+  if ! value="$(
     aws cloudwatch get-metric-statistics \
       --region "$aws_region" \
       --namespace AWS/EC2 \
       --metric-name "$metric_name" \
       --dimensions "Name=InstanceId,Value=$aws_instance_id" \
-      --statistics Average \
-      --period 60 \
+      --statistics "$statistic" \
+      --period 300 \
       --start-time "$start_time" \
       --end-time "$end_time" \
-      --output json \
-      --no-cli-pager 2>/dev/null || true
-  )"
-  value="$(printf '%s' "$raw" | node --input-type=module -e '
-    const chunks = [];
-    for await (const chunk of process.stdin) chunks.push(chunk);
-    try {
-      const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      const points = (data.Datapoints ?? [])
-        .map((point) => point.Average)
-        .filter((point) => typeof point === "number");
-      process.stdout.write(points.length > 0 ? String(points.at(-1)) : "null");
-    } catch {
-      process.stdout.write("null");
-    }
-  ')"
+      --query "$query" \
+      --output text \
+      --no-cli-pager 2>/dev/null
+  )"; then
+    fail "unable to read CloudWatch metric $metric_name"
+  fi
   if [[ "$value" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
     printf '%s\n' "$value"
   else
@@ -233,14 +269,14 @@ while true; do
   sleep "$interval_value"
 done
 
-aws_cpu_utilization="$(aws_metric_value CPUUtilization)"
-aws_credit_balance="$(aws_metric_value CPUCreditBalance)"
-aws_surplus_credits="$(aws_metric_value CPUSurplusCreditsCharged)"
-aws_credit_usage="$(aws_metric_value CPUCreditUsage)"
-printf '{"type":"aws","timestamp":"%s","instance_id_configured":%s,"CPUUtilization":%s,"CPUCreditBalance":%s,"CPUSurplusCreditsCharged":%s,"CPUCreditUsage":%s}\n' \
+aws_cpu_utilization="$(aws_metric_value CPUUtilization Average)"
+aws_network_in="$(aws_metric_value NetworkIn Sum)"
+aws_network_out="$(aws_metric_value NetworkOut Sum)"
+aws_status_check_failed="$(aws_metric_value StatusCheckFailed Maximum)"
+printf '{"type":"aws","timestamp":"%s","instance_id_configured":%s,"CPUUtilization":%s,"NetworkIn":%s,"NetworkOut":%s,"StatusCheckFailed":%s}\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   "$([[ -n "$aws_instance_id" ]] && printf true || printf false)" \
-  "$aws_cpu_utilization" "$aws_credit_balance" "$aws_surplus_credits" "$aws_credit_usage" \
+  "$aws_cpu_utilization" "$aws_network_in" "$aws_network_out" "$aws_status_check_failed" \
   >> "$output_path"
 
 printf '{"type":"summary","max_memory_percent":%s,"memory_below_75_percent":%s,"cpu_not_sustained_above_80_percent":%s,"passed":%s}\n' \

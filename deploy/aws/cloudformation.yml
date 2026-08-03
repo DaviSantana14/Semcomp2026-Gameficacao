@@ -214,6 +214,15 @@ Resources:
                 Resource:
                   - !Sub '${BackupBucket.Arn}/backups/*'
                   - !Sub '${BackupBucket.Arn}/releases/*'
+        - PolicyName: rehearsal-metrics-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadInstanceMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                Resource: '*'
       Tags:
         - Key: Environment
           Value: rehearsal

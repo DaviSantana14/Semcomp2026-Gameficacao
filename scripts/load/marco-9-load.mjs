@@ -5,7 +5,6 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { generateCpfs } from "./cpf.mjs";
 
-const BCRYPT_COST = 12;
 const DEFAULT_READ_WINDOW_MS = 10_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_CONCURRENCY = 20;
@@ -645,34 +644,6 @@ async function runAdminScenario(config, credentials, metrics) {
   };
 }
 
-async function benchmarkBcrypt(metrics) {
-  let hash;
-  try {
-    const bcryptModule = await import("bcrypt");
-    const bcrypt = bcryptModule.default ?? bcryptModule;
-    const password = "marco-9-bcrypt-benchmark-value";
-
-    const hashStartedAt = performance.now();
-    hash = await bcrypt.hash(password, BCRYPT_COST);
-    metrics.record(
-      "bcryptHash",
-      performance.now() - hashStartedAt,
-      typeof hash === "string" && hash.length > 0,
-    );
-
-    const compareStartedAt = performance.now();
-    const matches = await bcrypt.compare(password, hash);
-    metrics.record("bcryptCompare", performance.now() - compareStartedAt, matches);
-    return { available: true, cost: BCRYPT_COST };
-  } catch {
-    metrics.record("bcryptHash", 0, false);
-    metrics.record("bcryptCompare", 0, false);
-    return { available: false, cost: BCRYPT_COST };
-  } finally {
-    hash = undefined;
-  }
-}
-
 async function readHostMetrics(path) {
   if (!path) return { checked: false };
 
@@ -855,16 +826,11 @@ export async function runLoad(config = getConfig()) {
     ? await runAdminScenario(config, credentials, metrics)
     : { skipped: config.skipAdmin, valid: false };
   sensitiveValues.push(...(adminResult.sensitiveValues ?? []));
-  const bcrypt = await benchmarkBcrypt(metrics);
   const hostMetrics = await readHostMetrics(config.hostMetricsPath);
 
   if (!config.skipAdmin && !credentials) {
     issues.push("protected administrative credential input was unavailable");
   }
-  if (!bcrypt.available) {
-    issues.push("bcrypt benchmark was unavailable");
-  }
-
   const workload = { reads, redemptions, abuse };
   const thresholds = calculateThresholds(
     metrics,
@@ -884,11 +850,6 @@ export async function runLoad(config = getConfig()) {
     requestedRedemptions: config.redemptions,
     operations: metrics.summaries(),
     httpStatusCounts: metrics.statusSummary(),
-    bcrypt: {
-      cost: BCRYPT_COST,
-      hash: metrics.summaries().bcryptHash,
-      compare: metrics.summaries().bcryptCompare,
-    },
     thresholds,
     adminScenariosSkipped: config.skipAdmin,
     issues,

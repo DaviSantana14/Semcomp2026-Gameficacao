@@ -34,3 +34,7 @@ test("keeps paid T3 sizes available alongside m7i-flex.large", () => {
     );
   }
 });
+
+test("allows the rehearsal host to read its CloudWatch metrics", () => {
+  assert.match(template, /^\s+- cloudwatch:GetMetricStatistics$/m);
+});
