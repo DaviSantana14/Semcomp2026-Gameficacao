@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
 import { compare, hash } from 'bcrypt';
 import {
   AdminPasswordValidationError,
@@ -11,7 +10,7 @@ const DUMMY_PASSWORD_HASH =
   '$2b$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
 export type AdminPasswordAuthenticationUser = {
-  role: UserRole;
+  role: 'PARTICIPANT' | 'ADMIN';
   isActive: boolean;
   passwordHash: string | null;
 };
@@ -36,11 +35,7 @@ export class AdminPasswordService {
     let canAuthenticate = false;
     let passwordHash = DUMMY_PASSWORD_HASH;
 
-    if (
-      user?.role === UserRole.ADMIN &&
-      user.isActive &&
-      user.passwordHash !== null
-    ) {
+    if (user?.role === 'ADMIN' && user.isActive && user.passwordHash !== null) {
       canAuthenticate = true;
       passwordHash = user.passwordHash;
     }

@@ -63,7 +63,7 @@ describe(UsersService.name, () => {
   });
 
   it('uses the semantic repository contract for user creation', async () => {
-    repository.create.mockResolvedValue(user as never);
+    repository.create.mockResolvedValue(user);
     const input = { name: 'Ada', cpf: '123', email: 'ada@example.com' };
     await expect(service.create(input)).resolves.toEqual(user);
     expect(repository.create.mock.calls).toEqual([[input]]);

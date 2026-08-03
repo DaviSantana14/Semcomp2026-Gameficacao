@@ -4,7 +4,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { UserRole } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { AdminPasswordService } from './admin-password.service';
@@ -55,7 +54,7 @@ export class AuthService {
       loginDto.email,
     );
 
-    if (!user || user.role !== UserRole.PARTICIPANT) {
+    if (!user || user.role !== 'PARTICIPANT') {
       throw new UnauthorizedException('CPF ou email inválido.');
     }
 
@@ -86,7 +85,7 @@ export class AuthService {
     name: string;
     cpf: string;
     email: string;
-    role: UserRole;
+    role: 'PARTICIPANT' | 'ADMIN';
     points: number;
     xp: number;
     level: number;
