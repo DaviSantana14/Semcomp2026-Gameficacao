@@ -127,9 +127,14 @@ drop_previous_database() {
     if [ "$POSTGRES_DB" = postgres ]; then
       maintenance_db=template1
     fi
-    psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$maintenance_db" \
+    psql_command() {
+      statement="$1"
+      shift
+      printf "%s\n" "$statement" |
+        psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$maintenance_db" "$@"
+    }
+    psql_command "DROP DATABASE :\"previous_db\" WITH (FORCE);" \
       -v previous_db="$PREVIOUS_DB" \
-      -c "DROP DATABASE :\"previous_db\" WITH (FORCE);" \
       > /dev/null
   '
 }
@@ -149,6 +154,13 @@ rollback_database() {
       maintenance_db=template1
     fi
 
+    psql_command() {
+      statement="$1"
+      shift
+      printf "%s\n" "$statement" |
+        psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" "$@"
+    }
+
     suffix="$(date -u +%s)_$$"
     failed_db="${target_db}_failed_${suffix}"
     if [ "${#failed_db}" -gt 63 ]; then
@@ -165,23 +177,19 @@ rollback_database() {
       set +e
 
       if [ "$previous_renamed" -eq 1 ]; then
-        psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+        psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           -v target_db="$target_db" \
-          -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           > /dev/null 2>&1
       elif [ "$failed_renamed" -eq 1 ]; then
-        psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+        psql_command "ALTER DATABASE :\"failed_db\" RENAME TO :\"target_db\";" \
           -v failed_db="$failed_db" -v target_db="$target_db" \
-          -c "ALTER DATABASE :\"failed_db\" RENAME TO :\"target_db\";" \
           > /dev/null 2>&1
-        psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+        psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           -v target_db="$target_db" \
-          -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           > /dev/null 2>&1
       elif [ "$target_blocked" -eq 1 ]; then
-        psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+        psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           -v target_db="$target_db" \
-          -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           > /dev/null 2>&1
       fi
 
@@ -189,38 +197,32 @@ rollback_database() {
     }
     trap cleanup EXIT
 
-    psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+    psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS false;" \
       -v target_db="$target_db" \
-      -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS false;" \
       > /dev/null
     target_blocked=1
 
-    psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+    psql_command "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN (:'\''target_db'\'', :'\''previous_db'\'') AND pid <> pg_backend_pid();" \
       -v target_db="$target_db" -v previous_db="$previous_db" \
-      -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN (:'\''target_db'\'', :'\''previous_db'\'') AND pid <> pg_backend_pid();" \
       > /dev/null
 
-    psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+    psql_command "ALTER DATABASE :\"target_db\" RENAME TO :\"failed_db\";" \
       -v target_db="$target_db" -v failed_db="$failed_db" \
-      -c "ALTER DATABASE :\"target_db\" RENAME TO :\"failed_db\";" \
       > /dev/null
     failed_renamed=1
 
-    psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+    psql_command "ALTER DATABASE :\"previous_db\" RENAME TO :\"target_db\";" \
       -v previous_db="$previous_db" -v target_db="$target_db" \
-      -c "ALTER DATABASE :\"previous_db\" RENAME TO :\"target_db\";" \
       > /dev/null
     previous_renamed=1
 
-    psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+    psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
       -v target_db="$target_db" \
-      -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
       > /dev/null
     target_blocked=0
 
-    psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+    psql_command "DROP DATABASE :\"failed_db\" WITH (FORCE);" \
       -v failed_db="$failed_db" \
-      -c "DROP DATABASE :\"failed_db\" WITH (FORCE);" \
       > /dev/null
 
     trap - EXIT
@@ -288,6 +290,13 @@ if previous_db="$(compose exec -T \
       ;;
   esac
 
+  psql_command() {
+    statement="$1"
+    shift
+    printf "%s\n" "$statement" |
+      psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" "$@"
+  }
+
   suffix="$(date -u +%s)_$$"
   restore_db="${target_db}_restore_${suffix}"
   previous_db="${target_db}_previous_${suffix}"
@@ -308,9 +317,8 @@ if previous_db="$(compose exec -T \
     set +e
 
     if [ "$target_renamed" -eq 1 ] && [ "$restore_renamed" -eq 0 ]; then
-      if ! psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+      if ! psql_command "ALTER DATABASE :\"previous_db\" RENAME TO :\"target_db\";" \
           -v previous_db="$previous_db" -v target_db="$target_db" \
-          -c "ALTER DATABASE :\"previous_db\" RENAME TO :\"target_db\";" \
           > /dev/null 2>&1; then
         recovery_failed=1
         printf "%s\n" \
@@ -319,9 +327,8 @@ if previous_db="$(compose exec -T \
     fi
 
     if [ "$target_blocked" -eq 1 ] && [ "$restore_renamed" -eq 0 ]; then
-      if ! psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+      if ! psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           -v target_db="$target_db" \
-          -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS true;" \
           > /dev/null 2>&1; then
         recovery_failed=1
         printf "%s\n" \
@@ -330,9 +337,8 @@ if previous_db="$(compose exec -T \
     fi
 
     if [ "$restore_created" -eq 1 ] && [ "$restore_renamed" -eq 0 ]; then
-      psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+      psql_command "DROP DATABASE IF EXISTS :\"restore_db\" WITH (FORCE);" \
         -v restore_db="$restore_db" \
-        -c "DROP DATABASE IF EXISTS :\"restore_db\" WITH (FORCE);" \
         > /dev/null 2>&1
     fi
 
@@ -343,35 +349,30 @@ if previous_db="$(compose exec -T \
   }
   trap cleanup EXIT
 
-  psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+  psql_command "CREATE DATABASE :\"restore_db\" OWNER :\"db_owner\" TEMPLATE template0;" \
     -v restore_db="$restore_db" -v db_owner="$db_owner" \
-    -c "CREATE DATABASE :\"restore_db\" OWNER :\"db_owner\" TEMPLATE template0;" \
     > /dev/null
   restore_created=1
 
   pg_restore --exit-on-error --single-transaction --no-owner --no-privileges \
     -U "$db_owner" -d "$restore_db"
 
-  psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+  psql_command "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS false;" \
     -v target_db="$target_db" \
-    -c "ALTER DATABASE :\"target_db\" WITH ALLOW_CONNECTIONS false;" \
     > /dev/null
   target_blocked=1
 
-  psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+  psql_command "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN (:'\''target_db'\'', :'\''restore_db'\'') AND pid <> pg_backend_pid();" \
     -v target_db="$target_db" -v restore_db="$restore_db" \
-    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN (:'\''target_db'\'', :'\''restore_db'\'') AND pid <> pg_backend_pid();" \
     > /dev/null
 
-  psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+  psql_command "ALTER DATABASE :\"target_db\" RENAME TO :\"previous_db\";" \
     -v target_db="$target_db" -v previous_db="$previous_db" \
-    -c "ALTER DATABASE :\"target_db\" RENAME TO :\"previous_db\";" \
     > /dev/null
   target_renamed=1
 
-  psql -v ON_ERROR_STOP=1 -U "$db_owner" -d "$maintenance_db" \
+  psql_command "ALTER DATABASE :\"restore_db\" RENAME TO :\"target_db\";" \
     -v restore_db="$restore_db" -v target_db="$target_db" \
-    -c "ALTER DATABASE :\"restore_db\" RENAME TO :\"target_db\";" \
     > /dev/null
   restore_renamed=1
 

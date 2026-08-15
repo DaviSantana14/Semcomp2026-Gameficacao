@@ -62,6 +62,13 @@ for compose_script in "$backup_script" "$restore_script"; do
     'database script resolves Compose contexts outside deploy/aws'
 done
 
+if grep -Eq -- '-c ".*:..(restore_db|target_db|previous_db|failed_db|db_owner)' "$restore_script"; then
+  printf 'restore passes psql variables through -c, where identifier interpolation is unavailable\n' >&2
+  exit 1
+fi
+assert_contains "$(< "$restore_script")" 'printf "%s\n" "$statement" |' \
+  'restore does not send identifier-parameterized SQL through psql stdin'
+
 output=''
 status=0
 set +e
@@ -205,37 +212,38 @@ cat > "$bin_dir/psql" <<'EOF'
 
 set -euo pipefail
 
-printf '%s\n' "$*" >> "$PSQL_CALLS_CAPTURE"
-if [[ "$*" == *'ALTER DATABASE :"target_db" WITH ALLOW_CONNECTIONS false'* ]]; then
+statement="$(cat)"
+printf '%s %s\n' "$*" "$statement" >> "$PSQL_CALLS_CAPTURE"
+if [[ "$statement" == *'ALTER DATABASE :"target_db" WITH ALLOW_CONNECTIONS false'* ]]; then
   printf 'block-target\n' >> "$EVENTS_CAPTURE"
-elif [[ "$*" == *'ALTER DATABASE :"target_db" WITH ALLOW_CONNECTIONS true'* ]]; then
+elif [[ "$statement" == *'ALTER DATABASE :"target_db" WITH ALLOW_CONNECTIONS true'* ]]; then
   printf 'allow-target\n' >> "$EVENTS_CAPTURE"
   if [[ "${SIMULATE_SWAP_ALLOW_FAILURE:-}" == '1' ]]; then
     exit 49
   fi
-elif [[ "$*" == *'ALTER DATABASE :"target_db" RENAME TO :"previous_db"'* ]]; then
+elif [[ "$statement" == *'ALTER DATABASE :"target_db" RENAME TO :"previous_db"'* ]]; then
   printf 'rename-target-to-previous\n' >> "$EVENTS_CAPTURE"
   if [[ "${SIMULATE_TARGET_RENAME_FAILURE:-}" == '1' ]]; then
     exit 50
   fi
-elif [[ "$*" == *'ALTER DATABASE :"restore_db" RENAME TO :"target_db"'* ]]; then
+elif [[ "$statement" == *'ALTER DATABASE :"restore_db" RENAME TO :"target_db"'* ]]; then
   printf 'rename-restore-to-target\n' >> "$EVENTS_CAPTURE"
   if [[ "${SIMULATE_SWAP_RENAME_FAILURE:-}" == '1' ]]; then
     exit 47
   fi
-elif [[ "$*" == *'ALTER DATABASE :"target_db" RENAME TO :"failed_db"'* ]]; then
+elif [[ "$statement" == *'ALTER DATABASE :"target_db" RENAME TO :"failed_db"'* ]]; then
   printf 'rename-target-to-failed\n' >> "$EVENTS_CAPTURE"
   if [[ "${SIMULATE_ROLLBACK_RENAME_FAILURE:-}" == '1' ]]; then
     exit 45
   fi
-elif [[ "$*" == *'ALTER DATABASE :"previous_db" RENAME TO :"target_db"'* ]]; then
+elif [[ "$statement" == *'ALTER DATABASE :"previous_db" RENAME TO :"target_db"'* ]]; then
   printf 'rollback\n' >> "$EVENTS_CAPTURE"
   if [[ "${SIMULATE_SWAP_COMPENSATION_FAILURE:-}" == '1' ]]; then
     exit 48
   fi
-elif [[ "$*" == *'DROP DATABASE :"previous_db"'* ]]; then
+elif [[ "$statement" == *'DROP DATABASE :"previous_db"'* ]]; then
   printf 'drop-previous\n' >> "$EVENTS_CAPTURE"
-elif [[ "$*" == *'DROP DATABASE :"failed_db"'* ]]; then
+elif [[ "$statement" == *'DROP DATABASE :"failed_db"'* ]]; then
   printf 'drop-failed\n' >> "$EVENTS_CAPTURE"
 fi
 EOF
