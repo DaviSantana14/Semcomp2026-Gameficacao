@@ -191,6 +191,7 @@ try {
     }
 
     $remoteCommand = @'
+exec bash <<'SEMCOMP_REMOTE_BASH'
 set -euo pipefail
 
 release_sha='__COMMIT_SHA__'
@@ -233,6 +234,7 @@ AWS_REGION='__REGION__' \
 RELEASE_SHA="$release_sha" \
 RELEASE_BUCKET="$release_bucket" \
 bash "$release_dir/deploy/aws/scripts/deploy-release.sh"
+SEMCOMP_REMOTE_BASH
 '@
     $remoteCommand = $remoteCommand.Replace('__COMMIT_SHA__', $commitSha)
     $remoteCommand = $remoteCommand.Replace('__BUCKET_NAME__', $bucketName)

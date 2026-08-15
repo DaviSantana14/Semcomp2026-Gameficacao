@@ -39,6 +39,8 @@ grep -Fq 'ssm send-command' "$publish_script" \
   || fail 'publisher does not dispatch through SSM'
 grep -Fq 'wait command-executed' "$publish_script" \
   || fail 'publisher does not wait for SSM completion'
+grep -Fq "exec bash <<'SEMCOMP_REMOTE_BASH'" "$publish_script" \
+  || fail 'publisher payload does not enter Bash before using Bash-only syntax'
 
 grep -Fq '0600' "$deploy_script" \
   || fail 'remote environment is not protected with mode 0600'
