@@ -109,7 +109,7 @@ compose_for_release() {
   shift
 
   docker compose \
-    --project-directory "$target_release" \
+    --project-directory "$target_release/deploy/aws" \
     --project-name "$compose_project_name" \
     --file "$target_release/deploy/aws/compose.yml" \
     --env-file "$environment_file" \

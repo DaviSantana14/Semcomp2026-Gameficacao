@@ -184,6 +184,8 @@ set -e
   || fail 'health failure changed the current release symlink'
 grep -Fq 'up -d --build' "$docker_capture" \
   || fail 'health failure did not rebuild the previous release during rollback'
+grep -Fq -- "--project-directory $release_root/deploy/aws" "$docker_capture" \
+  || fail 'remote deploy resolves Compose paths outside the release directory'
 [[ "$(stat -c '%a' "$rollback_root/shared/rehearsal.env")" == '600' ]] \
   || fail 'remote environment file is not mode 0600'
 
