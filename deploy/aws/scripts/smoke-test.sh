@@ -29,13 +29,28 @@ normalize_origin() {
   ' "$input"
 }
 
-if ! base_url="$(normalize_origin "$base_url_input" 2>/dev/null)"; then
-  fail 'BASE_URL must be an HTTP or HTTPS origin without credentials or a path'
+normalize_base_url() {
+  local input="$1"
+  node --input-type=module -e '
+    const url = new URL(process.argv[1]);
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) process.exit(1);
+    if (url.search || url.hash) process.exit(1);
+    const path = url.pathname.replace(/\/+$/, "");
+    process.stdout.write(`${url.origin}${path === "/" ? "" : path}`);
+  ' "$input"
+}
+
+if ! base_url="$(normalize_base_url "$base_url_input" 2>/dev/null)"; then
+  fail 'BASE_URL must be an HTTP or HTTPS URL without credentials, query, or fragment'
 fi
 
-origin_input="${SMOKE_ORIGIN:-$base_url}"
-if ! origin="$(normalize_origin "$origin_input" 2>/dev/null)"; then
-  fail 'SMOKE_ORIGIN must be an HTTP or HTTPS origin without credentials or a path'
+origin_input="${SMOKE_ORIGIN:-}"
+if [[ -n "$origin_input" ]]; then
+  if ! origin="$(normalize_origin "$origin_input" 2>/dev/null)"; then
+    fail 'SMOKE_ORIGIN must be an HTTP or HTTPS origin without credentials or a path'
+  fi
+else
+  origin="$(node --input-type=module -e 'process.stdout.write(new URL(process.argv[1]).origin)' "$base_url")"
 fi
 
 timeout_seconds="${SMOKE_TIMEOUT_SECONDS:-10}"

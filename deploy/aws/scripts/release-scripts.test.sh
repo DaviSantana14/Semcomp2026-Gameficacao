@@ -7,18 +7,20 @@ configure_script="$script_dir/configure-parameters.ps1"
 publish_script="$script_dir/publish.ps1"
 deploy_script="$script_dir/deploy-release.sh"
 admin_password_script="$script_dir/set-admin-password.sh"
+smoke_script="$script_dir/smoke-test.sh"
 
 fail() {
   printf '%s\n' "$1" >&2
   exit 1
 }
 
-for required_file in "$configure_script" "$publish_script" "$deploy_script" "$admin_password_script"; do
+for required_file in "$configure_script" "$publish_script" "$deploy_script" "$admin_password_script" "$smoke_script"; do
   [[ -f "$required_file" ]] || fail "missing release automation file: $required_file"
 done
 
 bash -n "$deploy_script"
 bash -n "$admin_password_script"
+bash -n "$smoke_script"
 
 grep -Fq '/semcomp/rehearsal/' "$configure_script" \
   || fail 'parameter path is not scoped to rehearsal'
@@ -64,6 +66,11 @@ grep -Fq 'run --rm --no-deps -T api' "$admin_password_script" \
 if grep -Fq 'npm --prefix "$project_dir"' "$admin_password_script"; then
   fail 'administrator password helper depends on npm being installed on the host'
 fi
+
+grep -Fq 'normalize_base_url' "$smoke_script" \
+  || fail 'smoke test cannot target the public /api prefix'
+grep -Fq 'new URL(process.argv[1]).origin' "$smoke_script" \
+  || fail 'smoke test does not derive the request origin from a prefixed API URL'
 
 grep -Fq '0600' "$deploy_script" \
   || fail 'remote environment is not protected with mode 0600'
