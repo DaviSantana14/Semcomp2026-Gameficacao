@@ -71,6 +71,12 @@ test("redemption load respects the configured concurrency", () => {
   );
 });
 
+test("repeated load runs derive a distinct CPF cohort from the run id", () => {
+  assert.match(loadScript, /function participantCpfOffset\(runId, count\)/);
+  assert.match(loadScript, /generateCpf\(cpfOffset \+ index\)/);
+  assert.doesNotMatch(loadScript, /const cpfs = generateCpfs\(config\.participants\)/);
+});
+
 test("CI executes the CloudFormation and metrics regression tests", () => {
   assert.match(workflow, /cloudformation\.test\.mjs/);
   assert.match(workflow, /capture-metrics\.test\.mjs/);

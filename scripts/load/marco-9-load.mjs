@@ -3,13 +3,14 @@ import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
-import { generateCpfs } from "./cpf.mjs";
+import { generateCpf } from "./cpf.mjs";
 
 const DEFAULT_READ_WINDOW_MS = 10_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_CONCURRENCY = 20;
 const DEFAULT_PARTICIPANT_COUNT = 150;
 const DEFAULT_REDEMPTION_COUNT = 100;
+const MAX_CPF_INDEX = 899_999_998;
 const READ_OPERATION_NAMES = new Set([
   "home",
   "ranking",
@@ -169,6 +170,17 @@ function sanitizeRunId(value) {
     .replace(/^-|-$/g, "")
     .slice(0, 32);
   return sanitized || String(Date.now());
+}
+
+function participantCpfOffset(runId, count) {
+  let hash = 2_166_136_261;
+  for (const character of String(runId)) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619) >>> 0;
+  }
+
+  const maxOffset = MAX_CPF_INDEX - count + 1;
+  if (maxOffset < 0) throw new RangeError("CPF cohort is too large");
+  return hash % (maxOffset + 1);
 }
 
 function getConfig() {
@@ -349,9 +361,9 @@ function recordResponse(metrics, operationName, response, successful) {
 }
 
 function buildParticipants(config) {
-  const cpfs = generateCpfs(config.participants);
-  return cpfs.map((cpf, index) => ({
-    cpf,
+  const cpfOffset = participantCpfOffset(config.runId, config.participants + 1);
+  return Array.from({ length: config.participants }, (_, index) => ({
+    cpf: generateCpf(cpfOffset + index),
     email: `marco9-${config.runId}-${index}@rehearsal.invalid`,
     name: `Marco 9 Load ${index + 1}`,
     cookie: null,
@@ -462,7 +474,8 @@ async function runRedemptions(config, sessions, metrics) {
 }
 
 async function runAbuseScenario(config, metrics) {
-  const abuseCpf = generateCpfs(config.participants + 1)[config.participants];
+  const cpfOffset = participantCpfOffset(config.runId, config.participants + 1);
+  const abuseCpf = generateCpf(cpfOffset + config.participants);
   const abuseEmail = `marco9-abuse-${config.runId}@rehearsal.invalid`;
   let throttled = false;
 
