@@ -41,6 +41,11 @@ grep -Fq 'wait command-executed' "$publish_script" \
   || fail 'publisher does not wait for SSM completion'
 grep -Fq "exec bash <<'SEMCOMP_REMOTE_BASH'" "$publish_script" \
   || fail 'publisher payload does not enter Bash before using Bash-only syntax'
+grep -Fq 'snap install aws-cli --classic' "$publish_script" \
+  || fail 'publisher does not install AWS CLI through the supported Ubuntu snap'
+if grep -Fq 'apt-get install -y -qq awscli' "$publish_script"; then
+  fail 'publisher tries to install the unavailable Ubuntu 24.04 awscli package'
+fi
 
 grep -Fq '0600' "$deploy_script" \
   || fail 'remote environment is not protected with mode 0600'

@@ -216,9 +216,13 @@ if ! command -v unzip >/dev/null 2>&1; then
   apt-get update -qq
   apt-get install -y -qq unzip
 fi
+export PATH="/snap/bin:$PATH"
 if ! command -v aws >/dev/null 2>&1; then
-  apt-get update -qq
-  apt-get install -y -qq awscli
+  if ! command -v snap >/dev/null 2>&1; then
+    printf 'snap is required to install AWS CLI on Ubuntu 24.04\n' >&2
+    exit 69
+  fi
+  snap install aws-cli --classic
 fi
 
 aws s3 cp "s3://$release_bucket/releases/$release_sha.zip" "$staging_dir/release.zip" \
