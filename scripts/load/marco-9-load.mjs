@@ -436,8 +436,10 @@ async function runRedemptions(config, sessions, metrics) {
   if (!config.redeemCode) return { count: 0, rateLimited: 0, missingCode: true };
 
   const targets = sessions.slice(0, config.redemptions);
-  const results = await Promise.all(
-    targets.map(async (participant) => {
+  const results = await runWithConcurrency(
+    targets,
+    config.concurrency,
+    async (participant) => {
       const response = await request(config.baseUrl, "/actions/redeem-code", {
         body: { code: config.redeemCode },
         csrfToken: participant.csrfToken,
@@ -449,7 +451,7 @@ async function runRedemptions(config, sessions, metrics) {
       recordResponse(metrics, "redemption", response, statusIsSuccessful(response));
       consumeJson(response);
       return response.status;
-    }),
+    },
   );
 
   return {

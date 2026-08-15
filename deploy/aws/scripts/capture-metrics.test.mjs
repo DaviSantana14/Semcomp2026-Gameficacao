@@ -64,6 +64,13 @@ test("load runner accepts the public API path and derives a strict origin", () =
   assert.ok(loadScript.includes('path.replace(/^\\/+/, "")'));
 });
 
+test("redemption load respects the configured concurrency", () => {
+  assert.match(
+    loadScript,
+    /await runWithConcurrency\(\s*targets,\s*config\.concurrency,/s,
+  );
+});
+
 test("CI executes the CloudFormation and metrics regression tests", () => {
   assert.match(workflow, /cloudformation\.test\.mjs/);
   assert.match(workflow, /capture-metrics\.test\.mjs/);

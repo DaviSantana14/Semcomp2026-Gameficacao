@@ -5,6 +5,7 @@ node_modules/
 .turbo/
 dist/
 coverage/
+artifacts/
 apps/*/dist/
 apps/*/coverage/
 apps/web/.next/
