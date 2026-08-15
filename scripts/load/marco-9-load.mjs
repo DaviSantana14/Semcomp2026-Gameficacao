@@ -141,8 +141,23 @@ function normalizeBaseUrl(value) {
   if (url.username || url.password) {
     throw new Error("BASE_URL must not contain credentials");
   }
+  if (url.search || url.hash) {
+    throw new Error("BASE_URL must not contain a query or fragment");
+  }
+  const path = url.pathname.replace(/\/+$/, "");
+  return `${url.origin}${path === "/" ? "" : path}`;
+}
+
+function normalizeOrigin(value) {
+  const url = new URL(value);
+  if (!/^https?:$/.test(url.protocol)) {
+    throw new Error("LOAD_ORIGIN must use HTTP or HTTPS");
+  }
+  if (url.username || url.password) {
+    throw new Error("LOAD_ORIGIN must not contain credentials");
+  }
   if (url.pathname !== "/" || url.search || url.hash) {
-    throw new Error("BASE_URL must identify the application origin");
+    throw new Error("LOAD_ORIGIN must identify the application origin");
   }
   return url.origin;
 }
@@ -169,7 +184,7 @@ function getConfig() {
 
   return {
     baseUrl,
-    origin: normalizeBaseUrl(process.env.LOAD_ORIGIN ?? baseUrl),
+    origin: normalizeOrigin(process.env.LOAD_ORIGIN ?? new URL(baseUrl).origin),
     participants: parsePositiveInteger(
       process.env.LOAD_PARTICIPANTS,
       participantFallback,
@@ -263,7 +278,7 @@ function extractAuthCookie(headers) {
 
 async function request(baseUrl, path, options = {}) {
   const startedAt = performance.now();
-  const url = new URL(path, `${baseUrl}/`);
+  const url = new URL(path.replace(/^\/+/, ""), `${baseUrl}/`);
   const headers = new Headers(options.headers);
 
   if (options.origin) headers.set("Origin", options.origin);

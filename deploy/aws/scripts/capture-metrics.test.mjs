@@ -54,6 +54,16 @@ test("does not require Node.js to be installed directly on the EC2 host", () => 
   assert.doesNotMatch(script, /\|\s*node\s+--input-type=module/);
 });
 
+test("load runner accepts the public API path and derives a strict origin", () => {
+  assert.match(loadScript, /function normalizeOrigin\(value\)/);
+  assert.ok(loadScript.includes('url.pathname.replace(/\\/+$/, "")'));
+  assert.match(
+    loadScript,
+    /normalizeOrigin\(process\.env\.LOAD_ORIGIN \?\? new URL\(baseUrl\)\.origin\)/,
+  );
+  assert.ok(loadScript.includes('path.replace(/^\\/+/, "")'));
+});
+
 test("CI executes the CloudFormation and metrics regression tests", () => {
   assert.match(workflow, /cloudformation\.test\.mjs/);
   assert.match(workflow, /capture-metrics\.test\.mjs/);
