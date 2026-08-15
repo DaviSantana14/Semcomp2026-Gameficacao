@@ -37,14 +37,22 @@ grep -Fq 'releases/' "$publish_script" \
   || fail 'publisher does not target the releases prefix'
 grep -Fq 'ssm send-command' "$publish_script" \
   || fail 'publisher does not dispatch through SSM'
-grep -Fq 'wait command-executed' "$publish_script" \
-  || fail 'publisher does not wait for SSM completion'
+grep -Fq 'Start-Sleep -Seconds 5' "$publish_script" \
+  || fail 'publisher does not poll the SSM invocation to completion'
+if grep -Eq -- '--delay|--max-attempts' "$publish_script"; then
+  fail 'publisher passes unsupported tuning options to the AWS CLI waiter'
+fi
 grep -Fq "exec bash <<'SEMCOMP_REMOTE_BASH'" "$publish_script" \
   || fail 'publisher payload does not enter Bash before using Bash-only syntax'
 grep -Fq 'snap install aws-cli --classic' "$publish_script" \
   || fail 'publisher does not install AWS CLI through the supported Ubuntu snap'
 if grep -Fq 'apt-get install -y -qq awscli' "$publish_script"; then
   fail 'publisher tries to install the unavailable Ubuntu 24.04 awscli package'
+fi
+grep -Fq 'parameter_dump="$(aws ssm get-parameters-by-path' "$deploy_script" \
+  || fail 'remote deploy does not capture SSM parameters in memory'
+if grep -Fq '> "$parameter_dump"' "$deploy_script"; then
+  fail 'remote deploy redirects AWS CLI snap output to an empty regular file'
 fi
 
 grep -Fq '0600' "$deploy_script" \

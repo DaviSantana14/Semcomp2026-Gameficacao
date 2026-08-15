@@ -271,24 +271,37 @@ SEMCOMP_REMOTE_BASH
         throw 'SSM did not return a valid command id.'
     }
 
-    $null = & aws ssm wait command-executed `
-        --command-id $commandId `
-        --instance-id $instanceId `
-        --region $Region `
-        --delay 5 `
-        --max-attempts 36 2>$null
-    $waitExitCode = $LASTEXITCODE
+    $commandDeadline = [DateTimeOffset]::UtcNow.AddSeconds(900)
+    $commandStatus = ''
+    $responseCode = ''
+    $terminalStatuses = @('Success', 'Cancelled', 'TimedOut', 'Failed', 'Cancelling')
 
-    $responseCode = Invoke-AwsText -Arguments @(
-        'ssm', 'get-command-invocation',
-        '--command-id', $commandId,
-        '--instance-id', $instanceId,
-        '--query', 'ResponseCode',
-        '--output', 'text',
-        '--region', $Region
-    )
+    while ([DateTimeOffset]::UtcNow -lt $commandDeadline) {
+        $invocationOutput = & aws ssm get-command-invocation `
+            --command-id $commandId `
+            --instance-id $instanceId `
+            --query '[Status,ResponseCode]' `
+            --output text `
+            --region $Region 2>$null
 
-    if ($waitExitCode -ne 0 -or $responseCode -ne '0') {
+        if ($LASTEXITCODE -eq 0) {
+            $invocationFields = (($invocationOutput | ForEach-Object { [string]$_ }) -join "`n").Trim() -split '\s+'
+            if ($invocationFields.Count -ge 2) {
+                $commandStatus = $invocationFields[0]
+                $responseCode = $invocationFields[1]
+                if ($terminalStatuses -contains $commandStatus) {
+                    break
+                }
+            }
+        }
+
+        Start-Sleep -Seconds 5
+    }
+
+    if (-not ($terminalStatuses -contains $commandStatus)) {
+        throw 'Remote release deployment timed out.'
+    }
+    if ($commandStatus -ne 'Success' -or $responseCode -ne '0') {
         throw 'Remote release deployment failed; inspect the SSM invocation.'
     }
 

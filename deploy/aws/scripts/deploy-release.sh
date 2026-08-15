@@ -99,7 +99,7 @@ fi
 umask 077
 install -d -m 0750 "$shared_dir"
 
-parameter_dump="$(mktemp "${TMPDIR:-/tmp}/semcomp-parameters.XXXXXXXX")"
+parameter_dump=''
 environment_tmp="$(mktemp "$shared_dir/.rehearsal.env.XXXXXXXX")"
 rollback_in_progress=0
 switch_completed=0
@@ -131,7 +131,7 @@ cleanup() {
     fi
   fi
 
-  rm -f -- "$parameter_dump"
+  unset parameter_dump
   if [[ -n "$environment_tmp" ]]; then
     rm -f -- "$environment_tmp"
   fi
@@ -159,13 +159,13 @@ required_parameters=(
   COMPOSE_PROJECT_NAME
 )
 
-if ! aws ssm get-parameters-by-path \
+if ! parameter_dump="$(aws ssm get-parameters-by-path \
   --path /semcomp/rehearsal/ \
   --recursive \
   --with-decryption \
   --query 'Parameters[].[Name,Value]' \
   --output text \
-  --region "$aws_region" > "$parameter_dump" 2>/dev/null; then
+  --region "$aws_region" 2>/dev/null)"; then
   fail 'Unable to read rehearsal parameters from SSM.'
 fi
 
@@ -196,7 +196,8 @@ while IFS=$'\t' read -r parameter_name parameter_value extra; do
       fail 'Unexpected rehearsal parameter returned by SSM.'
       ;;
   esac
-done < "$parameter_dump"
+done <<< "$parameter_dump"
+unset parameter_dump
 
 for parameter_key in "${required_parameters[@]}"; do
   [[ -n "${seen_parameters[$parameter_key]+x}" ]] \
