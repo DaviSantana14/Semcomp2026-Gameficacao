@@ -7,7 +7,8 @@ project_dir="$(cd -- "$script_dir/../../.." && pwd)"
 
 : "${BACKUP_BUCKET:?BACKUP_BUCKET is required}"
 
-compose_file="$project_dir/deploy/aws/compose.yml"
+compose_dir="$project_dir/deploy/aws"
+compose_file="$compose_dir/compose.yml"
 compose_project_name="${COMPOSE_PROJECT_NAME:-semcomp-rehearsal}"
 compose_env_file="${COMPOSE_ENV_FILE:-}"
 postgres_service='postgres'
@@ -28,7 +29,7 @@ case "$compose_project_name" in
 esac
 
 compose_args=(
-  --project-directory "$project_dir"
+  --project-directory "$compose_dir"
   --project-name "$compose_project_name"
   --file "$compose_file"
 )

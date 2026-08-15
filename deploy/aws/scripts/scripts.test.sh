@@ -55,6 +55,13 @@ if ! grep -Fq 'npm run test:deployment-scripts' "$project_dir/.github/workflows/
   exit 1
 fi
 
+for compose_script in "$backup_script" "$restore_script"; do
+  assert_contains "$(< "$compose_script")" 'compose_dir="$project_dir/deploy/aws"' \
+    'database script does not anchor Compose paths in deploy/aws'
+  assert_contains "$(< "$compose_script")" '--project-directory "$compose_dir"' \
+    'database script resolves Compose contexts outside deploy/aws'
+done
+
 output=''
 status=0
 set +e
