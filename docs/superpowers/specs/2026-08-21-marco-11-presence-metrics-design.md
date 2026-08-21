@@ -8,13 +8,19 @@
 
 ## Objetivo
 
-Medir quantos participantes estão online, preservar os picos de presença e
-mostrar a evolução de cadastros e logins sem transformar telemetria em
-auditoria ou rastreamento individual. O marco também deve permitir baixar os
-dados agregados depois do evento.
+Trocar a autenticação do participante para email e senha e medir quantos
+participantes estão online, preservando os picos de presença e a evolução de
+cadastros e logins sem transformar telemetria em auditoria ou rastreamento
+individual. O marco também deve permitir baixar os dados agregados depois do
+evento.
 
 ## Escopo
 
+- Substituir definitivamente o login participante por CPF + email pelo login
+  com email + senha.
+- Manter CPF obrigatório, normalizado e único no cadastro e no perfil, mas fora
+  da autenticação.
+- Fazer o cadastro criar conta e sessão em uma única requisição.
 - Criar uma sessão persistida para cada JWT emitido.
 - Enviar heartbeat aproximadamente a cada 60 segundos enquanto o participante
   estiver autenticado.
@@ -33,8 +39,50 @@ dados agregados depois do evento.
 - Exportação de participantes, resgates, pontos ou pedidos da loja; essas
   exportações permanecem no Marco 12.
 - Coordenação por Redis, fila ou worker separado.
+- Login participante legado por CPF + email ou período de compatibilidade.
+- Recuperação ou redefinição de senha, envio de email e segundo fator de
+  autenticação.
 
 ## Decisões arquiteturais
+
+### Corte de credenciais do participante
+
+A troca de credenciais e a fundação de `UserSession` formam a primeira entrega
+do marco. Não haverá versão publicada aceitando dois contratos de login.
+
+- Participante cadastra nome, CPF, email e senha.
+- A confirmação de senha existe apenas no formulário; a API recebe a senha uma
+  vez.
+- Participante autentica somente com email e senha.
+- Administrador continua autenticando na rota própria com CPF, email e senha.
+- `LoginDto` e `AdminLoginDto` são independentes; o DTO administrativo não
+  herda o contrato do participante.
+
+`passwordHash` permanece nullable no schema porque o bootstrap administrativo
+cria inicialmente um admin sem senha. Todo novo participante recebe hash. Um
+participante legado com hash ausente recebe a mesma falha pública de uma senha
+incorreta.
+
+Um serviço interno concentra `hash()` e `compare()` assíncronos do bcrypt v6,
+com custo 12, salt automático e hash dummy. Serviços específicos aplicam role
+e política sem duplicar a mecânica criptográfica.
+
+A senha participante aceita quaisquer caracteres, inclusive Unicode e espaços,
+sem exigir mistura de letras, números, maiúsculas ou símbolos. Limites:
+
+- mínimo de 8 caracteres Unicode;
+- máximo de 64 caracteres Unicode;
+- máximo de 72 bytes em UTF-8, rejeitado antes do bcrypt para impedir
+  truncamento silencioso.
+
+A política administrativa existente permanece com mínimo de 12 caracteres,
+máximo de 64 caracteres e 72 bytes UTF-8.
+
+Como o projeto ainda está em pré-evento, não haverá migração destrutiva nem
+fluxo de ativação legado. Bancos novos já recebem somente contas válidas;
+bancos locais descartáveis são recriados explicitamente. O seed de demonstração
+pode usar uma credencial pública e não secreta somente em modo local explícito.
+Rehearsal e produção não recebem senha participante embutida.
 
 ### Módulo de presença
 
@@ -126,17 +174,37 @@ explícito; nenhuma nova biblioteca de datas será adicionada.
 
 ## Ciclo de vida da sessão
 
+### Cadastro participante
+
+1. Normalizar nome, CPF e email e validar a política da senha.
+2. Calcular o hash antes da tentativa de inserção.
+3. Gerar `jti`, CSRF e expiração de 8 horas.
+4. Assinar o JWT.
+5. Em uma transação, criar participante, criar `UserSession` e definir
+   `lastLoginAt`.
+6. Somente então definir o cookie e retornar `{ user, csrfToken }`.
+
+As constraints únicas do PostgreSQL decidem conflitos de CPF e email. A API
+não executa uma consulta de existência antes do hash, reduzindo diferenças
+observáveis e mantendo proteção contra corrida. Conflitos retornam mensagem
+neutra sobre os dados informados. O rate limiting limita o custo de tentativas
+repetidas com bcrypt.
+
 ### Login
 
-1. Validar as credenciais atuais de participante ou administrador.
+1. Validar email + senha para participante ou CPF + email + senha para
+   administrador.
 2. Gerar `jti` com fonte criptograficamente segura.
 3. Calcular `expiresAt` com a mesma duração de 8 horas do JWT.
 4. Assinar o JWT com `sub`, `csrfToken` e `jti`.
 5. Em transação, atualizar `lastLoginAt` e criar `UserSession`.
 6. Somente então definir o cookie e responder ao cliente.
 
-Falha na persistência impede a conclusão do login. A senha, o token, o cookie e
-o CSRF nunca são persistidos na sessão.
+Participante inexistente, inativo, com role incorreta, sem hash ou com senha
+incorreta sempre executa uma comparação bcrypt e recebe `Email ou senha
+inválidos.`. O administrador mantém sua mensagem genérica atual. Falha na
+persistência impede a conclusão do login. A senha, o token, o cookie e o CSRF
+nunca são persistidos na sessão.
 
 ### Validação do JWT
 
@@ -217,6 +285,28 @@ nunca rotulado como tempo real.
 Falhas do coletor são registradas com `requestId` ou identificador da execução,
 sem PII, e não derrubam a API. A próxima execução tenta novamente.
 
+## API de autenticação
+
+### `POST /auth/register`
+
+Recebe `name`, `cpf`, `email` e `password`. Exige `AllowedOriginGuard`, aplica
+rate limiting e não exige CSRF porque ainda não existe sessão anterior. Em
+sucesso, define o cookie httpOnly e retorna o mesmo contrato autenticado do
+login: `{ user, csrfToken }`.
+
+### `POST /auth/login`
+
+Recebe somente `email` e `password`. Email é normalizado com trim e lowercase.
+Exige `AllowedOriginGuard`, aplica rate limiting por chave HMAC derivada do
+email normalizado e retorna erro público genérico para todos os estados
+inválidos.
+
+### `POST /auth/admin/login`
+
+Permanece recebendo CPF, email e senha. Sua política, bootstrap e contrato
+público não mudam, exceto pela inclusão de `jti` e persistência da sessão
+comuns aos dois tipos de usuário.
+
 ## API administrativa
 
 Todos os endpoints exigem JWT válido e role `ADMIN`.
@@ -294,6 +384,22 @@ sessão individual.
 
 ## Frontend participante
 
+### Cadastro e login
+
+`/cadastro` contém nome, CPF, email, senha e confirmação. A confirmação é
+validada pelo Zod no cliente e não é enviada à API. O campo usa
+`autocomplete="new-password"`, permite colar e explica os limites de 8 a 64
+caracteres e 72 bytes. A tela informa que recuperação automática ainda não está
+disponível. Após sucesso, o participante já está autenticado e segue para
+`/home`, sem uma segunda chamada de login.
+
+`/login` contém somente email e senha, usando `autocomplete="username"` e
+`autocomplete="current-password"`. CPF deixa completamente essa tela, mas
+continua no cadastro, perfil e visões administrativas. Não existe link
+"Esqueci minha senha" neste marco.
+
+### Heartbeat
+
 Um `PresenceHeartbeatProvider` será montado dentro do shell autenticado do
 participante. Ele usa a infraestrutura HTTP/CSRF existente e dispara heartbeat
 a cada 60 segundos, inclusive em segundo plano quando o navegador permitir.
@@ -343,6 +449,13 @@ instâncias.
 
 ## Privacidade e segurança
 
+- Senha, confirmação e `passwordHash` nunca entram em resposta, JWT, cookie,
+  auditoria ou log.
+- Login com identidade inexistente, role incorreta, usuário inativo, hash
+  ausente ou senha errada executa comparação bcrypt dummy e retorna resposta
+  pública equivalente.
+- Cadastro e login exigem origem permitida e limites específicos. Chaves de
+  rate limiting usam HMAC; CPF e email não aparecem em claro.
 - Heartbeat não entra em `AdminAuditEvent`.
 - Métricas e logs não armazenam CPF, email, token, cookie, CSRF, IP,
   user-agent, rota ou conteúdo digitado.
@@ -355,6 +468,15 @@ instâncias.
 
 ### Backend unitário e repository
 
+- política participante aceita 8 a 64 caracteres livres, Unicode e espaços;
+- política rejeita 7 ou 65 caracteres e mais de 72 bytes UTF-8;
+- hash participante usa bcrypt assíncrono, custo 12 e salt automático;
+- comparação dummy cobre identidade inexistente, role incorreta, inativo, hash
+  ausente e senha errada;
+- cadastro calcula hash, cria usuário e sessão atomicamente e mapeia conflitos
+  de CPF/email para a mesma resposta;
+- login participante aceita somente email + senha e o login administrativo
+  preserva CPF + email + senha;
 - início de sessão com `jti` e expiração coerentes com o JWT;
 - validação de sessão ativa, encerrada, expirada e pertencente a outro usuário;
 - heartbeat idempotente;
@@ -372,6 +494,10 @@ instâncias.
 
 ### Backend E2E
 
+- cadastro exige senha válida, define cookie e retorna `{ user, csrfToken }`;
+- cadastro em conflito não revela se CPF ou email já existe;
+- login participante rejeita o contrato legado e aceita email + senha;
+- senha e hash não aparecem em respostas, logs de teste ou JWT;
 - login cria sessão e JWT com `jti`;
 - heartbeat exige cookie, CSRF e origem permitida;
 - logout encerra a sessão e impede reutilização do JWT;
@@ -382,6 +508,11 @@ instâncias.
 
 ### Frontend
 
+- cadastro valida senha, confirmação, caracteres livres e limites antes do
+  envio;
+- cadastro bem-sucedido redireciona sem executar uma segunda chamada de login;
+- login mostra apenas email e senha com autocomplete correto;
+- formulários preservam loading, mensagens genéricas e acessibilidade;
 - timers falsos confirmam heartbeat a cada 60 segundos e cancelamento no
   unmount;
 - erro transitório não gera logout;
@@ -393,7 +524,8 @@ instâncias.
 ### Carga e regressão
 
 O cenário do Marco 9 será ampliado para manter 150 sessões participantes com
-heartbeat a cada 60 segundos. A validação confirma:
+email + senha e heartbeat a cada 60 segundos. Senhas determinísticas de teste
+ficam somente em memória e não aparecem no relatório. A validação confirma:
 
 - ausência de `429` no cenário legítimo;
 - contagem distinta de 150 pessoas mesmo com heartbeats concorrentes;
@@ -408,6 +540,15 @@ builds e `git diff --check`.
 
 ## Critérios de aceite
 
+- Participante cadastra nome, CPF, email e senha e já recebe uma sessão.
+- Participante entra somente com email + senha; CPF permanece como dado único
+  do usuário e não como credencial.
+- Senhas participantes aceitam quaisquer caracteres entre 8 e 64 caracteres,
+  respeitando o limite de 72 bytes do bcrypt e sem regras de composição.
+- Falhas de cadastro/login não revelam existência, role, estado ou hash da
+  conta.
+- Login administrativo permanece com CPF + email + senha.
+- Não existe login legado nem recuperação de senha nesta fase.
 - Login cria sessão persistida e JWT com `jti`; logout invalida a sessão.
 - Heartbeat mantém a presença sem registrar navegação individual.
 - Online agora usa participantes distintos na janela de 120 segundos.
