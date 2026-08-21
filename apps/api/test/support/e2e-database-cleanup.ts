@@ -47,6 +47,9 @@ export function hasDisposableTestDatabaseConfiguration(
   return isDisposableTestDatabase(environment, databaseName);
 }
 
+export const disposableTestDatabaseTruncateStatement =
+  'TRUNCATE TABLE "PresenceDailySummary", "UserSession", "AdminAuditEvent", "PointEvent", "RewardRedemption", "ClaimCode", "Reward", "Action", "User" RESTART IDENTITY CASCADE';
+
 export async function truncateDisposableTestDatabase(
   prisma: Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>,
 ): Promise<void> {
@@ -63,9 +66,7 @@ export async function truncateDisposableTestDatabase(
       'Refusing E2E cleanup: connected database does not match the configured disposable test database.',
     );
   }
-  await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "AdminAuditEvent", "PointEvent", "RewardRedemption", "ClaimCode", "Reward", "Action", "User" RESTART IDENTITY CASCADE',
-  );
+  await prisma.$executeRawUnsafe(disposableTestDatabaseTruncateStatement);
 }
 
 function databaseNameFromUrl(databaseUrl: string | undefined): string {

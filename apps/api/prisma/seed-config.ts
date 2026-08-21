@@ -1,5 +1,7 @@
 import { isEmail } from 'class-validator';
 
+export const DEMO_PARTICIPANT_PASSWORD = 'semcomp-demo-participante-2026';
+
 export type SeedConfig = {
   mode: 'admin-only' | 'demo';
   admin: {

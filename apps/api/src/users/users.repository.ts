@@ -50,15 +50,6 @@ export class UsersRepository {
     });
   }
 
-  findByCpfOrEmail(cpf: string, email: string) {
-    return this.prisma.user.findFirst({
-      where: {
-        OR: [{ cpf }, { email }],
-      },
-      select: userSummarySelect,
-    });
-  }
-
   async create(data: { name: string; cpf: string; email: string }) {
     try {
       return await this.prisma.user.create({
@@ -76,15 +67,15 @@ export class UsersRepository {
     }
   }
 
-  findActiveByCredentials(cpf: string, email: string) {
+  findByEmailForAuthentication(email: string) {
     return this.prisma.user.findFirst({
-      where: {
-        cpf,
-        email,
+      where: { email },
+      select: {
+        id: true,
+        role: true,
         isActive: true,
-        role: 'PARTICIPANT',
+        passwordHash: true,
       },
-      select: userSummarySelect,
     });
   }
 
@@ -112,14 +103,6 @@ export class UsersRepository {
       });
 
       return true;
-    });
-  }
-
-  updateLastLoginAt(id: string) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { lastLoginAt: new Date() },
-      select: userSummarySelect,
     });
   }
 }

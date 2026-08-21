@@ -1,9 +1,9 @@
 import { createHmac } from 'crypto';
 
 export type CredentialRateLimitInput = {
-  cpf: string;
-  email: string;
   route: string;
+  email: string;
+  cpf?: string | null;
 };
 
 function normalizeCpf(cpf: string) {
@@ -14,12 +14,25 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+export function serializeCredentialRateLimitInput({
+  cpf,
+  email,
+  route,
+}: CredentialRateLimitInput) {
+  return JSON.stringify([
+    'v2',
+    route,
+    typeof cpf === 'string' && cpf.length > 0 ? normalizeCpf(cpf) : null,
+    normalizeEmail(email),
+  ]);
+}
+
 export function createCredentialRateLimitKey(
-  { cpf, email, route }: CredentialRateLimitInput,
+  input: CredentialRateLimitInput,
   secret: string,
 ) {
   return createHmac('sha256', secret)
-    .update(`${route}\u0000${normalizeCpf(cpf)}\u0000${normalizeEmail(email)}`)
+    .update(serializeCredentialRateLimitInput(input))
     .digest('hex');
 }
 

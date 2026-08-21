@@ -1,4 +1,7 @@
-import { getSeedConfig } from '../../prisma/seed-config';
+import {
+  DEMO_PARTICIPANT_PASSWORD,
+  getSeedConfig,
+} from '../../prisma/seed-config';
 
 describe('getSeedConfig', () => {
   const validEnvironment = {
@@ -17,6 +20,22 @@ describe('getSeedConfig', () => {
         email: 'admin@semcomp.dev',
       },
     });
+  });
+
+  it('não embute credenciais de participante fora do modo demo', () => {
+    const config = getSeedConfig(validEnvironment);
+
+    expect(config).not.toHaveProperty('participant');
+    expect(Object.keys(config)).toEqual(['mode', 'admin']);
+    expect(JSON.stringify(config)).not.toContain(DEMO_PARTICIPANT_PASSWORD);
+  });
+
+  it('expõe apenas uma senha local documentada e não secreta para o demo', () => {
+    expect(typeof DEMO_PARTICIPANT_PASSWORD).toBe('string');
+    expect(DEMO_PARTICIPANT_PASSWORD.length).toBeGreaterThanOrEqual(8);
+    expect(
+      Buffer.byteLength(DEMO_PARTICIPANT_PASSWORD, 'utf8'),
+    ).toBeLessThanOrEqual(72);
   });
 
   it.each(['', 'ADMIN-ONLY', 'all', 'demo '])(

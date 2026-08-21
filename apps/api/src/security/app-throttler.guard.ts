@@ -71,11 +71,11 @@ export class AppThrottlerGuard extends ThrottlerGuard {
 
     if (credentialPolicy) {
       const { cpf, email } = request.body ?? {};
-      if (typeof cpf === 'string' && typeof email === 'string') {
+      if (typeof email === 'string') {
         return `credential:${this.rateLimitKey.forCredential({
-          cpf,
-          email,
           route,
+          email,
+          cpf: typeof cpf === 'string' ? cpf : null,
         })}`;
       }
     }

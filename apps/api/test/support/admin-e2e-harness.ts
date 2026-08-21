@@ -18,6 +18,7 @@ export type AuthSession = { cookie: string; csrfToken: string };
 type LoginBody = { csrfToken: string };
 
 const E2E_ADMIN_PASSWORD = 'Semcomp-E2e-Admin-2026!';
+const E2E_PARTICIPANT_PASSWORD = 'Semcomp-E2e-Participante-2026!';
 
 export async function loginForE2e(
   app: INestApplication<App>,
@@ -31,21 +32,17 @@ export async function loginForE2e(
   });
   const isAdmin = user.role === 'ADMIN';
 
-  if (isAdmin) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash: await hash(E2E_ADMIN_PASSWORD, 12) },
-    });
-  }
+  const password = isAdmin ? E2E_ADMIN_PASSWORD : E2E_PARTICIPANT_PASSWORD;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hash(password, 12), isActive: true },
+  });
 
   const response = await request(app.getHttpServer())
     .post(isAdmin ? '/auth/admin/login' : '/auth/login')
     .set('Origin', process.env.FRONTEND_URL ?? 'http://localhost:3000')
-    .send({
-      cpf,
-      email,
-      ...(isAdmin ? { password: E2E_ADMIN_PASSWORD } : {}),
-    })
+    .send(isAdmin ? { cpf, email, password } : { email, password })
     .expect(200);
   const setCookie = response.headers['set-cookie'] as string[] | undefined;
   if (!Array.isArray(setCookie) || !setCookie[0]) {

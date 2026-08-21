@@ -22,7 +22,10 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
-import type { AuthenticatedRequest } from '../common/request-context';
+import type {
+  AuthenticatedRequest,
+  AuthenticatedUserIdentity,
+} from '../common/request-context';
 import { AuthService } from './auth.service';
 import { AllowedOriginGuard } from './allowed-origin.guard';
 import {
@@ -36,9 +39,8 @@ import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { UserResponseDto } from '../users/dto/user-response.dto';
 
-type CsrfRequest = AuthenticatedRequest<{ csrfToken: string }>;
+type ControllerRequest = AuthenticatedRequest<AuthenticatedUserIdentity>;
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -46,34 +48,44 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Cadastrar um novo participante' })
+  @ApiOperation({
+    summary: 'Cadastrar um novo participante e iniciar a sessão',
+  })
   @ApiBody({ type: RegisterDto })
-  @ApiCreatedResponse({ type: UserResponseDto })
+  @ApiCreatedResponse({ type: LoginResponseDto })
   @ApiConflictResponse({
     description: 'CPF ou email já cadastrado.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 409,
-      message: 'Já existe um usuário com este email.',
+      message: 'Já existe um usuário com este CPF ou email.',
       error: 'Conflict',
     },
   })
-  register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+  async register(
+    @Body() registerDto: RegisterDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken, csrfToken, user } =
+      await this.authService.register(registerDto);
+
+    response.cookie('access_token', accessToken, getAuthCookieOptions(true));
+
+    return { csrfToken, user };
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AllowedOriginGuard)
-  @ApiOperation({ summary: 'Autenticar participante e gerar JWT' })
+  @ApiOperation({ summary: 'Autenticar participante com email e senha' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({
-    description: 'CPF ou email inválido.',
+    description: 'Email ou senha inválidos.',
     type: HttpErrorResponseDto,
     example: {
       statusCode: 401,
-      message: 'CPF ou email inválido.',
+      message: 'Email ou senha inválidos.',
       error: 'Unauthorized',
     },
   })
@@ -125,8 +137,22 @@ export class AuthController {
       error: 'Unauthorized',
     },
   })
-  csrf(@Req() request: CsrfRequest) {
+  csrf(@Req() request: ControllerRequest) {
     return { csrfToken: request.user.csrfToken };
+  }
+
+  @Post('heartbeat')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, CsrfGuard, AllowedOriginGuard)
+  @ApiSecurity('access-token-cookie')
+  @ApiOperation({ summary: 'Atualizar presença da sessão autenticada' })
+  @ApiNoContentResponse({ description: 'Presença atualizada.' })
+  @ApiUnauthorizedResponse({
+    description: 'Sessão inválida ou expirada.',
+    type: HttpErrorResponseDto,
+  })
+  heartbeat(@Req() request: ControllerRequest) {
+    return this.authService.heartbeat(request.user.jti, request.user.id);
   }
 
   @Post('logout')
@@ -134,7 +160,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, CsrfGuard, AllowedOriginGuard)
   @ApiOperation({ summary: 'Encerrar sessão autenticada' })
   @ApiNoContentResponse({ description: 'Sessão encerrada.' })
-  logout(@Res({ passthrough: true }) response: Response) {
+  async logout(
+    @Req() request: ControllerRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    await this.authService.logout(request.user.jti, request.user.id);
     response.clearCookie('access_token', getClearAuthCookieOptions());
   }
 }

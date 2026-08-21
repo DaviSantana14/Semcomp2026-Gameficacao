@@ -1,5 +1,11 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString, Matches } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -26,4 +32,16 @@ export class RegisterDto {
   @Transform(({ value }: { value: string }) => value?.trim().toLowerCase())
   @IsEmail()
   email: string;
+
+  @ApiProperty({
+    example: 'senha livre do participante',
+    description:
+      'Senha entre 8 e 64 caracteres Unicode e no máximo 72 bytes UTF-8, sem regra de composição.',
+    format: 'password',
+    minLength: 8,
+    maxLength: 64,
+  })
+  @IsString()
+  @Length(8, 64)
+  password: string;
 }

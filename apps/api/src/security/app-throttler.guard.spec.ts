@@ -69,7 +69,6 @@ describe(AppThrottlerGuard.name, () => {
           ip: '203.0.113.10',
           path: '/auth/login',
           body: {
-            cpf: String(10_000_000_000 + index),
             email: `participant-${index}@example.com`,
           },
         }),
@@ -81,6 +80,35 @@ describe(AppThrottlerGuard.name, () => {
       true,
     );
     expect(trackers.join('')).not.toMatch(/participant-\d+@example\.com/);
+  });
+
+  it('includes the normalized CPF in administrator and registration trackers', async () => {
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    const base = {
+      ip: '203.0.113.10',
+      path: '/auth/admin/login',
+      body: { cpf: '529.982.247-25', email: 'admin@example.com' },
+    };
+    const equivalent = {
+      ...base,
+      body: { cpf: '52998224725', email: ' ADMIN@example.com ' },
+    };
+
+    await expect(guard.tracker(base)).resolves.toBe(
+      await guard.tracker(equivalent),
+    );
+    await expect(
+      guard.tracker({
+        ip: '203.0.113.10',
+        path: '/auth/login',
+        body: { email: 'admin@example.com' },
+      }),
+    ).resolves.not.toBe(await guard.tracker(base));
   });
 
   it('uses an authenticated internal ID before falling back to the IP', async () => {

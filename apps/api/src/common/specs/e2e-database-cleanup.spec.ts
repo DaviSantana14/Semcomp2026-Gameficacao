@@ -1,11 +1,26 @@
 import {
   assertDisposableTestDatabase,
+  disposableTestDatabaseTruncateStatement,
   hasDisposableTestDatabaseConfiguration,
   isDisposableTestDatabase,
   truncateDisposableTestDatabase,
 } from '../../../test/support/e2e-database-cleanup';
 
 describe('E2E database cleanup guard', () => {
+  it('deletes daily summaries, then sessions, then users', () => {
+    const summaryIndex = disposableTestDatabaseTruncateStatement.indexOf(
+      '"PresenceDailySummary"',
+    );
+    const sessionIndex =
+      disposableTestDatabaseTruncateStatement.indexOf('"UserSession"');
+    const userLastIndex =
+      disposableTestDatabaseTruncateStatement.lastIndexOf('"User"');
+
+    expect(summaryIndex).toBeGreaterThan(-1);
+    expect(sessionIndex).toBeGreaterThan(summaryIndex);
+    expect(userLastIndex).toBeGreaterThan(sessionIndex);
+  });
+
   it.each(['semcomp_test', 'semcomp-e2e', 'test_semcomp'])(
     'accepts an explicitly disposable database: %s',
     (databaseName) => {

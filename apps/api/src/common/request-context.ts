@@ -8,7 +8,14 @@ export type RequestWithRequestId = Request & {
   requestId?: string;
 };
 
-export type AuthenticatedRequest<TUser = { id: string }> =
+export type AuthenticatedUserIdentity = {
+  id: string;
+  role: 'PARTICIPANT' | 'ADMIN';
+  csrfToken: string;
+  jti: string;
+};
+
+export type AuthenticatedRequest<TUser = AuthenticatedUserIdentity> =
   RequestWithRequestId & {
     user: TUser;
   };

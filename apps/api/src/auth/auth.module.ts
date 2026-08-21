@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AllowedOriginGuard } from './allowed-origin.guard';
 import { CsrfGuard } from './csrf.guard';
 import { ParticipantPasswordService } from './participant-password.service';
+import { PresenceModule } from '../presence/presence.module';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './jwt.strategy';
 import { ensureJwtSecret } from './jwt-env';
@@ -14,6 +15,7 @@ import { ensureJwtSecret } from './jwt-env';
 @Module({
   imports: [
     UsersModule,
+    PresenceModule,
     PassportModule,
     JwtModule.register({ secret: ensureJwtSecret() }),
   ],
