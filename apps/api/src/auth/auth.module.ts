@@ -6,6 +6,7 @@ import { AdminPasswordService } from './admin-password.service';
 import { AuthService } from './auth.service';
 import { AllowedOriginGuard } from './allowed-origin.guard';
 import { CsrfGuard } from './csrf.guard';
+import { ParticipantPasswordService } from './participant-password.service';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './jwt.strategy';
 import { ensureJwtSecret } from './jwt-env';
@@ -20,6 +21,7 @@ import { ensureJwtSecret } from './jwt-env';
   providers: [
     AuthService,
     AdminPasswordService,
+    ParticipantPasswordService,
     JwtStrategy,
     CsrfGuard,
     AllowedOriginGuard,

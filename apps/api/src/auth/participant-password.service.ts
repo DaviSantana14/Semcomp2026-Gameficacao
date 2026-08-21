@@ -6,30 +6,33 @@ import {
   hashPassword,
 } from './password-hash';
 import {
-  AdminPasswordValidationError,
-  validateAdminPassword,
-} from './password-policy';
+  ParticipantPasswordValidationError,
+  validateParticipantPassword,
+} from './participant-password-policy';
 
-export type AdminPasswordAuthenticationUser = {
+export type ParticipantPasswordAuthenticationUser = {
   role: 'PARTICIPANT' | 'ADMIN';
   isActive: boolean;
   passwordHash: string | null;
 };
 
 @Injectable()
-export class AdminPasswordService {
+export class ParticipantPasswordService {
   async hash(password: string) {
-    validateAdminPassword(password);
+    validateParticipantPassword(password);
     return hashPassword(password);
   }
 
-  async verify(password: string, user: AdminPasswordAuthenticationUser | null) {
+  async verify(
+    password: string,
+    user: ParticipantPasswordAuthenticationUser | null,
+  ) {
     let candidate = password;
 
     try {
-      validateAdminPassword(password);
+      validateParticipantPassword(password);
     } catch (error) {
-      if (error instanceof AdminPasswordValidationError) {
+      if (error instanceof ParticipantPasswordValidationError) {
         candidate = DUMMY_PASSWORD;
       } else {
         throw error;
@@ -39,7 +42,11 @@ export class AdminPasswordService {
     let canAuthenticate = false;
     let passwordHash = DUMMY_PASSWORD_HASH;
 
-    if (user?.role === 'ADMIN' && user.isActive && user.passwordHash !== null) {
+    if (
+      user?.role === 'PARTICIPANT' &&
+      user.isActive &&
+      user.passwordHash !== null
+    ) {
       canAuthenticate = true;
       passwordHash = user.passwordHash;
     }
