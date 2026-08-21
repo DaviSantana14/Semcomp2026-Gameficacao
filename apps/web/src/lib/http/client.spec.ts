@@ -170,6 +170,20 @@ describe("authentication CSRF lifecycle", () => {
     expect(vi.mocked(fetch).mock.calls[1][0]).toContain("/auth/csrf");
   });
 
+  it("sends cookies and the CSRF token when logging out", async () => {
+    setCsrfToken("logout-token");
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await logout();
+
+    expect(fetch).toHaveBeenCalledOnce();
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options?.credentials).toBe("include");
+    expect(new Headers(options?.headers).get("X-CSRF-Token")).toBe(
+      "logout-token",
+    );
+  });
+
   it("keeps the token when logout fails", async () => {
     setCsrfToken("old-token");
     vi.mocked(fetch)

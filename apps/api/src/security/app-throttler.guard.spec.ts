@@ -1,0 +1,268 @@
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { UserRole } from '@prisma/client';
+import type {
+  ThrottlerModuleOptions,
+  ThrottlerStorage,
+  ThrottlerStorageRecord,
+} from '@nestjs/throttler';
+import {
+  AppThrottlerGuard,
+  type RateLimitedRequest,
+} from './app-throttler.guard';
+import { ROLES_KEY } from '../auth/roles.decorator';
+import { RateLimitKey } from './rate-limit-key';
+
+const throttlerOptions: ThrottlerModuleOptions = [
+  { name: 'default', limit: 5, ttl: 60_000 },
+];
+
+function contextFor(
+  request: Record<string, unknown>,
+  requiredRoles?: UserRole[],
+  handler: () => void = function handler() {},
+): ExecutionContext {
+  class Controller {}
+
+  if (requiredRoles) {
+    Reflect.defineMetadata(ROLES_KEY, requiredRoles, handler);
+  }
+
+  return {
+    switchToHttp: () => ({
+      getRequest: () => request,
+      getResponse: () => request.response,
+    }),
+    getHandler: () => handler,
+    getClass: () => Controller,
+  } as unknown as ExecutionContext;
+}
+
+class TestableAppThrottlerGuard extends AppThrottlerGuard {
+  tracker(request: RateLimitedRequest) {
+    return this.getTracker(request);
+  }
+}
+
+const emptyStorage: ThrottlerStorage = {
+  increment: (): Promise<ThrottlerStorageRecord> =>
+    Promise.resolve({
+      totalHits: 0,
+      timeToExpire: 0,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    }),
+};
+
+describe(AppThrottlerGuard.name, () => {
+  it('uses separate HMAC trackers for 150 login identities behind one IP', async () => {
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+
+    const trackers = await Promise.all(
+      Array.from({ length: 150 }, (_, index) =>
+        guard.tracker({
+          ip: '203.0.113.10',
+          path: '/auth/login',
+          body: {
+            cpf: String(10_000_000_000 + index),
+            email: `participant-${index}@example.com`,
+          },
+        }),
+      ),
+    );
+
+    expect(new Set(trackers).size).toBe(150);
+    expect(trackers.every((tracker) => tracker.startsWith('credential:'))).toBe(
+      true,
+    );
+    expect(trackers.join('')).not.toMatch(/participant-\d+@example\.com/);
+  });
+
+  it('uses an authenticated internal ID before falling back to the IP', async () => {
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+
+    await expect(
+      guard.tracker({ ip: '203.0.113.10', user: { id: 'user-1' } }),
+    ).resolves.toBe('user:user-1');
+    await expect(guard.tracker({ ip: '203.0.113.10' })).resolves.toBe(
+      'ip:203.0.113.10',
+    );
+  });
+
+  it('uses the verified JWT subject before falling back to the IP', async () => {
+    const jwtService = {
+      verifyAsync: jest.fn().mockResolvedValue({ sub: 'user-from-jwt' }),
+    };
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+      jwtService as never,
+    );
+
+    await expect(
+      guard.tracker({
+        ip: '203.0.113.10',
+        cookies: { access_token: 'signed-access-token' },
+      }),
+    ).resolves.toBe('user:user-from-jwt');
+    expect(jwtService.verifyAsync).toHaveBeenCalledWith('signed-access-token');
+  });
+
+  it.each([
+    ['/auth/login', 'POST', undefined, 5, 15 * 60 * 1000],
+    ['/auth/admin/login', 'POST', undefined, 5, 15 * 60 * 1000],
+    ['/auth/register', 'POST', undefined, 3, 60 * 60 * 1000],
+    ['/ranking', 'GET', undefined, 120, 60 * 1000],
+    ['/actions/redeem-code', 'POST', [UserRole.PARTICIPANT], 10, 60 * 1000],
+    ['/admin/actions', 'PATCH', [UserRole.ADMIN], 30, 60 * 1000],
+    ['/health', 'GET', undefined, 60, 60 * 1000],
+  ])(
+    'applies %i requests in %i ms to %s %s',
+    async (path, method, requiredRoles, limit, ttl) => {
+      const increment = jest
+        .fn<
+          Promise<ThrottlerStorageRecord>,
+          [string, number, number, number, string]
+        >()
+        .mockResolvedValue({
+          totalHits: 1,
+          timeToExpire: ttl,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        });
+      const guard = new AppThrottlerGuard(
+        throttlerOptions,
+        { increment },
+        new Reflector(),
+        new RateLimitKey('test-rate-limit-secret'),
+      );
+      await guard.onModuleInit();
+
+      await expect(
+        guard.canActivate(
+          contextFor(
+            {
+              ip: '203.0.113.10',
+              path,
+              method,
+              body: { cpf: '12345678901', email: 'ada@example.com' },
+              response: { header: jest.fn() },
+            },
+            requiredRoles,
+          ),
+        ),
+      ).resolves.toBe(true);
+      expect(increment).toHaveBeenCalledWith(
+        expect.any(String),
+        ttl,
+        limit,
+        ttl,
+        'default',
+      );
+    },
+  );
+
+  it('shares one counter across endpoints in the same authenticated limit class', async () => {
+    const increment = jest
+      .fn<
+        Promise<ThrottlerStorageRecord>,
+        [string, number, number, number, string]
+      >()
+      .mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+    const guard = new AppThrottlerGuard(
+      throttlerOptions,
+      { increment },
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    await guard.onModuleInit();
+
+    await guard.canActivate(
+      contextFor(
+        {
+          ip: '203.0.113.10',
+          path: '/ranking',
+          method: 'GET',
+          user: { id: 'user-1' },
+          response: { header: jest.fn() },
+        },
+        undefined,
+        function ranking() {},
+      ),
+    );
+    await guard.canActivate(
+      contextFor(
+        {
+          ip: '203.0.113.10',
+          path: '/rewards',
+          method: 'GET',
+          user: { id: 'user-1' },
+          response: { header: jest.fn() },
+        },
+        undefined,
+        function rewards() {},
+      ),
+    );
+
+    expect(increment.mock.calls[0]?.[0]).toBe(increment.mock.calls[1]?.[0]);
+  });
+
+  it('returns 429 with retry and limit headers without exposing the tracker', async () => {
+    const header = jest.fn<void, [string, number]>();
+    const response = { header };
+    const increment = jest
+      .fn<
+        Promise<ThrottlerStorageRecord>,
+        [string, number, number, number, string]
+      >()
+      .mockResolvedValue({
+        totalHits: 6,
+        timeToExpire: 45,
+        isBlocked: true,
+        timeToBlockExpire: 45,
+      });
+    const storage: ThrottlerStorage = { increment };
+    const guard = new AppThrottlerGuard(
+      throttlerOptions,
+      storage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    await guard.onModuleInit();
+    const request = {
+      ip: '203.0.113.10',
+      path: '/auth/login',
+      body: { cpf: '12345678901', email: 'ada@example.com' },
+      response,
+    };
+
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(header).toHaveBeenCalledWith('Retry-After', 45);
+    expect(header).toHaveBeenCalledWith('X-RateLimit-Limit', 5);
+    expect(header).toHaveBeenCalledWith('X-RateLimit-Remaining', 0);
+    expect(header).toHaveBeenCalledWith('X-RateLimit-Reset', 45);
+    expect(JSON.stringify(increment.mock.calls)).not.toContain('12345678901');
+    expect(JSON.stringify(increment.mock.calls)).not.toContain(
+      'ada@example.com',
+    );
+  });
+});

@@ -5,6 +5,83 @@ on:
   pull_request:
 
 jobs:
+  deployment-artifacts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Activate pinned npm version
+        run: |
+          corepack enable
+          corepack prepare npm@11.9.0 --activate
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm --workspace api run prisma:generate
+        env:
+          DB_HOST: build-db
+          DB_PORT: 5432
+          DB_NAME: semcomp
+          DB_USER: semcomp
+          DB_PASSWORD: semcomp
+          DB_SCHEMA: public
+
+      - name: Test deployment artifact contracts
+        run: >-
+          node --test
+          deploy/aws/cloudformation.test.mjs
+          deploy/aws/scripts/capture-metrics.test.mjs
+          scripts/load/cpf.test.mjs
+
+      - name: Test deployment scripts
+        run: npm run test:deployment-scripts
+
+      - name: Test authentication and rate-limit contracts
+        run: >-
+          npm --workspace api test -- --runTestsByPath
+          src/auth/specs/password-policy.spec.ts
+          src/auth/specs/admin-password.service.spec.ts
+          src/auth/specs/auth.service.spec.ts
+          src/security/rate-limit-key.spec.ts
+          src/security/app-throttler.guard.spec.ts
+
+      - name: Validate deployment script syntax
+        run: bash -n deploy/aws/scripts/*.sh
+
+      - name: Validate rehearsal Compose configuration
+        run: >-
+          docker compose
+          --env-file deploy/aws/rehearsal.env.example
+          -f deploy/aws/compose.yml
+          config --quiet
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t semcomp-api:marco9 .
+
+      - name: Verify bcrypt in the final API image
+        run: >-
+          docker run --rm --entrypoint node semcomp-api:marco9
+          -e "require('bcrypt')"
+
+      - name: Build web image
+        run: >-
+          docker build -f apps/web/Dockerfile
+          --build-arg NEXT_PUBLIC_API_URL=/api
+          -t semcomp-web:marco9 .
+
   build:
     runs-on: ubuntu-latest
     services:

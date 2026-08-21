@@ -6,6 +6,8 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
+import { AdminPasswordService } from './admin-password.service';
+import { AdminLoginDto } from './dto/admin-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UsersService } from '../users/users.service';
@@ -16,6 +18,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly adminPasswordService: AdminPasswordService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -25,20 +28,9 @@ export class AuthService {
     );
 
     if (existingUser) {
-      if (
-        existingUser.cpf === registerDto.cpf &&
-        existingUser.email === registerDto.email
-      ) {
-        throw new ConflictException(
-          'Já existe um usuário com este CPF e este email.',
-        );
-      }
-
-      if (existingUser.cpf === registerDto.cpf) {
-        throw new ConflictException('Já existe um usuário com este CPF.');
-      }
-
-      throw new ConflictException('Já existe um usuário com este email.');
+      throw new ConflictException(
+        'Já existe um usuário com este CPF ou email.',
+      );
     }
 
     try {
@@ -62,20 +54,54 @@ export class AuthService {
       loginDto.email,
     );
 
-    if (!user) {
+    if (!user || user.role !== 'PARTICIPANT') {
       throw new UnauthorizedException('CPF ou email inválido.');
     }
 
     const updatedUser = await this.usersService.updateLastLoginAt(user.id);
+    return this.createSession(updatedUser);
+  }
+
+  async adminLogin(loginDto: AdminLoginDto) {
+    const user = await this.usersService.findByCredentialsWithPasswordHash(
+      loginDto.cpf,
+      loginDto.email,
+    );
+    const passwordMatches = await this.adminPasswordService.verify(
+      loginDto.password,
+      user,
+    );
+
+    if (!passwordMatches || !user) {
+      throw new UnauthorizedException('CPF, email ou senha inválidos.');
+    }
+
+    const updatedUser = await this.usersService.updateLastLoginAt(user.id);
+    return this.createSession(updatedUser);
+  }
+
+  private async createSession(user: {
+    id: string;
+    name: string;
+    cpf: string;
+    email: string;
+    role: 'PARTICIPANT' | 'ADMIN';
+    points: number;
+    xp: number;
+    level: number;
+    isActive: boolean;
+    lastLoginAt: Date | null;
+    createdAt: Date;
+  }) {
     const csrfToken = randomBytes(32).toString('base64url');
 
     return {
       accessToken: await this.jwtService.signAsync(
-        { sub: updatedUser.id, csrfToken },
+        { sub: user.id, csrfToken },
         { expiresIn: '8h' },
       ),
       csrfToken,
-      user: toUserResponseDto(updatedUser),
+      user: toUserResponseDto(user),
     };
   }
 }

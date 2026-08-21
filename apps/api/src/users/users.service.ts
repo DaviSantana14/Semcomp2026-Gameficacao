@@ -41,6 +41,14 @@ export class UsersService {
     return this.repository.findActiveByCredentials(cpf, email);
   }
 
+  findByCredentialsWithPasswordHash(cpf: string, email: string) {
+    return this.repository.findByCredentialsWithPasswordHash(cpf, email);
+  }
+
+  setAdminPassword(cpf: string, email: string, passwordHash: string) {
+    return this.repository.setAdminPassword(cpf, email, passwordHash);
+  }
+
   updateLastLoginAt(id: string) {
     return this.repository.updateLastLoginAt(id);
   }

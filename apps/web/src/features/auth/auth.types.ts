@@ -5,6 +5,10 @@ export type LoginPayload = {
   email: string;
 };
 
+export type AdminLoginPayload = LoginPayload & {
+  password: string;
+};
+
 export type RegisterPayload = LoginPayload & { name: string };
 
 export type LoginResponse = {

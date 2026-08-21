@@ -24,11 +24,14 @@ import type { Response } from 'express';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import type { AuthenticatedRequest } from '../common/request-context';
 import { AuthService } from './auth.service';
+import { AllowedOriginGuard } from './allowed-origin.guard';
 import {
   getAuthCookieOptions,
   getClearAuthCookieOptions,
 } from './cookie-options';
+import { CsrfGuard } from './csrf.guard';
 import { CsrfTokenResponseDto } from './dto/csrf-token-response.dto';
+import { AdminLoginDto } from './dto/admin-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -61,6 +64,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AllowedOriginGuard)
   @ApiOperation({ summary: 'Autenticar participante e gerar JWT' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: LoginResponseDto })
@@ -79,6 +83,28 @@ export class AuthController {
   ) {
     const { accessToken, csrfToken, user } =
       await this.authService.login(loginDto);
+
+    response.cookie('access_token', accessToken, getAuthCookieOptions(true));
+
+    return { csrfToken, user };
+  }
+
+  @Post('admin/login')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AllowedOriginGuard)
+  @ApiOperation({ summary: 'Autenticar administrador e gerar JWT' })
+  @ApiBody({ type: AdminLoginDto })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'CPF, email ou senha inválidos.',
+    type: HttpErrorResponseDto,
+  })
+  async adminLogin(
+    @Body() loginDto: AdminLoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken, csrfToken, user } =
+      await this.authService.adminLogin(loginDto);
 
     response.cookie('access_token', accessToken, getAuthCookieOptions(true));
 
@@ -105,6 +131,7 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, CsrfGuard, AllowedOriginGuard)
   @ApiOperation({ summary: 'Encerrar sessão autenticada' })
   @ApiNoContentResponse({ description: 'Sessão encerrada.' })
   logout(@Res({ passthrough: true }) response: Response) {

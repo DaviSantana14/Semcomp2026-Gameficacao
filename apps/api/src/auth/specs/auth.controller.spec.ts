@@ -1,5 +1,9 @@
 import type { CookieOptions, Response } from 'express';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { AllowedOriginGuard } from '../allowed-origin.guard';
 import { AuthController } from '../auth.controller';
+import { CsrfGuard } from '../csrf.guard';
+import { JwtAuthGuard } from '../jwt-auth.guard';
 
 const user = {
   id: 'user-1',
@@ -16,6 +20,41 @@ const user = {
 };
 
 describe('AuthController', () => {
+  it('requires the configured origin for participant login', () => {
+    const loginHandler = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'login',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(GUARDS_METADATA, loginHandler)).toEqual([
+      AllowedOriginGuard,
+    ]);
+  });
+
+  it('requires the configured origin for administrator login', () => {
+    const adminLoginHandler = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'adminLogin',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(GUARDS_METADATA, adminLoginHandler)).toEqual([
+      AllowedOriginGuard,
+    ]);
+  });
+
+  it('requires authentication, CSRF and the configured origin for logout', () => {
+    const logoutHandler = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'logout',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(GUARDS_METADATA, logoutHandler)).toEqual([
+      JwtAuthGuard,
+      CsrfGuard,
+      AllowedOriginGuard,
+    ]);
+  });
+
   it('delegates register to AuthService', async () => {
     const authService = {
       register: jest.fn().mockResolvedValue(user),
@@ -67,6 +106,44 @@ describe('AuthController', () => {
       user,
     });
     expect(result).not.toHaveProperty('accessToken');
+  });
+
+  it('sets the access token cookie and does not return accessToken in administrator login', async () => {
+    const authService = {
+      register: jest.fn(),
+      login: jest.fn(),
+      adminLogin: jest.fn().mockResolvedValue({
+        accessToken: 'jwt-token',
+        csrfToken: 'csrf-token',
+        user: { ...user, role: 'ADMIN' },
+      }),
+    };
+    const controller = new AuthController(
+      authService as never,
+    ) as AuthController & {
+      adminLogin: (
+        loginDto: { cpf: string; email: string; password: string },
+        response: Response,
+      ) => Promise<unknown>;
+    };
+    const cookieMock = jest.fn();
+    const response = { cookie: cookieMock } as unknown as Response;
+    const loginDto = {
+      cpf: '12345678900',
+      email: 'admin@example.com',
+      password: 'correct-password',
+    };
+
+    await expect(controller.adminLogin(loginDto, response)).resolves.toEqual({
+      csrfToken: 'csrf-token',
+      user: { ...user, role: 'ADMIN' },
+    });
+    expect(authService.adminLogin).toHaveBeenCalledWith(loginDto);
+    expect(cookieMock).toHaveBeenCalledWith(
+      'access_token',
+      'jwt-token',
+      expect.objectContaining({ httpOnly: true }),
+    );
   });
 
   it('clears the access token cookie on logout', () => {

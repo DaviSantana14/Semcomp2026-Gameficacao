@@ -77,6 +77,12 @@ describe("LoginForm", () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
+  it("mantém o formulário de participante sem campo de senha", () => {
+    render(<LoginForm />);
+
+    expect(screen.queryByLabelText("Senha")).not.toBeInTheDocument();
+  });
+
   it("mantém o redirecionamento administrativo", async () => {
     loginMock.mockResolvedValue({
       csrfToken: "csrf-token",
