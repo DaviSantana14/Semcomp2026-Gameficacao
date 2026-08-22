@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { User } from "@/features/users/users.types";
+import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 import { ParticipantShell } from "./participant-shell";
+
+vi.mock("@/hooks/use-presence-heartbeat", () => ({
+  usePresenceHeartbeat: vi.fn(),
+}));
 
 vi.mock("@/components/logout-button", () => ({
   LogoutButton: () => <button type="button">Sair</button>,
@@ -47,5 +52,6 @@ describe("ParticipantShell", () => {
       screen.getByRole("heading", { name: "Ranking" }),
     ).toBeInTheDocument();
     expect(screen.getByText(participant.name)).toBeInTheDocument();
+    expect(vi.mocked(usePresenceHeartbeat)).toHaveBeenCalledOnce();
   });
 });
