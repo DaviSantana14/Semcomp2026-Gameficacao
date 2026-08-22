@@ -25,6 +25,24 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Semcomp authentication and presence
+
+- Participants register with name, CPF, email and password. CPF remains a
+  required unique profile field, but participant authentication uses only email
+  and password.
+- Participant passwords accept 8–64 Unicode code points and at most 72 UTF-8
+  bytes, including spaces, with no composition rule or recovery flow.
+- Administrators use CPF, email and password on `/auth/admin/login`. Passwords
+  are handled with asynchronous bcrypt v6 APIs and are never returned by the
+  API.
+- Each JWT `jti` is the exact `UserSession.id`. Participant heartbeats run at
+  60-second intervals, online status uses a 120-second window, and presence is
+  retained as one daily aggregate row in `America/Sao_Paulo`; minute samples
+  are not persisted.
+- Admin presence reads are available at `/admin/presence/overview`,
+  `/admin/presence/history`, and `/admin/presence/export.csv`. The CSV contains
+  only aggregate `GERAL` and filtered `DIARIO` rows.
+
 ## Project setup
 
 ```bash
