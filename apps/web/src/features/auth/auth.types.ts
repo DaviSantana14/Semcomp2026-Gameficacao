@@ -1,15 +1,22 @@
 import type { User } from "@/features/users/users.types";
 
 export type LoginPayload = {
-  cpf: string;
   email: string;
-};
-
-export type AdminLoginPayload = LoginPayload & {
   password: string;
 };
 
-export type RegisterPayload = LoginPayload & { name: string };
+export type AdminLoginPayload = {
+  cpf: string;
+  email: string;
+  password: string;
+};
+
+export type RegisterPayload = {
+  name: string;
+  cpf: string;
+  email: string;
+  password: string;
+};
 
 export type LoginResponse = {
   user: User;

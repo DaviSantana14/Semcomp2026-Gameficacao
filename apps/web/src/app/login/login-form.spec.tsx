@@ -39,8 +39,8 @@ function createUser(role: UserRole): User {
 
 async function submitValidLogin() {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText("CPF"), "123.456.789-00");
-  await user.type(screen.getByLabelText("E-mail"), "Davi@Example.com");
+  await user.type(screen.getByLabelText(/^e-?mail$/i), "Davi@Example.com");
+  await user.type(screen.getByLabelText(/^senha$/i), "        ");
   await user.click(screen.getByRole("button", { name: "Entrar na jornada" }));
 }
 
@@ -49,7 +49,7 @@ describe("LoginForm", () => {
     vi.clearAllMocks();
   });
 
-  it("normaliza as credenciais e direciona o participante para a jornada", async () => {
+  it("normaliza o e-mail e preserva a senha ao direcionar o participante", async () => {
     loginMock.mockResolvedValue({
       csrfToken: "csrf-token",
       user: createUser("PARTICIPANT"),
@@ -60,10 +60,12 @@ describe("LoginForm", () => {
 
     await waitFor(() =>
       expect(loginMock).toHaveBeenCalledWith({
-        cpf: "12345678900",
         email: "davi@example.com",
+        password: "        ",
       }),
     );
+    expect(screen.queryByLabelText(/^cpf$/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /recuper/i })).not.toBeInTheDocument();
     expect(replaceMock).toHaveBeenCalledWith("/home");
   });
 
@@ -77,10 +79,12 @@ describe("LoginForm", () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
-  it("mantém o formulário de participante sem campo de senha", () => {
+  it("exibe apenas e-mail e senha no formulário de participante", () => {
     render(<LoginForm />);
 
-    expect(screen.queryByLabelText("Senha")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^e-?mail$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^senha$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^cpf$/i)).not.toBeInTheDocument();
   });
 
   it("mantém o redirecionamento administrativo", async () => {

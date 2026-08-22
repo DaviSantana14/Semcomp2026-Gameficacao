@@ -1,6 +1,5 @@
 import { apiFetch } from "@/lib/http/client";
 import { clearCsrfToken, setCsrfToken } from "@/lib/http/csrf";
-import type { User } from "@/features/users/users.types";
 import type {
   AdminLoginPayload,
   LoginPayload,
@@ -28,12 +27,14 @@ export async function adminLogin(payload: AdminLoginPayload) {
   return response;
 }
 
-export function register(payload: RegisterPayload) {
-  return apiFetch<User>("/auth/register", {
+export async function register(payload: RegisterPayload) {
+  const response = await apiFetch<LoginResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
     skipCsrf: true,
   });
+  setCsrfToken(response.csrfToken);
+  return response;
 }
 
 export async function logout() {

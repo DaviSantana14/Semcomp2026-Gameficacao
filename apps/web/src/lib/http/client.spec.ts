@@ -91,7 +91,7 @@ describe("apiFetch CSRF policy", () => {
 
     const pendingMutation = apiFetch("/first", { method: "POST" });
     await Promise.resolve();
-    await login({ cpf: "123", email: "user@example.test" });
+    await login({ email: "user@example.test", password: "password123" });
     resolveOldToken(jsonResponse({ csrfToken: "old-token" }));
     await pendingMutation;
     await apiFetch("/second", { method: "POST" });
@@ -147,7 +147,7 @@ describe("authentication CSRF lifecycle", () => {
       )
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
-    await login({ cpf: "123", email: "user@example.test" });
+    await login({ email: "user@example.test", password: "password123" });
     await apiFetch("/items", { method: "POST" });
 
     expect(fetch).toHaveBeenCalledTimes(2);

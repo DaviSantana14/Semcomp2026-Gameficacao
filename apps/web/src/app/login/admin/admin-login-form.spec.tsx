@@ -73,4 +73,21 @@ describe("AdminLoginForm", () => {
     expect(await screen.findAllByRole("alert")).toHaveLength(3);
     expect(adminLoginMock).not.toHaveBeenCalled();
   });
+
+  it("preserva o mínimo administrativo de 12 caracteres", async () => {
+    const user = userEvent.setup();
+    render(<AdminLoginForm />);
+
+    await user.type(screen.getByLabelText("CPF"), "12345678900");
+    await user.type(screen.getByLabelText("E-mail"), "admin@example.com");
+    await user.type(screen.getByLabelText("Senha"), "12345678901");
+    await user.click(
+      screen.getByRole("button", { name: "Entrar como administrador" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /12 e 64 caracteres/i,
+    );
+    expect(adminLoginMock).not.toHaveBeenCalled();
+  });
 });
