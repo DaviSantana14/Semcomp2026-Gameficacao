@@ -17,6 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAdminDashboard } from "@/features/dashboard/dashboard.service";
 import { ApiError } from "@/lib/http/api-error";
 import { cn } from "@/lib/utils";
+import { PresenceHistory } from "./_components/presence-history";
+import { PresencePanel } from "./_components/presence-panel";
 
 const numberFormatter = new Intl.NumberFormat("pt-BR");
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -286,6 +288,9 @@ export function DashboardClient() {
           </article>
         </div>
       </section>
+
+      <PresencePanel />
+      <PresenceHistory />
     </div>
   );
 }
