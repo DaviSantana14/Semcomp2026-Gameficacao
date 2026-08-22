@@ -1,9 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  addUtcDays,
+  startOfOperationalDayUtc,
+} from '../common/operational-time';
 import { RankingRepository } from './ranking.repository';
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
-const RANKING_TIME_ZONE = 'America/Sao_Paulo';
 const RANKING_PERIODS = ['all', 'daily'] as const;
 
 type RankingUser = {
@@ -114,62 +117,6 @@ function compareRankingUsers(left: RankingUser, right: RankingUser) {
 }
 
 function getPeriodWindow(period: 'daily', now: Date) {
-  const start = getZonedStartOfDayUtc(now, RANKING_TIME_ZONE);
+  const start = startOfOperationalDayUtc(now);
   return { start, end: addUtcDays(start, 1) };
-}
-
-function getZonedStartOfDayUtc(date: Date, timeZone: string) {
-  const parts = getZonedParts(date, timeZone);
-  const approximation = new Date(
-    Date.UTC(parts.year, parts.month - 1, parts.day),
-  );
-  return new Date(
-    approximation.getTime() - getTimeZoneOffsetInMs(approximation, timeZone),
-  );
-}
-
-function getZonedParts(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  return {
-    year: Number(parts.find((part) => part.type === 'year')?.value),
-    month: Number(parts.find((part) => part.type === 'month')?.value),
-    day: Number(parts.find((part) => part.type === 'day')?.value),
-  };
-}
-
-function getTimeZoneOffsetInMs(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date);
-  const values = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== 'literal')
-      .map((part) => [part.type, Number(part.value)]),
-  );
-  return (
-    Date.UTC(
-      values.year,
-      values.month - 1,
-      values.day,
-      values.hour,
-      values.minute,
-      values.second,
-    ) - date.getTime()
-  );
-}
-
-function addUtcDays(date: Date, days: number) {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }

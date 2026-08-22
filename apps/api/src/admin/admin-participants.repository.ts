@@ -123,6 +123,17 @@ export class AdminParticipantsRepository {
     });
   }
 
+  revokeOpenSessions(id: string, now: Date) {
+    return this.client.userSession.updateMany({
+      where: {
+        userId: id,
+        endedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: { endedAt: now, endReason: 'REVOKED' },
+    });
+  }
+
   findParticipantById(id: string) {
     return this.client.user.findFirst({
       where: { id, role: UserRole.PARTICIPANT },

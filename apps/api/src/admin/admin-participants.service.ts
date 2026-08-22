@@ -70,6 +70,9 @@ export class AdminParticipantsService {
         id,
         dto.isActive,
       );
+      if (!dto.isActive) {
+        await repository.revokeOpenSessions(id, new Date());
+      }
       await this.audit.record(repository.auditWriter!, {
         actor: { actorType: AuditActorType.ADMIN, ...context },
         operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
