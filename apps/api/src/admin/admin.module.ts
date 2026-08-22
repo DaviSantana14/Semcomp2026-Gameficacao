@@ -11,12 +11,15 @@ import { AdminAdjustmentsService } from './admin-adjustments.service';
 import { AdminReconciliationController } from './admin-reconciliation.controller';
 import { AdminReconciliationRepository } from './admin-reconciliation.repository';
 import { AdminReconciliationService } from './admin-reconciliation.service';
+import { PresenceModule } from '../presence/presence.module';
+import { AdminPresenceController } from './admin-presence.controller';
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, PresenceModule],
   controllers: [
     AdminController,
     AdminAdjustmentsController,
     AdminReconciliationController,
+    AdminPresenceController,
   ],
   providers: [
     AdminAdjustmentsService,

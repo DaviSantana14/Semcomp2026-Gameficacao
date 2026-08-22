@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { operationalDateUtc } from '../common/operational-time';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const ONLINE_WINDOW_SECONDS = 120;
@@ -20,6 +21,25 @@ export type PresenceCollectionCounts = {
 export type DailySummaryObservation = PresenceCollectionCounts & {
   operationalDate: Date;
   observedAt: Date;
+};
+
+export type PresenceSummaryRecord = {
+  operationalDate: Date;
+  lastObservedOnlineParticipants: number;
+  registeredParticipantsAtLastObservation: number;
+  lastCollectedAt: Date;
+  peakOnlineParticipants: number;
+  peakAt: Date | null;
+  registeredParticipantsAtPeak: number;
+  uniqueParticipantLogins: number;
+  newParticipantRegistrations: number;
+};
+
+export type PresenceOverviewData = {
+  today: PresenceSummaryRecord | null;
+  summaries: PresenceSummaryRecord[];
+  registeredParticipants: number;
+  uniqueParticipantsEverLogged: number;
 };
 
 @Injectable()
@@ -153,6 +173,51 @@ export class PresenceRepository {
     return this.prisma.presenceDailySummary.findUnique({
       where: { operationalDate },
     });
+  }
+
+  async getOverviewData(now: Date): Promise<PresenceOverviewData> {
+    const [summaries, registeredParticipants, uniqueParticipantsEverLogged] =
+      await Promise.all([
+        this.prisma.presenceDailySummary.findMany({
+          orderBy: { operationalDate: 'asc' },
+          select: {
+            operationalDate: true,
+            lastObservedOnlineParticipants: true,
+            registeredParticipantsAtLastObservation: true,
+            lastCollectedAt: true,
+            peakOnlineParticipants: true,
+            peakAt: true,
+            registeredParticipantsAtPeak: true,
+            uniqueParticipantLogins: true,
+            newParticipantRegistrations: true,
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            role: 'PARTICIPANT',
+            createdAt: { lte: now },
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            role: 'PARTICIPANT',
+            lastLoginAt: { not: null, lte: now },
+          },
+        }),
+      ]);
+
+    const todayKey = operationalDateUtc(now).getTime();
+    const normalizedSummaries = summaries.map((summary) => ({ ...summary }));
+
+    return {
+      today:
+        normalizedSummaries.find(
+          (summary) => summary.operationalDate.getTime() === todayKey,
+        ) ?? null,
+      summaries: normalizedSummaries,
+      registeredParticipants,
+      uniqueParticipantsEverLogged,
+    };
   }
 
   deleteSummariesBefore(cutoff: Date) {
