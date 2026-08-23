@@ -57,7 +57,7 @@ describeDisposable('Admin claim-code batches (e2e)', () => {
       },
     });
     actionId = action.id;
-    adminSession = await harness.login(admin.cpf, admin.email);
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
   });
 
   afterEach(async () => {

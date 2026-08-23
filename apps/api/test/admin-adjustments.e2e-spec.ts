@@ -63,11 +63,11 @@ describe('Admin adjustments (e2e)', () => {
     const participantCredentials = users.find(
       ({ id }) => id === participant.id,
     )!;
-    adminSession = await harness.login(
+    adminSession = await harness.loginLegacy(
       adminCredentials.cpf,
       adminCredentials.email,
     );
-    participantSession = await harness.login(
+    participantSession = await harness.loginLegacy(
       participantCredentials.cpf,
       participantCredentials.email,
     );

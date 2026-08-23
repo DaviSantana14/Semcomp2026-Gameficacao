@@ -46,8 +46,8 @@ describe('Admin exports (e2e)', () => {
         createdAt: new Date('2026-08-22T12:00:00.000Z'),
       },
     });
-    adminSession = await harness.login(admin.cpf, admin.email);
-    participantSession = await harness.login(
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
+    participantSession = await harness.loginLegacy(
       participant.cpf,
       participant.email,
     );

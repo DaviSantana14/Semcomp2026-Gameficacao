@@ -42,8 +42,8 @@ describe('Admin rewards (e2e)', () => {
     userIds.push(admin.id, participant.id);
     adminId = admin.id;
     participantId = participant.id;
-    adminSession = await harness.login(admin.cpf, admin.email);
-    participantSession = await harness.login(
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
+    participantSession = await harness.loginLegacy(
       participant.cpf,
       participant.email,
     );

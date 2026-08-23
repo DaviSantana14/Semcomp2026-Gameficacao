@@ -157,7 +157,7 @@ describe('Admin dashboard (e2e)', () => {
       },
     });
 
-    adminSession = await harness.login(users[0].cpf, users[0].email);
+    adminSession = await harness.loginLegacy(users[0].cpf, users[0].email);
   });
 
   afterAll(async () => {

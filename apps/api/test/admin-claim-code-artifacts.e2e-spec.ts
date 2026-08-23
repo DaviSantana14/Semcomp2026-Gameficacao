@@ -71,8 +71,8 @@ describeDisposable('Admin claim-code artifacts (e2e)', () => {
     ]);
     actionId = claimAction.id;
     reusableActionId = reusableAction.id;
-    adminSession = await harness.login(admin.cpf, admin.email);
-    participantSession = await harness.login(
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
+    participantSession = await harness.loginLegacy(
       participant.cpf,
       participant.email,
     );

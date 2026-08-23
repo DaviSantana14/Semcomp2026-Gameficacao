@@ -144,9 +144,9 @@ describe('Admin participants (e2e)', () => {
     });
     pendingRedemptionId = redemption.id;
 
-    adminSession = await harness.login(users[0].cpf, users[0].email);
-    firstSession = await harness.login(first.cpf, first.email);
-    await harness.login(second.cpf, second.email);
+    adminSession = await harness.loginLegacy(users[0].cpf, users[0].email);
+    firstSession = await harness.loginLegacy(first.cpf, first.email);
+    await harness.loginLegacy(second.cpf, second.email);
   });
 
   afterAll(async () => {
@@ -263,7 +263,7 @@ describe('Admin participants (e2e)', () => {
         reason: 'Reativacao administrativa do participante',
       })
       .expect(200);
-    firstSession = await harness.login(first.cpf, first.email);
+    firstSession = await harness.loginLegacy(first.cpf, first.email);
   });
 
   it('serializes concurrent participant status updates with one exact before snapshot', async () => {
@@ -308,7 +308,7 @@ describe('Admin participants (e2e)', () => {
         reason: 'Reativacao apos teste concorrente do participante',
       })
       .expect(200);
-    firstSession = await harness.login(first.cpf, first.email);
+    firstSession = await harness.loginLegacy(first.cpf, first.email);
   });
 
   it('records exact redemption methods in filtered participant history', async () => {

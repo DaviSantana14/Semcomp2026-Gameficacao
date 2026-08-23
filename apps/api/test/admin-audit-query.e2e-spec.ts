@@ -120,8 +120,8 @@ describeDisposable('Admin audit query (e2e)', () => {
     });
 
     [adminSession, participantSession] = await Promise.all([
-      harness.login(admin.cpf, admin.email),
-      harness.login(participant.cpf, participant.email),
+      harness.loginLegacy(admin.cpf, admin.email),
+      harness.loginLegacy(participant.cpf, participant.email),
     ]);
   });
 

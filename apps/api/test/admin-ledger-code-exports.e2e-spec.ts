@@ -104,8 +104,8 @@ describe('Admin global ledgers and exports (e2e)', () => {
       ],
     });
 
-    adminSession = await harness.login(admin.cpf, admin.email);
-    participantSession = await harness.login(
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
+    participantSession = await harness.loginLegacy(
       participant.cpf,
       participant.email,
     );

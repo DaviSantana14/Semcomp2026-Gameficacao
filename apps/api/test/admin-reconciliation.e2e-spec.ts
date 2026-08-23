@@ -92,8 +92,8 @@ describe('Admin reconciliation (e2e)', () => {
     });
 
     [adminSession, participantSession] = await Promise.all([
-      harness.login(admin.cpf, admin.email),
-      harness.login(noEvents.cpf, noEvents.email),
+      harness.loginLegacy(admin.cpf, admin.email),
+      harness.loginLegacy(noEvents.cpf, noEvents.email),
     ]);
 
     function createParticipant(

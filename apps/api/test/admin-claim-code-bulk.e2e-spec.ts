@@ -73,8 +73,8 @@ describeDisposable('Admin claim-code bulk status (e2e)', () => {
       },
     });
     actionId = action.id;
-    adminSession = await harness.login(admin.cpf, admin.email);
-    participantSession = await harness.login(
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
+    participantSession = await harness.loginLegacy(
       participant.cpf,
       participant.email,
     );
@@ -90,7 +90,7 @@ describeDisposable('Admin claim-code bulk status (e2e)', () => {
         role: UserRole.ADMIN,
       },
     });
-    adminSession = await harness.login(admin.cpf, admin.email);
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
   });
 
   afterEach(async () => {
