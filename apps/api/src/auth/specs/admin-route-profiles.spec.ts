@@ -10,6 +10,7 @@ import { AdminController } from '../../admin/admin.controller';
 import { AdminAdjustmentsController } from '../../admin/admin-adjustments.controller';
 import { AdminReconciliationController } from '../../admin/admin-reconciliation.controller';
 import { AdminPresenceController } from '../../admin/admin-presence.controller';
+import { AdminOperatorsController } from '../../admin/admin-operators.controller';
 import { AdminActionsController } from '../../actions/admin-actions.controller';
 import { ClaimCodesController } from '../../claim-codes/claim-codes.controller';
 import { AdminRewardsController } from '../../rewards/admin-rewards.controller';
@@ -29,6 +30,10 @@ const classRouteCases = [
     profiles: [AdminProfile.GENERAL],
   },
   { controller: AdminPresenceController, profiles: [AdminProfile.GENERAL] },
+  {
+    controller: AdminOperatorsController,
+    profiles: [AdminProfile.GENERAL],
+  },
   {
     controller: AdminActionsController,
     profiles: [AdminProfile.GENERAL, AdminProfile.ACTIVITIES],

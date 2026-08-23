@@ -276,7 +276,11 @@ export class AdminE2eHarness {
     try {
       await truncateDisposableTestDatabase(this.prisma);
     } finally {
-      await this.app.close();
+      try {
+        await this.app.close();
+      } finally {
+        await this.prisma.$disconnect();
+      }
     }
   }
 }
