@@ -5,6 +5,7 @@ import { AdminDashboardService } from '../admin-dashboard.service';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 import { AuditService } from '../../audit/audit.service';
+import { ParticipantPasswordService } from '../../auth/participant-password.service';
 import { AdminReconciliationService } from '../admin-reconciliation.service';
 
 describe('admin service layering', () => {
@@ -17,6 +18,7 @@ describe('admin service layering', () => {
           useValue: { findParticipantById: jest.fn().mockResolvedValue(null) },
         },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        { provide: ParticipantPasswordService, useValue: { hash: jest.fn() } },
       ],
     }).compile();
     await expect(

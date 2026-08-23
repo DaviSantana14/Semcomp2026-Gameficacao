@@ -1,5 +1,6 @@
 import type { CookieOptions, Response } from 'express';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { ALLOW_PASSWORD_CHANGE_REQUIRED_KEY } from '../allow-password-change-required.decorator';
 import { AllowedOriginGuard } from '../allowed-origin.guard';
 import { AuthController } from '../auth.controller';
 import { CsrfGuard } from '../csrf.guard';
@@ -24,6 +25,7 @@ const sessionUser = {
   jti: 'session-1',
   csrfToken: 'csrf-token',
   role: 'PARTICIPANT' as const,
+  passwordResetRequired: true,
 };
 
 function createController(authService: Record<string, jest.Mock>) {
@@ -68,6 +70,22 @@ describe('AuthController', () => {
       ]);
     },
   );
+
+  it('allows the required-password endpoint through the auth, CSRF, and origin guards', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'changeRequiredPassword',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toEqual([
+      JwtAuthGuard,
+      CsrfGuard,
+      AllowedOriginGuard,
+    ]);
+    expect(
+      Reflect.getMetadata(ALLOW_PASSWORD_CHANGE_REQUIRED_KEY, handler),
+    ).toBe(true);
+  });
 
   it('registers in one request that already sets the access token cookie', async () => {
     const authService = {
@@ -177,7 +195,45 @@ describe('AuthController', () => {
       user: { ...sessionUser },
     } as never;
 
-    expect(controller.csrf(request)).toEqual({ csrfToken: 'csrf-token' });
+    expect(controller.csrf(request)).toEqual({
+      csrfToken: 'csrf-token',
+      passwordChangeRequired: true,
+    });
+  });
+
+  it('completes the required password change before clearing the session cookie', async () => {
+    const authService = {
+      changeRequiredPassword: jest.fn().mockResolvedValue({
+        status: 'changed',
+        sessionsRevoked: 1,
+      }),
+    };
+    const controller = createController(authService);
+    const clearCookieMock = jest.fn();
+    const response = {
+      clearCookie: clearCookieMock,
+    } as unknown as Response;
+    const dto = { newPassword: 'definitive-password' };
+
+    await expect(
+      controller.changeRequiredPassword(
+        dto,
+        { user: { ...sessionUser } } as never,
+        response,
+      ),
+    ).resolves.toBeUndefined();
+    expect(authService.changeRequiredPassword).toHaveBeenCalledWith(
+      'user-1',
+      'session-1',
+      dto,
+    );
+    expect(clearCookieMock).toHaveBeenCalledWith(
+      'access_token',
+      expect.objectContaining({ httpOnly: true, path: '/' }),
+    );
+    expect(
+      authService.changeRequiredPassword.mock.invocationCallOrder[0],
+    ).toBeLessThan(clearCookieMock.mock.invocationCallOrder[0]);
   });
 
   it('heartbeats the current persisted session identified by its jti', async () => {

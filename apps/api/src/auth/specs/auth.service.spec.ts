@@ -22,12 +22,18 @@ describe(AuthService.name, () => {
     usersService: Record<string, jest.Mock>;
     jwtService: { signAsync: jest.Mock };
     adminPasswordService: { verify: jest.Mock; hash: jest.Mock };
-    participantPasswordService: { verify: jest.Mock; hash: jest.Mock };
+    participantPasswordService: {
+      verify: jest.Mock;
+      hash: jest.Mock;
+      matchesHash: jest.Mock;
+    };
     sessionsService: {
       registerParticipant: jest.Mock;
       start: jest.Mock;
       end: jest.Mock;
       heartbeat: jest.Mock;
+      findParticipantPasswordReset: jest.Mock;
+      completeParticipantPasswordChange: jest.Mock;
     };
   };
 
@@ -52,6 +58,7 @@ describe(AuthService.name, () => {
       participantPasswordService: {
         verify: jest.fn(),
         hash: jest.fn(),
+        matchesHash: jest.fn(),
         ...(overrides?.participantPasswordService ?? {}),
       },
       sessionsService: {
@@ -59,6 +66,8 @@ describe(AuthService.name, () => {
         start: jest.fn(),
         end: jest.fn(),
         heartbeat: jest.fn(),
+        findParticipantPasswordReset: jest.fn(),
+        completeParticipantPasswordChange: jest.fn(),
         ...(overrides?.sessionsService ?? {}),
       },
     };
@@ -274,6 +283,193 @@ describe(AuthService.name, () => {
     await expect(
       service.login({ email: 'ada@example.com', password: 'senha-livre' }),
     ).rejects.toEqual(new UnauthorizedException('Email ou senha inválidos.'));
+  });
+
+  it('rejects an expired temporary participant password with the generic login error', async () => {
+    const participant = {
+      id: 'participant-1',
+      role: UserRole.PARTICIPANT,
+      isActive: true,
+      passwordHash: '$2b$12$temporary',
+      passwordResetRequired: true,
+      passwordResetExpiresAt: new Date(Date.now() - 1),
+    };
+    const { service, deps } = await createService({
+      usersService: {
+        findByEmailForAuthentication: jest.fn().mockResolvedValue(participant),
+      },
+      participantPasswordService: {
+        verify: jest.fn().mockResolvedValue(true),
+      },
+    });
+
+    await expect(
+      service.login({
+        email: 'ada@example.com',
+        password: 'temporary-password',
+      }),
+    ).rejects.toEqual(new UnauthorizedException('Email ou senha inválidos.'));
+    expect(deps.sessionsService.start).not.toHaveBeenCalled();
+  });
+
+  it('completes a required participant password change and returns the transaction result', async () => {
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const { service, deps } = await createService({
+      sessionsService: {
+        findParticipantPasswordReset: jest.fn().mockResolvedValue({
+          id: 'participant-1',
+          role: 'PARTICIPANT',
+          passwordHash: '$2b$12$temporary',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: expiresAt,
+        }),
+        completeParticipantPasswordChange: jest.fn().mockResolvedValue({
+          status: 'changed',
+          sessionsRevoked: 2,
+        }),
+      },
+      participantPasswordService: {
+        matchesHash: jest.fn().mockResolvedValue(false),
+        hash: jest.fn().mockResolvedValue('$2b$12$definitive'),
+      },
+    });
+
+    await expect(
+      service.changeRequiredPassword('participant-1', 'session-1', {
+        newPassword: 'definitive-password',
+      }),
+    ).resolves.toEqual({ status: 'changed', sessionsRevoked: 2 });
+    expect(
+      deps.sessionsService.completeParticipantPasswordChange,
+    ).toHaveBeenCalledWith({
+      participantId: 'participant-1',
+      expectedPasswordHash: '$2b$12$temporary',
+      newPasswordHash: '$2b$12$definitive',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      changedAt: expect.any(Date),
+    });
+  });
+
+  it('rejects a definitive password equal to the temporary credential', async () => {
+    const { service, deps } = await createService({
+      sessionsService: {
+        findParticipantPasswordReset: jest.fn().mockResolvedValue({
+          id: 'participant-1',
+          role: 'PARTICIPANT',
+          passwordHash: '$2b$12$temporary',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        }),
+      },
+      participantPasswordService: {
+        matchesHash: jest.fn().mockResolvedValue(true),
+      },
+    });
+
+    await expect(
+      service.changeRequiredPassword('participant-1', 'session-1', {
+        newPassword: 'temporary-password',
+      }),
+    ).rejects.toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      response: expect.objectContaining({
+        statusCode: 400,
+        code: 'PASSWORD_MUST_CHANGE',
+      }),
+    });
+    expect(deps.participantPasswordService.hash).not.toHaveBeenCalled();
+    expect(
+      deps.sessionsService.completeParticipantPasswordChange,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rejects a participant session without a pending reset', async () => {
+    const { service } = await createService({
+      sessionsService: {
+        findParticipantPasswordReset: jest.fn().mockResolvedValue({
+          id: 'participant-1',
+          role: 'PARTICIPANT',
+          passwordHash: '$2b$12$definitive',
+          passwordResetRequired: false,
+          passwordResetExpiresAt: null,
+        }),
+      },
+    });
+
+    await expect(
+      service.changeRequiredPassword('participant-1', 'session-1', {
+        newPassword: 'definitive-password',
+      }),
+    ).rejects.toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      response: expect.objectContaining({
+        statusCode: 409,
+        code: 'PASSWORD_CHANGE_NOT_REQUIRED',
+      }),
+    });
+  });
+
+  it('ends the temporary session when the reset has expired', async () => {
+    const { service, deps } = await createService({
+      sessionsService: {
+        findParticipantPasswordReset: jest.fn().mockResolvedValue({
+          id: 'participant-1',
+          role: 'PARTICIPANT',
+          passwordHash: '$2b$12$temporary',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: new Date(Date.now() - 1),
+        }),
+      },
+    });
+
+    await expect(
+      service.changeRequiredPassword('participant-1', 'session-1', {
+        newPassword: 'definitive-password',
+      }),
+    ).rejects.toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      response: expect.objectContaining({
+        statusCode: 401,
+        code: 'PASSWORD_RESET_INVALID',
+      }),
+    });
+    expect(deps.sessionsService.end).toHaveBeenCalledWith(
+      'session-1',
+      'participant-1',
+      expect.any(Date),
+      'REVOKED',
+    );
+  });
+
+  it('maps a participant password policy failure to a coded bad request', async () => {
+    const { service } = await createService({
+      sessionsService: {
+        findParticipantPasswordReset: jest.fn().mockResolvedValue({
+          id: 'participant-1',
+          role: 'PARTICIPANT',
+          passwordHash: '$2b$12$temporary',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        }),
+      },
+      participantPasswordService: {
+        matchesHash: jest
+          .fn()
+          .mockRejectedValue(new ParticipantPasswordValidationError()),
+      },
+    });
+
+    await expect(
+      service.changeRequiredPassword('participant-1', 'session-1', {
+        newPassword: 'short',
+      }),
+    ).rejects.toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      response: expect.objectContaining({
+        statusCode: 400,
+        code: 'INVALID_PARTICIPANT_PASSWORD',
+      }),
+    });
   });
 
   it('registers the participant with a hashed password and a persisted session draft', async () => {

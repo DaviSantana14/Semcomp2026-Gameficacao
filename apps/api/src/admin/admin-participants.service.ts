@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { paginate } from '../common/dto/pagination-response.dto';
 import {
   AdminParticipantsRepository,
@@ -28,6 +32,11 @@ import {
   AuditOperation,
 } from '../audit/audit.repository';
 import { AuditService } from '../audit/audit.service';
+import { ParticipantPasswordService } from '../auth/participant-password.service';
+import {
+  createParticipantTemporaryPassword,
+  PARTICIPANT_TEMPORARY_PASSWORD_TTL_MS,
+} from '../auth/participant-temporary-password';
 import { AdminOperationContext } from '../common/request-context';
 import { maskClaimCode } from '../common/claim-code-mask';
 import { parseOperationalDateRange } from '../common/operational-date-range';
@@ -45,6 +54,7 @@ export class AdminParticipantsService {
   constructor(
     private readonly repository: AdminParticipantsRepository,
     private readonly audit: AuditService,
+    private readonly participantPasswords: ParticipantPasswordService,
   ) {}
 
   async findAll(query: AdminParticipantsQueryDto) {
@@ -92,6 +102,79 @@ export class AdminParticipantsService {
       query.page,
       query.limit,
     );
+  }
+
+  async resetPassword(
+    id: string,
+    dto: { reason: string; replacePending: boolean },
+    context: AdminOperationContext,
+  ) {
+    const temporaryPassword = createParticipantTemporaryPassword();
+    const passwordHash =
+      await this.participantPasswords.hash(temporaryPassword);
+
+    const expiresAt = await this.repository.withTransaction(
+      async (repository) => {
+        const current = await repository.lockParticipantPasswordReset(id);
+        if (!current) {
+          throw new NotFoundException('Participante não encontrado.');
+        }
+
+        const changedAt = new Date();
+        const expiresAt = new Date(
+          changedAt.getTime() + PARTICIPANT_TEMPORARY_PASSWORD_TTL_MS,
+        );
+        const pendingResetIsValid =
+          current.passwordResetRequired === true &&
+          current.passwordResetExpiresAt !== null &&
+          current.passwordResetExpiresAt.getTime() > changedAt.getTime();
+        if (pendingResetIsValid && !dto.replacePending) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'PASSWORD_RESET_PENDING',
+            message: 'Já existe uma troca obrigatória de senha pendente.',
+          });
+        }
+
+        const updated = await repository.updateParticipantPasswordReset(id, {
+          passwordHash,
+          passwordChangedAt: changedAt,
+          passwordResetRequired: true,
+          passwordResetExpiresAt: expiresAt,
+        });
+        const sessionsRevoked = await repository.revokeOpenSessions(
+          id,
+          changedAt,
+        );
+
+        await this.audit.record(repository.auditWriter!, {
+          actor: { actorType: AuditActorType.ADMIN, ...context },
+          operation: AuditOperation.PARTICIPANT_PASSWORD_RESET,
+          entityType: AuditEntityType.PARTICIPANT,
+          entityId: id,
+          participantId: id,
+          reason: dto.reason,
+          before: {
+            id: current.id,
+            passwordResetRequired: current.passwordResetRequired,
+            passwordResetExpiresAt: current.passwordResetExpiresAt,
+          },
+          after: {
+            id: updated.id,
+            passwordResetRequired: updated.passwordResetRequired,
+            passwordResetExpiresAt: updated.passwordResetExpiresAt,
+          },
+          metadata: { sessionsRevoked },
+        });
+
+        return expiresAt;
+      },
+    );
+
+    return {
+      temporaryPassword,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
   async updateStatus(
@@ -310,8 +393,21 @@ function mapParticipant<
   },
 >(row: T) {
   const { _count, ...participant } = row;
+  const passwordResetRequired =
+    'passwordResetRequired' in row &&
+    typeof row.passwordResetRequired === 'boolean'
+      ? row.passwordResetRequired
+      : false;
+  const passwordResetExpiresAt =
+    'passwordResetExpiresAt' in row &&
+    row.passwordResetExpiresAt instanceof Date
+      ? row.passwordResetExpiresAt.toISOString()
+      : null;
+
   return {
     ...participant,
+    passwordResetRequired,
+    passwordResetExpiresAt,
     actionRedemptionsCount: _count.pointEvents,
     pendingRewardRedemptionsCount: _count.rewardRedemptions,
     lastLoginAt:

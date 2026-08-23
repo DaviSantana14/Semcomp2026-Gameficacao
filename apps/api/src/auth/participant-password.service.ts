@@ -14,7 +14,22 @@ export type ParticipantPasswordAuthenticationUser = {
   role: 'PARTICIPANT' | 'ADMIN';
   isActive: boolean;
   passwordHash: string | null;
+  passwordResetRequired?: boolean;
+  passwordResetExpiresAt?: Date | null;
 };
+
+export function hasValidParticipantPasswordReset(
+  user: Pick<
+    ParticipantPasswordAuthenticationUser,
+    'passwordResetRequired' | 'passwordResetExpiresAt'
+  >,
+  now = new Date(),
+) {
+  if (user.passwordResetRequired !== true) return true;
+
+  const expiresAt = user.passwordResetExpiresAt;
+  return expiresAt instanceof Date && expiresAt.getTime() > now.getTime();
+}
 
 @Injectable()
 export class ParticipantPasswordService {
@@ -45,7 +60,8 @@ export class ParticipantPasswordService {
     if (
       user?.role === 'PARTICIPANT' &&
       user.isActive &&
-      user.passwordHash !== null
+      user.passwordHash !== null &&
+      hasValidParticipantPasswordReset(user)
     ) {
       canAuthenticate = true;
       passwordHash = user.passwordHash;
@@ -54,5 +70,10 @@ export class ParticipantPasswordService {
     const matches = await comparePassword(candidate, passwordHash);
 
     return canAuthenticate && matches;
+  }
+
+  async matchesHash(password: string, passwordHash: string) {
+    validateParticipantPassword(password);
+    return comparePassword(password, passwordHash);
   }
 }

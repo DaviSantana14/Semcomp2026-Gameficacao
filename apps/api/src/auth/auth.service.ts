@@ -11,8 +11,12 @@ import { AdminPasswordService } from './admin-password.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { ParticipantPasswordService } from './participant-password.service';
+import {
+  hasValidParticipantPasswordReset,
+  ParticipantPasswordService,
+} from './participant-password.service';
 import { ParticipantPasswordValidationError } from './participant-password-policy';
+import { ChangeRequiredPasswordDto } from './dto/change-required-password.dto';
 import {
   createSessionDraft,
   SessionStartRejectedError,
@@ -84,7 +88,11 @@ export class AuthService {
       candidate ?? null,
     );
 
-    if (!candidate || !passwordMatches) {
+    if (
+      !candidate ||
+      !passwordMatches ||
+      !hasValidParticipantPasswordReset(candidate)
+    ) {
       throw new UnauthorizedException(PARTICIPANT_INVALID_LOGIN_MESSAGE);
     }
 
@@ -114,6 +122,91 @@ export class AuthService {
 
   logout(sessionId: string, userId: string) {
     return this.sessionsService.end(sessionId, userId);
+  }
+
+  async changeRequiredPassword(
+    participantId: string,
+    sessionId: string,
+    dto: ChangeRequiredPasswordDto,
+  ) {
+    const checkedAt = new Date();
+    const pending =
+      await this.sessionsService.findParticipantPasswordReset(participantId);
+
+    if (!pending || pending.passwordResetRequired !== true) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'PASSWORD_CHANGE_NOT_REQUIRED',
+        message: 'Não há troca obrigatória de senha pendente.',
+      });
+    }
+
+    if (
+      pending.passwordHash === null ||
+      !hasValidParticipantPasswordReset(pending, checkedAt)
+    ) {
+      await this.sessionsService.end(
+        sessionId,
+        participantId,
+        checkedAt,
+        'REVOKED',
+      );
+      throw participantPasswordResetInvalidException();
+    }
+
+    let matchesTemporaryPassword: boolean;
+    try {
+      matchesTemporaryPassword =
+        await this.participantPasswordService.matchesHash(
+          dto.newPassword,
+          pending.passwordHash,
+        );
+    } catch (error) {
+      if (error instanceof ParticipantPasswordValidationError) {
+        throw invalidParticipantPasswordException();
+      }
+      throw error;
+    }
+
+    if (matchesTemporaryPassword) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'PASSWORD_MUST_CHANGE',
+        message: 'Escolha uma senha diferente da temporária.',
+      });
+    }
+
+    let newPasswordHash: string;
+    try {
+      newPasswordHash = await this.participantPasswordService.hash(
+        dto.newPassword,
+      );
+    } catch (error) {
+      if (error instanceof ParticipantPasswordValidationError) {
+        throw invalidParticipantPasswordException();
+      }
+      throw error;
+    }
+
+    const result = await this.sessionsService.completeParticipantPasswordChange(
+      {
+        participantId,
+        expectedPasswordHash: pending.passwordHash,
+        newPasswordHash,
+        changedAt: new Date(),
+      },
+    );
+    if (result.status === 'invalid') {
+      await this.sessionsService.end(
+        sessionId,
+        participantId,
+        new Date(),
+        'REVOKED',
+      );
+      throw participantPasswordResetInvalidException();
+    }
+
+    return result;
   }
 
   private async startAuthenticatedSession(
@@ -150,4 +243,20 @@ export class AuthService {
       user: toUserResponseDto(user),
     };
   }
+}
+
+function invalidParticipantPasswordException() {
+  return new BadRequestException({
+    statusCode: 400,
+    code: 'INVALID_PARTICIPANT_PASSWORD',
+    message: 'A senha deve ter entre 8 e 64 caracteres e no máximo 72 bytes.',
+  });
+}
+
+function participantPasswordResetInvalidException() {
+  return new UnauthorizedException({
+    statusCode: 401,
+    code: 'PASSWORD_RESET_INVALID',
+    message: 'A senha temporária expirou ou foi substituída.',
+  });
 }

@@ -3,13 +3,17 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { AllowedOriginGuard } from '../auth/allowed-origin.guard';
 import { CsrfGuard } from '../auth/csrf.guard';
 import { AdminProfiles } from '../auth/admin-profiles.decorator';
 import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
@@ -21,6 +25,8 @@ import { AdminPointEventsQueryDto } from './dto/admin-point-events-query.dto';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
 import { AdminParticipantRedemptionsQueryDto } from './dto/admin-participant-redemptions-query.dto';
 import { AdminParticipantsQueryDto } from './dto/admin-participants-query.dto';
+import { ResetParticipantPasswordDto } from './dto/reset-participant-password.dto';
+import { ResetParticipantPasswordResponseDto } from './dto/reset-participant-password-response.dto';
 import { UpdateParticipantStatusDto } from './dto/update-participant-status.dto';
 import { getAdminOperationContext } from '../common/request-context';
 import type { AuthenticatedRequest } from '../common/request-context';
@@ -67,6 +73,22 @@ export class AdminController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.participants.updateStatus(
+      id,
+      dto,
+      getAdminOperationContext(request),
+    );
+  }
+
+  @Post('participants/:id/password-reset')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AllowedOriginGuard)
+  @ApiOkResponse({ type: ResetParticipantPasswordResponseDto })
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetParticipantPasswordDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.participants.resetPassword(
       id,
       dto,
       getAdminOperationContext(request),

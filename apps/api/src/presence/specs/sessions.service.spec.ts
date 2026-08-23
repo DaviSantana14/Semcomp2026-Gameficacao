@@ -63,6 +63,8 @@ describe(SessionsService.name, () => {
     endSession: jest.fn(),
     expireSessions: jest.fn(),
     deleteSessionsEndedBefore: jest.fn(),
+    findParticipantPasswordReset: jest.fn(),
+    completeParticipantPasswordChange: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -182,6 +184,26 @@ describe(SessionsService.name, () => {
     await expect(service.deleteRetained(now)).resolves.toBe(3);
     expect(repository.deleteSessionsEndedBefore).toHaveBeenCalledWith(cutoff);
   });
+
+  it('delegates the required-password completion transaction', async () => {
+    const input = {
+      participantId: 'participant-1',
+      expectedPasswordHash: '$2b$12$temporary',
+      newPasswordHash: '$2b$12$definitive',
+      changedAt: now,
+    };
+    repository.completeParticipantPasswordChange.mockResolvedValue({
+      status: 'changed',
+      sessionsRevoked: 2,
+    });
+
+    await expect(
+      service.completeParticipantPasswordChange(input),
+    ).resolves.toEqual({ status: 'changed', sessionsRevoked: 2 });
+    expect(repository.completeParticipantPasswordChange).toHaveBeenCalledWith(
+      input,
+    );
+  });
 });
 
 describe(`${SessionsRepository.name} identity selection`, () => {
@@ -255,9 +277,81 @@ describe(`${SessionsRepository.name} identity selection`, () => {
 
     expect(identity?.adminProfile).toBeNull();
     const findFirstArgs = findFirst.mock.calls[0]?.[0];
-    expect(findFirstArgs?.where.user).toEqual({ is: { isActive: true } });
+    expect(findFirstArgs?.where.user).toEqual({
+      is: {
+        isActive: true,
+        OR: [
+          { role: 'ADMIN' },
+          { role: 'PARTICIPANT', passwordResetRequired: false },
+          {
+            role: 'PARTICIPANT',
+            passwordResetRequired: true,
+            passwordResetExpiresAt: { gt: now },
+          },
+        ],
+      },
+    });
     expect(findFirstArgs?.select.user.select.adminProfile).toBe(true);
     expect(findFirstArgs?.select.user.select.passwordResetRequired).toBe(true);
     expect(findFirstArgs?.select.user.select.passwordResetExpiresAt).toBe(true);
+  });
+});
+
+describe(`${SessionsRepository.name} participant password completion`, () => {
+  it('locks the participant, rechecks the temporary hash, updates the password, and revokes sessions', async () => {
+    const changedAt = new Date('2026-08-23T12:00:00.000Z');
+    const queryRaw = jest.fn().mockResolvedValue([{ id: 'participant-1' }]);
+    const tx = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'participant-1',
+          role: 'PARTICIPANT',
+          passwordHash: '$2b$12$temporary',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: new Date(
+            changedAt.getTime() + 60 * 60 * 1000,
+          ),
+        }),
+        update: jest.fn(),
+      },
+      userSession: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      $queryRaw: queryRaw,
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementation((callback: (transaction: typeof tx) => unknown) =>
+          callback(tx),
+        ),
+    };
+    const repository = new SessionsRepository(prisma as never);
+
+    await expect(
+      repository.completeParticipantPasswordChange({
+        participantId: 'participant-1',
+        expectedPasswordHash: '$2b$12$temporary',
+        newPasswordHash: '$2b$12$definitive',
+        changedAt,
+      }),
+    ).resolves.toEqual({ status: 'changed', sessionsRevoked: 2 });
+    expect(queryRaw).toHaveBeenCalled();
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: { id: 'participant-1' },
+      data: {
+        passwordHash: '$2b$12$definitive',
+        passwordChangedAt: changedAt,
+        passwordResetRequired: false,
+        passwordResetExpiresAt: null,
+      },
+    });
+    expect(tx.userSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 'participant-1',
+          endedAt: null,
+          expiresAt: { gt: changedAt },
+        },
+      }),
+    );
   });
 });

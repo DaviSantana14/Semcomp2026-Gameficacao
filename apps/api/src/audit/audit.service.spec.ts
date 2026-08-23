@@ -68,6 +68,55 @@ describe(AuditService.name, () => {
     expect(JSON.stringify(create.mock.calls)).not.toContain('passwordHash');
   });
 
+  it('records only reset state and session count for participant password resets', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.PARTICIPANT_PASSWORD_RESET,
+      entityType: AuditEntityType.PARTICIPANT,
+      entityId: 'participant-1',
+      participantId: 'participant-1',
+      reason: 'Participante solicitou suporte',
+      before: {
+        id: 'participant-1',
+        passwordResetRequired: false,
+        passwordResetExpiresAt: null,
+      },
+      after: {
+        id: 'participant-1',
+        passwordResetRequired: true,
+        passwordResetExpiresAt: new Date('2026-08-24T12:00:00.000Z'),
+      },
+      metadata: {
+        sessionsRevoked: 2,
+        temporaryPassword: 'never-persist-this',
+        passwordHash: 'never-persist-this-either',
+      } as never,
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        before: {
+          id: 'participant-1',
+          passwordResetRequired: false,
+          passwordResetExpiresAt: null,
+        },
+        after: {
+          id: 'participant-1',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: '2026-08-24T12:00:00.000Z',
+        },
+        metadata: { sessionsRevoked: 2 },
+      }),
+    );
+    expect(JSON.stringify(create.mock.calls)).not.toContain(
+      'never-persist-this',
+    );
+  });
+
   it('writes an ADMIN event with a normalized reason and safe action snapshots', async () => {
     await service.record(writer, {
       actor: {

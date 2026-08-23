@@ -28,12 +28,14 @@ import type {
 } from '../common/request-context';
 import { AuthService } from './auth.service';
 import { AllowedOriginGuard } from './allowed-origin.guard';
+import { AllowPasswordChangeRequired } from './allow-password-change-required.decorator';
 import {
   getAuthCookieOptions,
   getClearAuthCookieOptions,
 } from './cookie-options';
 import { CsrfGuard } from './csrf.guard';
 import { CsrfTokenResponseDto } from './dto/csrf-token-response.dto';
+import { ChangeRequiredPasswordDto } from './dto/change-required-password.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -125,6 +127,7 @@ export class AuthController {
 
   @Get('csrf')
   @UseGuards(JwtAuthGuard)
+  @AllowPasswordChangeRequired()
   @ApiSecurity('access-token-cookie')
   @ApiOperation({ summary: 'Obter token CSRF da sessão autenticada' })
   @ApiOkResponse({ type: CsrfTokenResponseDto })
@@ -138,7 +141,10 @@ export class AuthController {
     },
   })
   csrf(@Req() request: ControllerRequest) {
-    return { csrfToken: request.user.csrfToken };
+    return {
+      csrfToken: request.user.csrfToken,
+      passwordChangeRequired: request.user.passwordResetRequired,
+    };
   }
 
   @Post('heartbeat')
@@ -158,6 +164,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, CsrfGuard, AllowedOriginGuard)
+  @AllowPasswordChangeRequired()
   @ApiOperation({ summary: 'Encerrar sessão autenticada' })
   @ApiNoContentResponse({ description: 'Sessão encerrada.' })
   async logout(
@@ -165,6 +172,26 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     await this.authService.logout(request.user.jti, request.user.id);
+    response.clearCookie('access_token', getClearAuthCookieOptions());
+  }
+
+  @Post('password/change-required')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, CsrfGuard, AllowedOriginGuard)
+  @AllowPasswordChangeRequired()
+  @ApiSecurity('access-token-cookie')
+  @ApiOperation({ summary: 'Definir a senha definitiva após um reset' })
+  @ApiNoContentResponse({ description: 'Senha definitiva definida.' })
+  async changeRequiredPassword(
+    @Body() dto: ChangeRequiredPasswordDto,
+    @Req() request: ControllerRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    await this.authService.changeRequiredPassword(
+      request.user.id,
+      request.user.jti,
+      dto,
+    );
     response.clearCookie('access_token', getClearAuthCookieOptions());
   }
 }

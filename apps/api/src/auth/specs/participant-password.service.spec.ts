@@ -118,4 +118,32 @@ describe(ParticipantPasswordService.name, () => {
     expect(compareSpy).toHaveBeenCalledTimes(1);
     expect(compareSpy).toHaveBeenCalledWith(validPassword, validHash);
   });
+
+  it('rejects a temporary password after its reset expiry', async () => {
+    const compareSpy = jest
+      .spyOn(passwordHash, 'comparePassword')
+      .mockResolvedValue(true);
+
+    await expect(
+      service.verify(validPassword, {
+        role: 'PARTICIPANT',
+        isActive: true,
+        passwordHash: validHash,
+        passwordResetRequired: true,
+        passwordResetExpiresAt: new Date('2026-08-23T11:59:59.000Z'),
+      }),
+    ).resolves.toBe(false);
+    expect(compareSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('compares a definitive password against the temporary hash after policy validation', async () => {
+    const compareSpy = jest
+      .spyOn(passwordHash, 'comparePassword')
+      .mockResolvedValue(true);
+
+    await expect(service.matchesHash(validPassword, validHash)).resolves.toBe(
+      true,
+    );
+    expect(compareSpy).toHaveBeenCalledWith(validPassword, validHash);
+  });
 });

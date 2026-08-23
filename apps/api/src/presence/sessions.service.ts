@@ -2,6 +2,9 @@ import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import {
   RegisterParticipantInput,
+  CompleteParticipantPasswordChangeInput,
+  CompleteParticipantPasswordChangeResult,
+  ParticipantPasswordResetState,
   SessionDraft,
   SessionUserIdentity,
   SessionsRepository,
@@ -58,6 +61,18 @@ export class SessionsService {
       userId,
       new Date(),
     );
+  }
+
+  findParticipantPasswordReset(
+    participantId: string,
+  ): Promise<ParticipantPasswordResetState | null> {
+    return this.repository.findParticipantPasswordReset(participantId);
+  }
+
+  completeParticipantPasswordChange(
+    input: CompleteParticipantPasswordChangeInput,
+  ): Promise<CompleteParticipantPasswordChangeResult> {
+    return this.repository.completeParticipantPasswordChange(input);
   }
 
   heartbeat(sessionId: string, userId: string, now = new Date()) {

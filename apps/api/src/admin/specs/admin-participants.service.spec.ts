@@ -9,6 +9,7 @@ import {
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 import { AuditService } from '../../audit/audit.service';
+import { ParticipantPasswordService } from '../../auth/participant-password.service';
 
 describe(AdminParticipantsService.name, () => {
   const queryRaw = jest.fn();
@@ -56,6 +57,10 @@ describe(AdminParticipantsService.name, () => {
           useValue: new AdminParticipantsRepository(prisma as never),
         },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        {
+          provide: ParticipantPasswordService,
+          useValue: { hash: jest.fn() },
+        },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);
@@ -163,6 +168,8 @@ describe(AdminParticipantsService.name, () => {
           createdAt: true,
           updatedAt: true,
           lastLoginAt: true,
+          passwordResetRequired: true,
+          passwordResetExpiresAt: true,
           _count: {
             select: {
               pointEvents: {

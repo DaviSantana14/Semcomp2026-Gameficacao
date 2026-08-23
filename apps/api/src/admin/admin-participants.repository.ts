@@ -23,6 +23,8 @@ const participantSelect = {
   level: true,
   isActive: true,
   lastLoginAt: true,
+  passwordResetRequired: true,
+  passwordResetExpiresAt: true,
   createdAt: true,
   updatedAt: true,
   _count: {
@@ -205,6 +207,43 @@ export class AdminParticipantsRepository {
     return rows[0] ?? null;
   }
 
+  async lockParticipantPasswordReset(id: string) {
+    const rows = await this.client.$queryRaw<
+      Array<{
+        id: string;
+        isActive: boolean;
+        passwordResetRequired: boolean;
+        passwordResetExpiresAt: Date | null;
+      }>
+    >(Prisma.sql`
+      SELECT "id", "isActive", "passwordResetRequired", "passwordResetExpiresAt"
+      FROM "User"
+      WHERE "id" = ${id} AND "role" = 'PARTICIPANT'::"UserRole"
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
+  }
+
+  updateParticipantPasswordReset(
+    id: string,
+    data: {
+      passwordHash: string;
+      passwordChangedAt: Date;
+      passwordResetRequired: true;
+      passwordResetExpiresAt: Date;
+    },
+  ) {
+    return this.client.user.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        passwordResetRequired: true,
+        passwordResetExpiresAt: true,
+      },
+    });
+  }
+
   updateParticipantStatus(id: string, isActive: boolean) {
     return this.client.user.update({
       where: { id },
@@ -213,8 +252,8 @@ export class AdminParticipantsRepository {
     });
   }
 
-  revokeOpenSessions(id: string, now: Date) {
-    return this.client.userSession.updateMany({
+  async revokeOpenSessions(id: string, now: Date) {
+    const result = await this.client.userSession.updateMany({
       where: {
         userId: id,
         endedAt: null,
@@ -222,6 +261,7 @@ export class AdminParticipantsRepository {
       },
       data: { endedAt: now, endReason: 'REVOKED' },
     });
+    return result.count;
   }
 
   findParticipantById(id: string) {

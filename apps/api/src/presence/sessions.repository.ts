@@ -38,6 +38,25 @@ export type ValidatedSessionIdentity = SessionUserIdentity & {
   jti: string;
 };
 
+export type ParticipantPasswordResetState = {
+  id: string;
+  role: 'PARTICIPANT';
+  passwordHash: string | null;
+  passwordResetRequired: boolean;
+  passwordResetExpiresAt: Date | null;
+};
+
+export type CompleteParticipantPasswordChangeInput = {
+  participantId: string;
+  expectedPasswordHash: string;
+  newPasswordHash: string;
+  changedAt: Date;
+};
+
+export type CompleteParticipantPasswordChangeResult =
+  | { status: 'changed'; sessionsRevoked: number }
+  | { status: 'invalid' };
+
 const userSummarySelect = {
   id: true,
   name: true,
@@ -100,7 +119,20 @@ export class SessionsRepository {
   ): Promise<SessionUserIdentity | null> {
     return this.prisma.$transaction(async (tx) => {
       const confirmed = await tx.user.updateMany({
-        where: { id: userId, role, isActive: true },
+        where: {
+          id: userId,
+          role,
+          isActive: true,
+          ...(role === 'PARTICIPANT' && {
+            OR: [
+              { passwordResetRequired: false },
+              {
+                passwordResetRequired: true,
+                passwordResetExpiresAt: { gt: draft.startedAt },
+              },
+            ],
+          }),
+        },
         data: { lastLoginAt: draft.startedAt },
       });
 
@@ -137,13 +169,97 @@ export class SessionsRepository {
           userId,
           endedAt: null,
           expiresAt: { gt: now },
-          user: { is: { isActive: true } },
+          user: {
+            is: {
+              isActive: true,
+              OR: [
+                { role: 'ADMIN' },
+                { role: 'PARTICIPANT', passwordResetRequired: false },
+                {
+                  role: 'PARTICIPANT',
+                  passwordResetRequired: true,
+                  passwordResetExpiresAt: { gt: now },
+                },
+              ],
+            },
+          },
         },
         select: { user: { select: userSummarySelect } },
       })
       .then((session) =>
         session ? { ...session.user, jti: sessionId } : null,
       );
+  }
+
+  findParticipantPasswordReset(
+    participantId: string,
+  ): Promise<ParticipantPasswordResetState | null> {
+    return this.prisma.user.findFirst({
+      where: { id: participantId, role: 'PARTICIPANT' },
+      select: {
+        id: true,
+        role: true,
+        passwordHash: true,
+        passwordResetRequired: true,
+        passwordResetExpiresAt: true,
+      },
+    }) as Promise<ParticipantPasswordResetState | null>;
+  }
+
+  async completeParticipantPasswordChange(
+    input: CompleteParticipantPasswordChangeInput,
+  ): Promise<CompleteParticipantPasswordChangeResult> {
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "User"
+        WHERE "id" = ${input.participantId}
+          AND "role" = 'PARTICIPANT'::"UserRole"
+        FOR UPDATE
+      `);
+      if (locked.length === 0) return { status: 'invalid' };
+
+      const current = await tx.user.findUnique({
+        where: { id: input.participantId },
+        select: {
+          id: true,
+          role: true,
+          passwordHash: true,
+          passwordResetRequired: true,
+          passwordResetExpiresAt: true,
+        },
+      });
+      if (
+        !current ||
+        current.role !== 'PARTICIPANT' ||
+        current.passwordHash !== input.expectedPasswordHash ||
+        current.passwordResetRequired !== true ||
+        current.passwordResetExpiresAt === null ||
+        current.passwordResetExpiresAt.getTime() <= input.changedAt.getTime()
+      ) {
+        return { status: 'invalid' };
+      }
+
+      await tx.user.update({
+        where: { id: input.participantId },
+        data: {
+          passwordHash: input.newPasswordHash,
+          passwordChangedAt: input.changedAt,
+          passwordResetRequired: false,
+          passwordResetExpiresAt: null,
+        },
+      });
+      const revoked = await tx.userSession.updateMany({
+        where: {
+          userId: input.participantId,
+          endedAt: null,
+          expiresAt: { gt: input.changedAt },
+        },
+        data: { endedAt: input.changedAt, endReason: 'REVOKED' },
+      });
+
+      return { status: 'changed', sessionsRevoked: revoked.count };
+    });
   }
 
   async heartbeatSession(sessionId: string, userId: string, now: Date) {

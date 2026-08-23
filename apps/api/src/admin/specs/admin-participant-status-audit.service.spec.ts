@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AuditOperation } from '../../audit/audit.repository';
 import { AuditService } from '../../audit/audit.service';
+import { ParticipantPasswordService } from '../../auth/participant-password.service';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 
@@ -45,6 +46,7 @@ describe('participant status audit', () => {
         AdminParticipantsService,
         { provide: AdminParticipantsRepository, useValue: repository },
         { provide: AuditService, useValue: audit },
+        { provide: ParticipantPasswordService, useValue: { hash: jest.fn() } },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);
