@@ -580,12 +580,11 @@ Documentos de execução:
 
 - Manter `UserRole.ADMIN` como identidade administrativa e adicionar os perfis
   fixos `GENERAL`, `SHOP` e `ACTIVITIES`.
-- Definir uma matriz estática de capacidades: administrador geral tem acesso
+- Autorizar as rotas diretamente pelos perfis: administrador geral tem acesso
   completo; lojinha acessa apenas catálogo e transições de resgates;
   atividades/códigos acessa apenas actions, códigos reutilizáveis e claim codes.
-- Aplicar autorização por capacidade em todas as rotas administrativas do
-  backend. Navegação filtrada e redirects no frontend são somente complemento
-  visual e não substituem a validação da API.
+- Manter a autorização por perfil no backend. Navegação filtrada e redirects no
+  frontend são somente complemento visual e não substituem a validação da API.
 - Restringir CPF, email, detalhe de participante, ajustes financeiros/pontos,
   reconciliação, auditoria, presença, segurança e exportações com PII ao
   administrador geral. Telas operacionais recebem apenas ID e nome necessários.
@@ -600,13 +599,15 @@ Documentos de execução:
 - Exigir que o operador informe código, CPF e email e defina a própria senha na
   página pública de ativação por HTTPS. A ativação não inicia sessão e o código
   nunca funciona como senha posterior.
-- Permitir correção auditada de identidade/perfil, bloqueio, desbloqueio,
-  desativação e reset administrativo. Bloqueio/desativação e mudança de perfil
-  revogam sessões conforme o plano.
+- Derivar o estado administrativo somente de `isActive` e `passwordHash`, sem
+  criar enum separado para pendente, bloqueado ou desativado.
+- Permitir correção auditada de identidade/perfil, inativação, reativação e reset
+  administrativo. Edição, inativação e mudança de perfil revogam sessões
+  conforme o plano.
 - Fazer o reset administrativo revogar sessões e códigos anteriores, invalidar
   a senha, voltar a conta para pendente e emitir uma nova ativação de 1 hora.
-- Impedir, inclusive sob concorrência, que o último administrador geral ativo
-  seja bloqueado, desativado, resetado ou movido para outro perfil.
+- Impedir, inclusive sob concorrência, que o último administrador geral ativo e
+  com senha seja inativado, resetado ou movido para outro perfil.
 - Manter o bootstrap via Session Manager como recuperação de emergência quando
   não existir administrador geral ativo; não criar recuperação por email.
 
@@ -626,12 +627,14 @@ Documentos de execução:
 - Auditar cadastro, edição, status, ativação/reset de operador e reset de
   participante no log do Marco 10, sem código, senha temporária, senha
   definitiva ou hash em snapshots/metadata.
-- Aplicar limites específicos para ativação, gestão de operadores, reset de
-  participante, lojinha e atividades/códigos. Mutações autenticadas usam o ID do
-  operador; ativação usa chave HMAC de CPF + email sem PII em claro.
-- Criar testes unitários, de arquitetura e e2e para a matriz completa, chamadas
-  diretas à API, ausência de PII, ativação expirada/reutilizada/concorrente,
-  ciclo de vida, último administrador geral e reset obrigatório de participante.
+- Reutilizar o limite administrativo existente nas mutações autenticadas e criar
+  um limite novo somente para ativação, usando chave HMAC de CPF + email sem PII
+  em claro.
+- Criar testes unitários e de arquitetura para as declarações de perfil e e2e
+  representativos para chamadas diretas à API, ausência de PII, ativação
+  expirada/reutilizada/concorrente, ciclo de vida, último administrador geral e
+  reset obrigatório de participante. Não criar matriz de todos os perfis contra
+  todos os endpoints.
 
 Critério de aceite:
 - Administrador geral cadastra qualquer um dos três perfis e recebe uma única
@@ -643,8 +646,8 @@ Critério de aceite:
 - Administrador geral mantém acesso completo; todas as restrições são garantidas
   no backend e chamadas diretas negadas não alteram o banco.
 - Novo operador só entra depois de ativação única por HTTPS; código expirado,
-  substituído, reutilizado ou submetido concorrentemente falha, e bloqueio,
-  desativação ou reset encerra as sessões previstas.
+  substituído, reutilizado ou submetido concorrentemente falha, e inativação ou
+  reset encerra as sessões previstas.
 - O último administrador geral ativo permanece protegido sob concorrência.
 - Reset de participante invalida senha/sessões anteriores, restringe a sessão
   temporária à troca obrigatória e exige novo login com a senha definitiva.
