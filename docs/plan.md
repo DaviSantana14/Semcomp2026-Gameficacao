@@ -567,6 +567,8 @@ dependente de dispositivos Android/iPhone em HTTPS.
 
 ## Marco 13 — Permissões administrativas especializadas
 
+Status: ✅ implementado.
+
 Objetivo: permitir que mais pessoas operem o evento sem conceder acesso total a
 todas as áreas administrativas.
 
