@@ -24,6 +24,7 @@ import {
   PresenceHistoryResponseDto,
   PresenceOverviewResponseDto,
 } from './dto/presence-response.dto';
+import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
 
 @ApiTags('Admin Presence')
 @ApiSecurity('access-token-cookie')
@@ -47,6 +48,7 @@ export class AdminPresenceController {
   }
 
   @Get('export.csv')
+  @RateLimitPolicy('export')
   @ApiProduces('text/csv')
   @Header('Cache-Control', 'no-store')
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })

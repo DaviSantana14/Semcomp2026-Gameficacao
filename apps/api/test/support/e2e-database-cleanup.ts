@@ -48,7 +48,7 @@ export function hasDisposableTestDatabaseConfiguration(
 }
 
 export const disposableTestDatabaseTruncateStatement =
-  'TRUNCATE TABLE "PresenceDailySummary", "UserSession", "AdminAuditEvent", "PointEvent", "RewardRedemption", "ClaimCode", "Reward", "Action", "User" RESTART IDENTITY CASCADE';
+  'TRUNCATE TABLE "SecurityHttpMetricMinute", "PresenceDailySummary", "UserSession", "AdminAuditEvent", "PointEvent", "RewardRedemption", "ClaimCode", "Reward", "Action", "User" RESTART IDENTITY CASCADE';
 
 export async function truncateDisposableTestDatabase(
   prisma: Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>,

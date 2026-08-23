@@ -36,6 +36,7 @@ import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { DownloadCapacityError } from '../common/download-gate';
 import { sanitizeQrFileName } from '../claim-codes/claim-code-qr';
 import { ClaimCodeArtifactsService } from '../claim-codes/claim-code-artifacts.service';
+import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
 import type { Response } from 'express';
 import { ActionsService } from './actions.service';
 import {
@@ -207,6 +208,7 @@ export class AdminActionsController {
   }
 
   @Get('admin/reusable-codes/:actionId/qr.png')
+  @RateLimitPolicy('export')
   @ApiOperation({ summary: 'Baixar PNG QR de um código reutilizável (admin)' })
   @ApiProduces('image/png')
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -233,6 +235,7 @@ export class AdminActionsController {
   }
 
   @Get('admin/reusable-codes/:actionId/qr.pdf')
+  @RateLimitPolicy('export')
   @ApiOperation({ summary: 'Baixar PDF QR de um código reutilizável (admin)' })
   @ApiProduces('application/pdf')
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })

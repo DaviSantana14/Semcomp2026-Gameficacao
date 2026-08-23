@@ -19,6 +19,7 @@ import { AdminRedemptionsQueryDto } from '../rewards/dto/admin-redemptions-query
 import { AdminPointEventsQueryDto } from '../admin/dto/admin-point-events-query.dto';
 import { CodeRedemptionsQueryDto } from '../claim-codes/dto/code-redemptions-query.dto';
 import { AdminExportsService } from './admin-exports.service';
+import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
 
 @ApiTags('Admin Exports')
 @ApiSecurity('access-token-cookie')
@@ -36,6 +37,7 @@ export class AdminExportsController {
   }
 
   @Get('participants/export.csv')
+  @RateLimitPolicy('export')
   @ApiProduces('text/csv')
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   async exportParticipants(
@@ -60,6 +62,7 @@ export class AdminExportsController {
   }
 
   @Get('redemptions/export.csv')
+  @RateLimitPolicy('export')
   @ApiProduces('text/csv')
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   async exportRedemptions(
@@ -84,6 +87,7 @@ export class AdminExportsController {
   }
 
   @Get('point-events/export.csv')
+  @RateLimitPolicy('export')
   @ApiProduces('text/csv')
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   async exportPointEvents(
@@ -108,6 +112,7 @@ export class AdminExportsController {
   }
 
   @Get('code-redemptions/export.csv')
+  @RateLimitPolicy('export')
   @ApiProduces('text/csv')
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
   async exportCodeRedemptions(

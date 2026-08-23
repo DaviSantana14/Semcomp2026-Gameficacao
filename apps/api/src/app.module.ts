@@ -14,6 +14,7 @@ import { RankingModule } from './ranking/ranking.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { RewardsModule } from './rewards/rewards.module';
 import { SecurityModule } from './security/security.module';
+import { SecurityHttpMetricsMiddleware } from './security/security-http-metrics.middleware';
 import { UsersModule } from './users/users.module';
 import { ExportsModule } from './exports/exports.module';
 
@@ -40,6 +41,8 @@ import { ExportsModule } from './exports/exports.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
+    consumer
+      .apply(RequestIdMiddleware, SecurityHttpMetricsMiddleware)
+      .forRoutes('{*path}');
   }
 }

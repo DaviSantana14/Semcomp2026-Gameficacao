@@ -21,6 +21,7 @@ import {
   REQUEST_ID_HEADER,
   RequestIdMiddleware,
 } from '../request-id.middleware';
+import { SecurityHttpMetricsMiddleware } from '../../security/security-http-metrics.middleware';
 
 function isUuid(value: unknown): value is string {
   return (
@@ -76,7 +77,10 @@ describe('AppModule middleware registration', () => {
 
     new AppModule().configure({ apply });
 
-    expect(apply).toHaveBeenCalledWith(RequestIdMiddleware);
+    expect(apply).toHaveBeenCalledWith(
+      RequestIdMiddleware,
+      SecurityHttpMetricsMiddleware,
+    );
     expect(forRoutes).toHaveBeenCalledWith('{*path}');
   });
 });

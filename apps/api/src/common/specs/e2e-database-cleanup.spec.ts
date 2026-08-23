@@ -8,6 +8,9 @@ import {
 
 describe('E2E database cleanup guard', () => {
   it('deletes daily summaries, then sessions, then users', () => {
+    expect(disposableTestDatabaseTruncateStatement).toContain(
+      '"SecurityHttpMetricMinute"',
+    );
     const summaryIndex = disposableTestDatabaseTruncateStatement.indexOf(
       '"PresenceDailySummary"',
     );

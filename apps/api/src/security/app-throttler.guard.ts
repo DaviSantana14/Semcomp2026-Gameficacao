@@ -12,8 +12,12 @@ import { UserRole } from '@prisma/client';
 import { createHash } from 'crypto';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { RateLimitKey } from './rate-limit-key';
+import {
+  RATE_LIMIT_POLICY_KEY,
+  type RateLimitPolicyName,
+} from './rate-limit-policy.decorator';
 
-type RateLimitPolicy = {
+type ResolvedRateLimitPolicy = {
   name: string;
   limit: number;
   ttl: number;
@@ -32,7 +36,15 @@ export type RateLimitedRequest = {
   user?: RequestUser;
 };
 
-const LOGIN_ROUTE_POLICIES: Record<string, RateLimitPolicy> = {
+const NAMED_RATE_LIMIT_POLICIES: Record<
+  RateLimitPolicyName,
+  ResolvedRateLimitPolicy
+> = {
+  export: { name: 'admin-export', limit: 5, ttl: 60_000 },
+  bulk: { name: 'claim-code-bulk', limit: 2, ttl: 60_000 },
+};
+
+const LOGIN_ROUTE_POLICIES: Record<string, ResolvedRateLimitPolicy> = {
   '/auth/login': { name: 'participant-login', limit: 5, ttl: 15 * 60 * 1000 },
   '/auth/admin/login': { name: 'admin-login', limit: 5, ttl: 15 * 60 * 1000 },
   '/auth/register': { name: 'register', limit: 3, ttl: 60 * 60 * 1000 },
@@ -115,8 +127,19 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     await super.throwThrottlingException(context, detail);
   }
 
-  private getPolicy(context: ThrottlerRequest['context']): RateLimitPolicy {
+  private getPolicy(
+    context: ThrottlerRequest['context'],
+  ): ResolvedRateLimitPolicy {
     const request = context.switchToHttp().getRequest<RateLimitedRequest>();
+    const namedPolicy = this.reflector.getAllAndOverride<RateLimitPolicyName>(
+      RATE_LIMIT_POLICY_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    if (namedPolicy) {
+      return NAMED_RATE_LIMIT_POLICIES[namedPolicy];
+    }
+
     const route = this.getRoute(request);
     const credentialPolicy = LOGIN_ROUTE_POLICIES[route];
 

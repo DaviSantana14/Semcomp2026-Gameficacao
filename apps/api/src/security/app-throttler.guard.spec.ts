@@ -10,6 +10,7 @@ import {
   AppThrottlerGuard,
   type RateLimitedRequest,
 } from './app-throttler.guard';
+import { RateLimitPolicy } from './rate-limit-policy.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { RateLimitKey } from './rate-limit-key';
 
@@ -42,6 +43,14 @@ class TestableAppThrottlerGuard extends AppThrottlerGuard {
   tracker(request: RateLimitedRequest) {
     return this.getTracker(request);
   }
+}
+
+class NamedPolicyController {
+  @RateLimitPolicy('export')
+  exportFile(this: void) {}
+
+  @RateLimitPolicy('bulk')
+  bulkMutation(this: void) {}
 }
 
 const emptyStorage: ThrottlerStorage = {
@@ -250,6 +259,109 @@ describe(AppThrottlerGuard.name, () => {
     );
 
     expect(increment.mock.calls[0]?.[0]).toBe(increment.mock.calls[1]?.[0]);
+  });
+
+  it.each([
+    ['export', NamedPolicyController.prototype.exportFile, 5],
+    ['bulk', NamedPolicyController.prototype.bulkMutation, 2],
+  ] as const)(
+    'applies the named %s policy before the method fallback',
+    async (_policy, handler, limit) => {
+      const increment = jest
+        .fn<
+          Promise<ThrottlerStorageRecord>,
+          [string, number, number, number, string]
+        >()
+        .mockResolvedValue({
+          totalHits: 1,
+          timeToExpire: 60_000,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        });
+      const guard = new AppThrottlerGuard(
+        throttlerOptions,
+        { increment },
+        new Reflector(),
+        new RateLimitKey('test-rate-limit-secret'),
+      );
+      await guard.onModuleInit();
+
+      await expect(
+        guard.canActivate(
+          contextFor(
+            {
+              ip: '203.0.113.10',
+              path: '/admin/some-route',
+              method: 'GET',
+              user: { id: 'admin-1' },
+              response: { header: jest.fn() },
+            },
+            undefined,
+            handler,
+          ),
+        ),
+      ).resolves.toBe(true);
+
+      expect(increment).toHaveBeenCalledWith(
+        expect.any(String),
+        60_000,
+        limit,
+        60_000,
+        'default',
+      );
+    },
+  );
+
+  it('shares named export counters without sharing the common admin mutation counter', async () => {
+    const increment = jest
+      .fn<
+        Promise<ThrottlerStorageRecord>,
+        [string, number, number, number, string]
+      >()
+      .mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+    const guard = new AppThrottlerGuard(
+      throttlerOptions,
+      { increment },
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    await guard.onModuleInit();
+
+    const request = {
+      ip: '203.0.113.10',
+      method: 'GET',
+      user: { id: 'admin-1' },
+      response: { header: jest.fn() },
+    };
+    await guard.canActivate(
+      contextFor(
+        { ...request, path: '/admin/participants/export.csv' },
+        undefined,
+        NamedPolicyController.prototype.exportFile,
+      ),
+    );
+    await guard.canActivate(
+      contextFor(
+        { ...request, path: '/admin/redemptions/export.csv' },
+        undefined,
+        NamedPolicyController.prototype.exportFile,
+      ),
+    );
+    await guard.canActivate(
+      contextFor(
+        { ...request, path: '/admin/actions' },
+        [UserRole.ADMIN],
+        function adminMutation() {},
+      ),
+    );
+
+    expect(increment.mock.calls[0]?.[0]).toBe(increment.mock.calls[1]?.[0]);
+    expect(increment.mock.calls[1]?.[0]).not.toBe(increment.mock.calls[2]?.[0]);
   });
 
   it('returns 429 with retry and limit headers without exposing the tracker', async () => {

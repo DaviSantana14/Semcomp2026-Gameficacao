@@ -66,6 +66,7 @@ import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
 import { serializeClaimCodeBulkCsv } from './claim-code-bulk-csv';
 import { CodeRedemptionsPageResponseDto } from './dto/code-redemption-response.dto';
 import { CodeRedemptionsQueryDto } from './dto/code-redemptions-query.dto';
+import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
 
 @ApiTags('Claim Codes')
 @ApiSecurity('access-token-cookie')
@@ -112,6 +113,7 @@ export class ClaimCodesController {
   }
 
   @Post('claim-codes/bulk-status')
+  @RateLimitPolicy('bulk')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Alterar status de códigos em lote (admin)' })
   @ApiBody({ type: BulkClaimCodeStatusDto })
@@ -147,6 +149,7 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-bulk-operations/:id/report.csv')
+  @RateLimitPolicy('export')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar relatório de operação em lote (admin)' })
   @ApiProduces('text/csv')
@@ -165,6 +168,7 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-batches/:id/download.txt')
+  @RateLimitPolicy('export')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar códigos persistidos de um lote (admin)' })
   @ApiProduces('text/plain')
@@ -183,6 +187,7 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-batches/:id/qr.pdf')
+  @RateLimitPolicy('export')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar PDF QR de um lote (admin)' })
   @ApiProduces('application/pdf')
@@ -208,6 +213,7 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-batches/:id/qr-images.zip')
+  @RateLimitPolicy('export')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar ZIP de imagens QR de um lote (admin)' })
   @ApiProduces('application/zip')
