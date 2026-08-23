@@ -1,10 +1,13 @@
 import { apiFetch } from "@/lib/http/client";
 import { downloadFile } from "@/lib/http/download";
+import type { AdminExportCount } from "@/features/exports/exports.types";
 import type { PaginatedResponse } from "@/lib/http/pagination.types";
 import { withQuery } from "@/lib/http/query-string";
 import type {
   Action,
   AdminAction,
+  AdminCodeRedemption,
+  AdminCodeRedemptionsFilters,
   AdminActionsFilters,
   AdminClaimCode,
   BulkUpdateClaimCodesPayload,
@@ -15,6 +18,7 @@ import type {
   AdminReusableCode,
   AdminReusableCodesFilters,
   CreateActionPayload,
+  CodeRedemptionsExportFilters,
   GenerateClaimCodesPayload,
   GeneratedClaimCodesResponse,
   RedeemActionResponse,
@@ -40,6 +44,34 @@ export function createAction(payload: CreateActionPayload) {
 export function fetchActions() {
   return apiFetch<Action[]>("/actions");
 }
+
+export function fetchCodeRedemptions(filters: AdminCodeRedemptionsFilters) {
+  return apiFetch<PaginatedResponse<AdminCodeRedemption>>(
+    withQuery("/admin/code-redemptions", filters),
+  );
+}
+
+export function fetchCodeRedemptionsExportCount(
+  filters: CodeRedemptionsExportFilters,
+) {
+  return apiFetch<AdminExportCount>(
+    withQuery("/admin/code-redemptions/export-count", filters),
+  );
+}
+
+export function downloadCodeRedemptionsExport(
+  filters: CodeRedemptionsExportFilters,
+) {
+  return downloadFile(
+    withQuery("/admin/code-redemptions/export.csv", filters),
+  );
+}
+
+export const fetchAdminCodeRedemptions = fetchCodeRedemptions;
+export const fetchAdminCodeRedemptionsExportCount =
+  fetchCodeRedemptionsExportCount;
+export const downloadAdminCodeRedemptionsExport =
+  downloadCodeRedemptionsExport;
 
 export function generateClaimCodes(
   actionId: string,

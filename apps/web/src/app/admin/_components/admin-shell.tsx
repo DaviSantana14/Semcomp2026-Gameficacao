@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeftRight,
   ClipboardList,
   KeyRound,
   LayoutDashboard,
@@ -24,6 +25,11 @@ const ADMIN_AREAS = [
   { href: "/admin", label: "Visão geral", icon: LayoutDashboard },
   { href: "/admin/participantes", label: "Participantes", icon: UsersRound },
   { href: "/admin/atividades", label: "Atividades", icon: Zap },
+  {
+    href: "/admin/movimentacoes",
+    label: "Movimentações",
+    icon: ArrowLeftRight,
+  },
   { href: "/admin/codigos", label: "Códigos", icon: KeyRound },
   { href: "/admin/lojinha", label: "Lojinha", icon: ShoppingBag },
   { href: "/admin/auditoria", label: "Auditoria", icon: ClipboardList },

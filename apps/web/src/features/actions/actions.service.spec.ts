@@ -4,8 +4,11 @@ import { downloadFile } from "@/lib/http/download";
 import {
   bulkUpdateClaimCodes,
   downloadClaimCodeBulkReport,
+  downloadCodeRedemptionsExport,
   fetchClaimCodeBatches,
   fetchClaimCodeBulkOperation,
+  fetchCodeRedemptions,
+  fetchCodeRedemptionsExportCount,
 } from "./actions.service";
 
 vi.mock("@/lib/http/client", () => ({ apiFetch: vi.fn() }));
@@ -63,6 +66,46 @@ describe("fetchClaimCodeBatches", () => {
     );
     expect(downloadFileMock).toHaveBeenCalledWith(
       "/admin/claim-code-bulk-operations/bulk-1/report.csv",
+    );
+  });
+
+  it("mantém os filtros de resgates e omite paginação nas exportações", async () => {
+    const filters = {
+      page: 2,
+      limit: 20,
+      search: "Ana Silva",
+      actionId: "action-1",
+      method: "claim_code" as const,
+      from: "2026-08-22",
+      to: "2026-08-24",
+    };
+
+    await fetchCodeRedemptions(filters);
+    await fetchCodeRedemptionsExportCount({
+      search: filters.search,
+      actionId: filters.actionId,
+      method: filters.method,
+      from: filters.from,
+      to: filters.to,
+    });
+    await downloadCodeRedemptionsExport({
+      search: filters.search,
+      actionId: filters.actionId,
+      method: filters.method,
+      from: filters.from,
+      to: filters.to,
+    });
+
+    expect(apiFetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/admin/code-redemptions?page=2&limit=20&search=Ana+Silva&actionId=action-1&method=claim_code&from=2026-08-22&to=2026-08-24",
+    );
+    expect(apiFetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/admin/code-redemptions/export-count?search=Ana+Silva&actionId=action-1&method=claim_code&from=2026-08-22&to=2026-08-24",
+    );
+    expect(downloadFileMock).toHaveBeenCalledWith(
+      "/admin/code-redemptions/export.csv?search=Ana+Silva&actionId=action-1&method=claim_code&from=2026-08-22&to=2026-08-24",
     );
   });
 });

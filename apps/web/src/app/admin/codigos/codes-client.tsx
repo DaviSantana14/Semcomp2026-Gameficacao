@@ -6,9 +6,12 @@ import { ClaimCodeGenerator } from "./claim-code-generator";
 import { ClaimCodeBatchHistory } from "./claim-code-batch-history";
 import { ClaimCodeHistory } from "./claim-code-history";
 import { ReusableCodeHistory } from "./reusable-code-history";
+import { CodeRedemptionHistory } from "./code-redemption-history";
 export function CodesClient() {
-  const [tab, setTab] = useState<"single" | "reusable">("single");
-  const tabs = ["single", "reusable"] as const;
+  const [tab, setTab] = useState<"single" | "reusable" | "redemptions">(
+    "single",
+  );
+  const tabs = ["single", "reusable", "redemptions"] as const;
   const selectTab = (nextTab: (typeof tabs)[number]) => {
     setTab(nextTab);
     document.getElementById(`${nextTab}-codes-tab`)?.focus();
@@ -43,7 +46,7 @@ export function CodesClient() {
           aria-controls="single-codes-panel"
           aria-selected={tab === "single"}
           id="single-codes-tab"
-          onClick={() => setTab("single")}
+          onClick={() => selectTab("single")}
           onKeyDown={handleTabKeyDown}
           role="tab"
           tabIndex={tab === "single" ? 0 : -1}
@@ -55,13 +58,25 @@ export function CodesClient() {
           aria-controls="reusable-codes-panel"
           aria-selected={tab === "reusable"}
           id="reusable-codes-tab"
-          onClick={() => setTab("reusable")}
+          onClick={() => selectTab("reusable")}
           onKeyDown={handleTabKeyDown}
           role="tab"
           tabIndex={tab === "reusable" ? 0 : -1}
           variant={tab === "reusable" ? "secondary" : "ghost"}
         >
           Reutilizáveis
+        </Button>
+        <Button
+          aria-controls="redemptions-codes-panel"
+          aria-selected={tab === "redemptions"}
+          id="redemptions-codes-tab"
+          onClick={() => selectTab("redemptions")}
+          onKeyDown={handleTabKeyDown}
+          role="tab"
+          tabIndex={tab === "redemptions" ? 0 : -1}
+          variant={tab === "redemptions" ? "secondary" : "ghost"}
+        >
+          Resgates
         </Button>
       </AdminPanel>
       <div
@@ -74,8 +89,10 @@ export function CodesClient() {
             <ClaimCodeBatchHistory />
             <ClaimCodeHistory />
           </div>
-        ) : (
+        ) : tab === "reusable" ? (
           <ReusableCodeHistory />
+        ) : (
+          <CodeRedemptionHistory />
         )}
       </div>
     </div>

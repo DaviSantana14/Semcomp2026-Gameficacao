@@ -4,7 +4,7 @@ import { useMe } from "@/hooks/use-auth";
 import { AdminShell } from "./admin-shell";
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/admin/atividades",
+  usePathname: () => "/admin/movimentacoes",
   useRouter: () => ({ replace: vi.fn() }),
 }));
 vi.mock("@/hooks/use-auth", () => ({ useMe: vi.fn() }));
@@ -63,5 +63,14 @@ describe("AdminShell", () => {
     expect(screen.queryByText("Semcomp OS")).not.toBeInTheDocument();
     expect(screen.queryByText("Console admin")).not.toBeInTheDocument();
     expect(screen.queryByText("OPERADOR // ONLINE")).not.toBeInTheDocument();
+  });
+
+  it("marca movimentações como a área ativa", () => {
+    render(<AdminShell><p>Conteúdo</p></AdminShell>);
+
+    expect(screen.getByRole("link", { name: /Movimentações/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 });

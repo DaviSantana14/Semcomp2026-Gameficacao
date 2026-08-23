@@ -19,6 +19,38 @@ export type Action = {
   createdAt: string;
 };
 
+export type ActionRedemptionMethod =
+  | "DIRECT"
+  | "REUSABLE_CODE"
+  | "CLAIM_CODE"
+  | "LEGACY_UNKNOWN";
+
+export type AdminCodeRedemption = {
+  id: string;
+  participant: { id: string; name: string; email: string };
+  action: { id: string; name: string } | null;
+  method: "REUSABLE_CODE" | "CLAIM_CODE";
+  code: string | null;
+  points: number;
+  xpDelta: number;
+  createdAt: string;
+};
+
+export type AdminCodeRedemptionsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+  actionId?: string;
+  method?: "all" | "reusable_code" | "claim_code";
+  from?: string;
+  to?: string;
+};
+
+export type CodeRedemptionsExportFilters = Omit<
+  AdminCodeRedemptionsFilters,
+  "page" | "limit"
+>;
+
 export type AdminAction = Action & {
   claimCodes: { total: number; used: number; available: number };
   redemptionsCount: number;
