@@ -6,6 +6,8 @@ import type {
   AdminAction,
   AdminActionsFilters,
   AdminClaimCode,
+  ClaimCodeBatchSummary,
+  ClaimCodeBatchesFilters,
   AdminClaimCodesFilters,
   AdminReusableCode,
   AdminReusableCodesFilters,
@@ -43,6 +45,12 @@ export function generateClaimCodes(
   return apiFetch<GeneratedClaimCodesResponse>(
     `/admin/actions/${actionId}/claim-codes/generate`,
     { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function fetchClaimCodeBatches(filters: ClaimCodeBatchesFilters) {
+  return apiFetch<PaginatedResponse<ClaimCodeBatchSummary>>(
+    withQuery("/admin/claim-code-batches", filters),
   );
 }
 

@@ -12,6 +12,7 @@ import {
 } from "@/features/actions/actions.service";
 import type { GeneratedClaimCodesResponse } from "@/features/actions/actions.types";
 import { ApiError } from "@/lib/http/api-error";
+import { downloadFile } from "@/lib/http/download";
 import {
   isValidAdminReason,
   normalizeAdminReason,
@@ -28,6 +29,10 @@ export function ClaimCodeGenerator() {
   const [quantity, setQuantity] = useState(50);
   const [reason, setReason] = useState("");
   const [last, setLast] = useState<GeneratedClaimCodesResponse | null>(null);
+  const [pendingDownloads, setPendingDownloads] = useState<Set<string>>(
+    new Set(),
+  );
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const actions = useQuery({
     queryKey: ["admin", "actions", "generator"],
     queryFn: () => fetchAdminActions({ page: 1, limit: 100, status: "active" }),
@@ -45,9 +50,12 @@ export function ClaimCodeGenerator() {
       toast.success(`${batch.quantity} códigos gerados.`);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
+        qc.invalidateQueries({ queryKey: ["admin", "claim-code-batches"] }),
         qc.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
         qc.invalidateQueries({ queryKey: ["admin", "actions"] }),
       ]);
+      setPendingDownloads(new Set());
+      setDownloadError(null);
     },
     onError: (e) =>
       toast.error(
@@ -60,14 +68,32 @@ export function ClaimCodeGenerator() {
     mutation.mutate();
   }
   const text = last?.codes.join("\n") ?? "";
-  function download() {
+  async function downloadArtifact(kind: "txt" | "pdf" | "pngs") {
     if (!last) return;
-    const url = URL.createObjectURL(new Blob([text + "\n"]));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `codigos-${last.action.id}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const batchId = last.batch.id;
+    const key = `${batchId}:${kind}`;
+    const paths = {
+      txt: `/admin/claim-code-batches/${batchId}/download.txt`,
+      pdf: `/admin/claim-code-batches/${batchId}/qr.pdf`,
+      pngs: `/admin/claim-code-batches/${batchId}/qr-images.zip`,
+    } as const;
+    setDownloadError(null);
+    setPendingDownloads((current) => new Set(current).add(key));
+    try {
+      await downloadFile(paths[kind]);
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível baixar o artefato.",
+      );
+    } finally {
+      setPendingDownloads((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
   }
   return (
     <AdminPanel
@@ -166,6 +192,9 @@ export function ClaimCodeGenerator() {
               <h3 className="mt-1 text-lg font-semibold">
                 {last.quantity} códigos · {last.action.name}
               </h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Lote: <code className="font-mono">{last.batch.id}</code>
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -179,11 +208,42 @@ export function ClaimCodeGenerator() {
                 <Copy />
                 Copiar
               </Button>
-              <Button variant="outline" onClick={download}>
+              <Button
+                disabled={pendingDownloads.has(`${last.batch.id}:txt`)}
+                variant="outline"
+                onClick={() => void downloadArtifact("txt")}
+              >
                 <Download />
-                Baixar .txt
+                {pendingDownloads.has(`${last.batch.id}:txt`)
+                  ? "Baixando..."
+                  : "Baixar TXT"}
+              </Button>
+              <Button
+                disabled={pendingDownloads.has(`${last.batch.id}:pdf`)}
+                variant="outline"
+                onClick={() => void downloadArtifact("pdf")}
+              >
+                <Download />
+                {pendingDownloads.has(`${last.batch.id}:pdf`)
+                  ? "Baixando..."
+                  : "Baixar PDF"}
+              </Button>
+              <Button
+                disabled={pendingDownloads.has(`${last.batch.id}:pngs`)}
+                variant="outline"
+                onClick={() => void downloadArtifact("pngs")}
+              >
+                <Download />
+                {pendingDownloads.has(`${last.batch.id}:pngs`)
+                  ? "Baixando..."
+                  : "Baixar PNGs"}
               </Button>
             </div>
+            {downloadError ? (
+              <p aria-live="polite" className="text-sm text-destructive" role="alert">
+                {downloadError}
+              </p>
+            ) : null}
             <pre className="max-h-64 overflow-auto rounded-[11px] border border-border/80 bg-background/65 p-4 font-mono text-sm leading-6">
               {text}
             </pre>

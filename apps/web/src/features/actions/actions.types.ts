@@ -77,6 +77,36 @@ export type AdminClaimCodesFilters = {
   status?: "all" | "available" | "disabled" | "blocked" | "used";
 };
 
+export type ClaimCodeBatchCounts = {
+  available: number;
+  disabled: number;
+  used: number;
+  blocked: number;
+};
+
+export type ClaimCodeBatchSummary = {
+  id: string;
+  action: { id: string; name: string };
+  createdBy: { id: string; name: string; email: string };
+  requestedQuantity: number;
+  createdQuantity: number;
+  reason: string;
+  requestId: string;
+  createdAt: string;
+  counts: ClaimCodeBatchCounts;
+};
+
+export type ClaimCodeBatchesFilters = {
+  page: number;
+  limit: number;
+  actionId?: string;
+  actorAdminId?: string;
+  from?: string;
+  to?: string;
+};
+
+export type AdminClaimCodeBatchesFilters = ClaimCodeBatchesFilters;
+
 export type AdminReusableCodesFilters = {
   page: number;
   limit: number;
@@ -107,6 +137,7 @@ export type UpdateClaimCodeStatusPayload = {
 };
 
 export type GeneratedClaimCodesResponse = {
+  batch: ClaimCodeBatchSummary;
   action: Pick<Action, "id" | "name">;
   quantity: number;
   codes: string[];

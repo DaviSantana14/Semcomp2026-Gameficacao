@@ -3,6 +3,7 @@ import { type KeyboardEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AdminPageHeader, AdminPanel } from "../_components/admin-page";
 import { ClaimCodeGenerator } from "./claim-code-generator";
+import { ClaimCodeBatchHistory } from "./claim-code-batch-history";
 import { ClaimCodeHistory } from "./claim-code-history";
 import { ReusableCodeHistory } from "./reusable-code-history";
 export function CodesClient() {
@@ -68,7 +69,14 @@ export function CodesClient() {
         id={`${tab}-codes-panel`}
         role="tabpanel"
       >
-        {tab === "single" ? <ClaimCodeHistory /> : <ReusableCodeHistory />}
+        {tab === "single" ? (
+          <div className="grid gap-8">
+            <ClaimCodeBatchHistory />
+            <ClaimCodeHistory />
+          </div>
+        ) : (
+          <ReusableCodeHistory />
+        )}
       </div>
     </div>
   );
