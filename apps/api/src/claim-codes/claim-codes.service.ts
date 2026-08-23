@@ -19,6 +19,7 @@ import { AdminOperationContext } from '../common/request-context';
 import { maskClaimCode } from '../common/claim-code-mask';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { generateClaimCode } from '../common/event-code';
+import { parseOperationalDateRange } from '../common/operational-date-range';
 import type { QrCard } from './claim-code-qr';
 import {
   ClaimCodeBatchRecordWithCounts,
@@ -34,6 +35,10 @@ import type {
   ClaimCodeBulkOperationSummary,
 } from './dto/claim-code-bulk-response.dto';
 import { ClaimCodesQueryDto } from './dto/claim-codes-query.dto';
+import {
+  CodeRedemptionsQueryDto,
+  mapCodeRedemptionMethod,
+} from './dto/code-redemptions-query.dto';
 import { ClaimCodeStatus } from './dto/claim-code-history-response.dto';
 import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
 import { GenerateClaimCodesDto } from './dto/generate-claim-codes.dto';
@@ -205,6 +210,25 @@ export class ClaimCodesService {
     });
     return paginate(
       page.rows.map((row) => this.toHistory(row)),
+      page.total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  async findCodeRedemptions(query: CodeRedemptionsQueryDto) {
+    const { from, to } = parseOperationalDateRange(query);
+    const page = await this.repository.findCodeRedemptionPage({
+      page: query.page,
+      limit: query.limit,
+      search: query.search?.trim() || undefined,
+      actionId: query.actionId?.trim() || undefined,
+      method: mapCodeRedemptionMethod(query.method),
+      from,
+      to,
+    });
+    return paginate(
+      page.rows.map(mapCodeRedemption),
       page.total,
       query.page,
       query.limit,
@@ -530,4 +554,22 @@ export class ClaimCodesService {
     }
     return date;
   }
+}
+
+function mapCodeRedemption(
+  row: Awaited<
+    ReturnType<ClaimCodesRepository['findCodeRedemptionPage']>
+  >['rows'][number],
+) {
+  const rawCode = row.claimCode?.code ?? row.action?.code ?? null;
+  return {
+    id: row.id,
+    points: row.points,
+    xpDelta: row.xpDelta,
+    participant: row.user,
+    action: row.action ? { id: row.action.id, name: row.action.name } : null,
+    method: row.redemptionMethod as 'REUSABLE_CODE' | 'CLAIM_CODE',
+    code: rawCode ? maskClaimCode(rawCode) : null,
+    createdAt: row.createdAt.toISOString(),
+  };
 }

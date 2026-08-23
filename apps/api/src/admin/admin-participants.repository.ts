@@ -1,5 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import {
+  ActionRedemptionMethod,
+  PointEventKind,
   PointEventSource,
   Prisma,
   RedemptionStatus,
@@ -30,6 +32,35 @@ const participantSelect = {
     },
   },
 } as const;
+
+export const pointEventSelect = {
+  id: true,
+  points: true,
+  xpDelta: true,
+  kind: true,
+  source: true,
+  redemptionMethod: true,
+  description: true,
+  createdAt: true,
+  user: { select: { id: true, name: true, email: true } },
+  action: { select: { id: true, name: true, code: true } },
+  claimCode: { select: { id: true, code: true } },
+  rewardRedemption: {
+    select: {
+      id: true,
+      reward: { select: { id: true, name: true } },
+    },
+  },
+  auditEventId: true,
+  auditEvent: { select: { operation: true } },
+  actorAdmin: { select: { id: true, name: true } },
+  reversedEventId: true,
+  reversal: { select: { id: true } },
+} as const;
+
+export type PointEventRecord = Prisma.PointEventGetPayload<{
+  select: typeof pointEventSelect;
+}>;
 
 export interface ParticipantPageFilter {
   page: number;
@@ -75,6 +106,51 @@ export interface ParticipantRedemptionPageFilter {
   page: number;
   limit: number;
   status?: 'PENDING' | 'DELIVERED' | 'CANCELLED';
+}
+
+export interface PointEventFilter {
+  page: number;
+  limit: number;
+  search?: string;
+  participantId?: string;
+  actionId?: string;
+  source?: PointEventSource;
+  kind?: PointEventKind;
+  method?: ActionRedemptionMethod;
+  from?: Date;
+  to?: Date;
+}
+
+export function buildPointEventWhere(
+  filter: PointEventFilter,
+): Prisma.PointEventWhereInput {
+  const where: Prisma.PointEventWhereInput = {
+    user: { role: UserRole.PARTICIPANT },
+  };
+  if (filter.participantId) where.userId = filter.participantId;
+  if (filter.actionId) where.actionId = filter.actionId;
+  if (filter.source) where.source = filter.source;
+  if (filter.kind) where.kind = filter.kind;
+  if (filter.method) where.redemptionMethod = filter.method;
+
+  const search = filter.search?.trim();
+  if (search) {
+    where.user = {
+      role: UserRole.PARTICIPANT,
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ],
+    };
+  }
+
+  if (filter.from || filter.to) {
+    where.createdAt = {
+      ...(filter.from && { gte: filter.from }),
+      ...(filter.to && { lt: filter.to }),
+    };
+  }
+  return where;
 }
 
 @Injectable()
@@ -211,6 +287,21 @@ export class AdminParticipantsRepository {
           reversedEventId: true,
           reversal: { select: { id: true } },
         },
+      }),
+    ]);
+    return { rows, total };
+  }
+
+  async findPointEventPage(filter: PointEventFilter) {
+    const where = buildPointEventWhere(filter);
+    const [total, rows] = await Promise.all([
+      this.client.pointEvent.count({ where }),
+      this.client.pointEvent.findMany({
+        where,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: pointEventSelect,
       }),
     ]);
     return { rows, total };

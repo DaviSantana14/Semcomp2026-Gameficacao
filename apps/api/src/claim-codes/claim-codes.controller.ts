@@ -64,6 +64,8 @@ import {
 } from './dto/claim-code-history-response.dto';
 import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
 import { serializeClaimCodeBulkCsv } from './claim-code-bulk-csv';
+import { CodeRedemptionsPageResponseDto } from './dto/code-redemption-response.dto';
+import { CodeRedemptionsQueryDto } from './dto/code-redemptions-query.dto';
 
 @ApiTags('Claim Codes')
 @ApiSecurity('access-token-cookie')
@@ -81,6 +83,14 @@ export class ClaimCodesController {
   @ApiOkResponse({ type: ClaimCodesPageResponseDto })
   findAll(@Query() query: ClaimCodesQueryDto) {
     return this.claimCodesService.findAll(query);
+  }
+
+  @Get('code-redemptions')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Listar resgates por código (admin)' })
+  @ApiOkResponse({ type: CodeRedemptionsPageResponseDto })
+  findCodeRedemptions(@Query() query: CodeRedemptionsQueryDto) {
+    return this.claimCodesService.findCodeRedemptions(query);
   }
 
   @Get('claim-code-batches')

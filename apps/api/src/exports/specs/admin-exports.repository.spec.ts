@@ -5,6 +5,14 @@ import {
   type ParticipantFilter,
 } from '../../admin/admin-participants.repository';
 import {
+  buildPointEventWhere,
+  type PointEventFilter,
+} from '../../admin/admin-participants.repository';
+import {
+  buildCodeRedemptionWhere,
+  type CodeRedemptionFilter,
+} from '../../claim-codes/claim-codes.repository';
+import {
   buildRedemptionWhere,
   type RedemptionFilter,
 } from '../../rewards/rewards.repository';
@@ -15,6 +23,7 @@ describe(AdminExportsRepository.name, () => {
     const prisma = {
       user: { count: jest.fn(), findMany: jest.fn() },
       rewardRedemption: { count: jest.fn(), findMany: jest.fn() },
+      pointEvent: { count: jest.fn(), findMany: jest.fn() },
     };
     return { repository: new AdminExportsRepository(prisma as never), prisma };
   }
@@ -142,5 +151,53 @@ describe(AdminExportsRepository.name, () => {
     expect(call.select).not.toHaveProperty('passwordHash');
     expect(call.select).not.toHaveProperty('sessions');
     expect(call.select).not.toHaveProperty('cpf', undefined);
+  });
+
+  it('uses the shared point-event and code-redemption builders for count and blocks', async () => {
+    const { repository, prisma } = createRepository();
+    const pointFilter: PointEventFilter = {
+      page: 1,
+      limit: 20,
+      search: 'Ada',
+      method: 'CLAIM_CODE',
+      from: new Date('2026-08-01T03:00:00.000Z'),
+      to: new Date('2026-08-03T03:00:00.000Z'),
+    };
+    const codeFilter: CodeRedemptionFilter = {
+      page: 1,
+      limit: 20,
+      actionId: 'action-1',
+      method: 'REUSABLE_CODE',
+    };
+    prisma.pointEvent.count.mockResolvedValue(2);
+    prisma.pointEvent.findMany.mockResolvedValue([]);
+
+    await expect(repository.countPointEvents(pointFilter)).resolves.toBe(2);
+    await repository.findPointEventExportBlock(pointFilter, undefined);
+    await expect(repository.countCodeRedemptions(codeFilter)).resolves.toBe(2);
+    await repository.findCodeRedemptionExportBlock(codeFilter, undefined);
+
+    expect(prisma.pointEvent.count).toHaveBeenNthCalledWith(1, {
+      where: buildPointEventWhere(pointFilter),
+    });
+    expect(prisma.pointEvent.count).toHaveBeenNthCalledWith(2, {
+      where: buildCodeRedemptionWhere(codeFilter),
+    });
+    expect(prisma.pointEvent.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: buildPointEventWhere(pointFilter),
+        take: 1000,
+        orderBy: { id: 'asc' },
+      }),
+    );
+    expect(prisma.pointEvent.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: buildCodeRedemptionWhere(codeFilter),
+        take: 1000,
+        orderBy: { id: 'asc' },
+      }),
+    );
   });
 });

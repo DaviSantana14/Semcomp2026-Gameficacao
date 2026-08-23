@@ -16,6 +16,10 @@ describe(AdminExportsService.name, () => {
       findParticipantExportBlock: jest.fn(),
       countRedemptions: jest.fn(),
       findRedemptionExportBlock: jest.fn(),
+      countPointEvents: jest.fn(),
+      findPointEventExportBlock: jest.fn(),
+      countCodeRedemptions: jest.fn(),
+      findCodeRedemptionExportBlock: jest.fn(),
     };
     return {
       service: new AdminExportsService(
@@ -146,5 +150,64 @@ describe(AdminExportsService.name, () => {
         createdAt,
       )};${formatOperationalDateTime(new Date('2026-08-03T12:00:00.000Z'))};;Coordenação`,
     );
+  });
+
+  it('exports point events and code redemptions with operational timestamps and masked codes', async () => {
+    const { service, repository } = createService();
+    const createdAt = new Date('2026-08-02T12:00:00.000Z');
+    repository.countPointEvents.mockResolvedValue(1);
+    repository.findPointEventExportBlock
+      .mockResolvedValueOnce([
+        {
+          id: 'event-1',
+          points: 25,
+          xpDelta: 25,
+          kind: 'CREDIT',
+          source: 'ACTION_REDEEM',
+          redemptionMethod: 'CLAIM_CODE',
+          description: 'Resgate',
+          createdAt,
+          user: { name: 'Ada', email: 'ada@example.test' },
+          action: { id: 'action-1', name: 'Credenciamento', code: null },
+          claimCode: { id: 'claim-1', code: 'ABCD-EFGH' },
+          rewardRedemption: null,
+          auditEvent: null,
+          actorAdmin: { id: 'admin-1', name: 'Coordenação' },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const pointCsv = await service.exportPointEvents({
+      search: ' Ada ',
+      method: 'claim_code',
+    } as never);
+
+    expect(pointCsv.toString('utf8')).toContain(
+      `participante;email;tipo;origem;pontos_delta;xp_delta;referencia;descricao;ator;criado_em\r\nAda;ada@example.test;CREDIT;UNIQUE_CODE;25;25;Credenciamento;Resgate;Coordenação;${formatOperationalDateTime(createdAt)}`,
+    );
+    expect(pointCsv.toString('utf8')).not.toContain('ABCD-EFGH');
+
+    repository.countCodeRedemptions.mockResolvedValue(1);
+    repository.findCodeRedemptionExportBlock
+      .mockResolvedValueOnce([
+        {
+          id: 'event-2',
+          points: 30,
+          xpDelta: 30,
+          redemptionMethod: 'REUSABLE_CODE',
+          createdAt,
+          user: { name: 'Ada', email: 'ada@example.test' },
+          action: { id: 'action-2', name: 'Palestra', code: 'REUSABLE-RAW' },
+          claimCode: null,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const codeCsv = await service.exportCodeRedemptions({
+      method: 'reusable_code',
+    } as never);
+
+    expect(codeCsv.toString('utf8')).toContain(
+      `participante;email;atividade;metodo;codigo_mascarado;pontos;xp;resgatado_em\r\nAda;ada@example.test;Palestra;REUSABLE_CODE;RE********AW;30;30;${formatOperationalDateTime(createdAt)}`,
+    );
+    expect(codeCsv.toString('utf8')).not.toContain('REUSABLE-RAW');
   });
 });

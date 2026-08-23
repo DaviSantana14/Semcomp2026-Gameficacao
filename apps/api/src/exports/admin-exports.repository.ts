@@ -2,8 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   buildParticipantWhere,
+  buildPointEventWhere,
+  pointEventSelect,
   type ParticipantFilter,
+  type PointEventFilter,
+  type PointEventRecord,
 } from '../admin/admin-participants.repository';
+import {
+  buildCodeRedemptionWhere,
+  type CodeRedemptionFilter,
+  type CodeRedemptionRecord,
+} from '../claim-codes/claim-codes.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildRedemptionWhere,
@@ -43,6 +52,9 @@ export type ParticipantExportRow = Prisma.UserGetPayload<{
 export type RedemptionExportRow = Prisma.RewardRedemptionGetPayload<{
   select: typeof redemptionExportSelect;
 }>;
+
+export type PointEventExportRow = PointEventRecord;
+export type CodeRedemptionExportRow = CodeRedemptionRecord;
 
 @Injectable()
 export class AdminExportsRepository {
@@ -87,6 +99,50 @@ export class AdminExportsRepository {
       take: EXPORT_BATCH_SIZE,
       orderBy: { id: 'asc' },
       select: redemptionExportSelect,
+    });
+  }
+
+  countPointEvents(filter: PointEventFilter) {
+    return this.prisma.pointEvent.count({
+      where: buildPointEventWhere(filter),
+    });
+  }
+
+  findPointEventExportBlock(
+    filter: PointEventFilter,
+    afterId: string | undefined,
+  ): Promise<PointEventExportRow[]> {
+    const where = buildPointEventWhere(filter);
+    const cursorWhere: Prisma.PointEventWhereInput = afterId
+      ? { ...where, id: { gt: afterId } }
+      : where;
+    return this.prisma.pointEvent.findMany({
+      where: cursorWhere,
+      take: EXPORT_BATCH_SIZE,
+      orderBy: { id: 'asc' },
+      select: pointEventSelect,
+    });
+  }
+
+  countCodeRedemptions(filter: CodeRedemptionFilter) {
+    return this.prisma.pointEvent.count({
+      where: buildCodeRedemptionWhere(filter),
+    });
+  }
+
+  findCodeRedemptionExportBlock(
+    filter: CodeRedemptionFilter,
+    afterId: string | undefined,
+  ): Promise<CodeRedemptionExportRow[]> {
+    const where = buildCodeRedemptionWhere(filter);
+    const cursorWhere: Prisma.PointEventWhereInput = afterId
+      ? { ...where, id: { gt: afterId } }
+      : where;
+    return this.prisma.pointEvent.findMany({
+      where: cursorWhere,
+      take: EXPORT_BATCH_SIZE,
+      orderBy: { id: 'asc' },
+      select: pointEventSelect,
     });
   }
 }

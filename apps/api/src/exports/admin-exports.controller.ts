@@ -16,6 +16,8 @@ import { DownloadCapacityError } from '../common/download-gate';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { AdminParticipantsQueryDto } from '../admin/dto/admin-participants-query.dto';
 import { AdminRedemptionsQueryDto } from '../rewards/dto/admin-redemptions-query.dto';
+import { AdminPointEventsQueryDto } from '../admin/dto/admin-point-events-query.dto';
+import { CodeRedemptionsQueryDto } from '../claim-codes/dto/code-redemptions-query.dto';
 import { AdminExportsService } from './admin-exports.service';
 
 @ApiTags('Admin Exports')
@@ -67,6 +69,54 @@ export class AdminExportsController {
     try {
       const csv = await this.exports.exportRedemptions(query);
       setCsvHeaders(response, 'pedidos-lojinha.csv');
+      response.send(csv);
+    } catch (error) {
+      setRetryAfterHeader(response, error);
+      throw error;
+    }
+  }
+
+  @Get('point-events/export-count')
+  @ApiOkResponse()
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  countPointEvents(@Query() query: AdminPointEventsQueryDto) {
+    return this.exports.countPointEvents(query);
+  }
+
+  @Get('point-events/export.csv')
+  @ApiProduces('text/csv')
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  async exportPointEvents(
+    @Query() query: AdminPointEventsQueryDto,
+    @Res() response: Response,
+  ) {
+    try {
+      const csv = await this.exports.exportPointEvents(query);
+      setCsvHeaders(response, 'movimentacoes.csv');
+      response.send(csv);
+    } catch (error) {
+      setRetryAfterHeader(response, error);
+      throw error;
+    }
+  }
+
+  @Get('code-redemptions/export-count')
+  @ApiOkResponse()
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  countCodeRedemptions(@Query() query: CodeRedemptionsQueryDto) {
+    return this.exports.countCodeRedemptions(query);
+  }
+
+  @Get('code-redemptions/export.csv')
+  @ApiProduces('text/csv')
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  async exportCodeRedemptions(
+    @Query() query: CodeRedemptionsQueryDto,
+    @Res() response: Response,
+  ) {
+    try {
+      const csv = await this.exports.exportCodeRedemptions(query);
+      setCsvHeaders(response, 'resgates-codigos.csv');
       response.send(csv);
     } catch (error) {
       setRetryAfterHeader(response, error);

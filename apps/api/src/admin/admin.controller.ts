@@ -9,13 +9,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { CsrfGuard } from '../auth/csrf.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminParticipantsService } from './admin-participants.service';
+import { AdminPointEventsPageResponseDto } from './dto/admin-point-event-response.dto';
+import { AdminPointEventsQueryDto } from './dto/admin-point-events-query.dto';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
 import { AdminParticipantRedemptionsQueryDto } from './dto/admin-participant-redemptions-query.dto';
 import { AdminParticipantsQueryDto } from './dto/admin-participants-query.dto';
@@ -38,6 +40,11 @@ export class AdminController {
   }
   @Get('participants') findAll(@Query() query: AdminParticipantsQueryDto) {
     return this.participants.findAll(query);
+  }
+  @Get('point-events')
+  @ApiOkResponse({ type: AdminPointEventsPageResponseDto })
+  findGlobalPointEvents(@Query() query: AdminPointEventsQueryDto) {
+    return this.participants.findGlobalPointEvents(query);
   }
   @Get('participants/:id') findOne(@Param('id') id: string) {
     return this.participants.findOne(id);

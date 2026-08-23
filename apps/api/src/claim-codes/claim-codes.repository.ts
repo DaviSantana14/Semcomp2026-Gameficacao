@@ -1,5 +1,14 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  ActionRedemptionMethod,
+  PointEventSource,
+  Prisma,
+} from '@prisma/client';
+import {
+  buildPointEventWhere,
+  pointEventSelect,
+  type PointEventFilter,
+} from '../admin/admin-participants.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AuditRepository,
@@ -94,6 +103,7 @@ type ClaimCodesDatabase = Pick<
   | 'claimCode'
   | 'claimCodeBatch'
   | 'claimCodeBulkOperation'
+  | 'pointEvent'
 >;
 
 export interface ClaimCodePageFilter {
@@ -150,6 +160,47 @@ export interface ClaimCodeBulkOperationCreateInput {
     outcome: ClaimCodeBulkOutcome;
   }>;
 }
+
+export interface CodeRedemptionFilter extends Pick<
+  PointEventFilter,
+  'page' | 'limit' | 'search' | 'from' | 'to'
+> {
+  actionId?: string;
+  method?: Extract<ActionRedemptionMethod, 'REUSABLE_CODE' | 'CLAIM_CODE'>;
+}
+
+export function buildCodeRedemptionWhere(
+  filter: CodeRedemptionFilter,
+): Prisma.PointEventWhereInput {
+  return {
+    ...buildPointEventWhere({
+      page: filter.page,
+      limit: filter.limit,
+      search: filter.search,
+      actionId: filter.actionId,
+      source: PointEventSource.ACTION_REDEEM,
+      method: filter.method,
+      from: filter.from,
+      to: filter.to,
+    }),
+    redemptionMethod: filter.method
+      ? filter.method
+      : {
+          in: [
+            ActionRedemptionMethod.REUSABLE_CODE,
+            ActionRedemptionMethod.CLAIM_CODE,
+          ],
+        },
+  };
+}
+
+const codeRedemptionSelect = {
+  ...pointEventSelect,
+} as const;
+
+export type CodeRedemptionRecord = Prisma.PointEventGetPayload<{
+  select: typeof codeRedemptionSelect;
+}>;
 
 @Injectable()
 export class ClaimCodesRepository {
@@ -291,6 +342,21 @@ export class ClaimCodesRepository {
         take: filter.limit,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: claimCodeHistorySelect,
+      }),
+    ]);
+    return { rows, total };
+  }
+
+  async findCodeRedemptionPage(filter: CodeRedemptionFilter) {
+    const where = buildCodeRedemptionWhere(filter);
+    const [total, rows] = await Promise.all([
+      this.client.pointEvent.count({ where }),
+      this.client.pointEvent.findMany({
+        where,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: codeRedemptionSelect,
       }),
     ]);
     return { rows, total };
