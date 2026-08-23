@@ -1,6 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ClaimCodesRepository } from '../claim-codes.repository';
+import {
+  ClaimCodeBatchCreateInput,
+  ClaimCodesRepository,
+} from '../claim-codes.repository';
 import { ClaimCodesService } from '../claim-codes.service';
 import {
   AuditService,
@@ -22,6 +25,21 @@ describe(ClaimCodesService.name, () => {
   beforeEach(async () => {
     const repositoryMock = {
       findActionForCodeBatch: jest.fn(),
+      createBatch: jest
+        .fn()
+        .mockImplementation((input: ClaimCodeBatchCreateInput) => ({
+          ...input,
+          action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+          createdByAdmin: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+          createdAt: new Date('2026-08-22T12:00:00.000Z'),
+        })),
+      findBatches: jest.fn(),
+      findBatch: jest.fn(),
+      getBatchCodes: jest.fn(),
       updateClaimCodeStatus: jest.fn(),
       findClaimCodeById: jest.fn(),
       insertClaimCodes: jest.fn(),
@@ -56,6 +74,109 @@ describe(ClaimCodesService.name, () => {
       ),
     ).rejects.toEqual(
       new NotFoundException('Atividade pontuável não encontrada.'),
+    );
+  });
+
+  it('maps filtered batch pages and converts operational records to public summaries', async () => {
+    repository.findBatches.mockResolvedValue({
+      rows: [
+        {
+          id: 'batch-1',
+          actionId: 'action-1',
+          createdByAdminId: 'admin-1',
+          requestedQuantity: 2,
+          createdQuantity: 2,
+          reason: 'Geracao administrativa do lote',
+          requestId: 'request-1',
+          createdAt: new Date('2026-08-22T12:00:00.000Z'),
+          action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+          createdByAdmin: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+          counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await service.findBatches({
+      page: 2,
+      limit: 10,
+      actionId: 'action-1',
+      actorAdminId: 'admin-1',
+      from: '2026-08-01T00:00:00.000Z',
+      to: '2026-08-31T23:59:59.999Z',
+    });
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(repository.findBatches).toHaveBeenCalledWith({
+      page: 2,
+      limit: 10,
+      actionId: 'action-1',
+      actorAdminId: 'admin-1',
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-31T23:59:59.999Z'),
+    });
+    expect(result).toEqual({
+      items: [
+        expect.objectContaining({
+          id: 'batch-1',
+          createdAt: '2026-08-22T12:00:00.000Z',
+          action: { id: 'action-1', name: 'Credenciamento' },
+          createdBy: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+        }),
+      ],
+      meta: { page: 2, limit: 10, total: 1, totalPages: 1 },
+    });
+  });
+
+  it('returns batch details and rejects missing batches and legacy ids', async () => {
+    repository.findBatch.mockResolvedValueOnce({
+      id: 'batch-1',
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+      createdByAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+    });
+
+    await expect(service.findBatch('batch-1')).resolves.toMatchObject({
+      id: 'batch-1',
+      createdAt: '2026-08-22T12:00:00.000Z',
+      action: { id: 'action-1', name: 'Credenciamento' },
+    });
+
+    repository.findBatch.mockResolvedValue(null);
+    await expect(service.findBatch('legacy-code-id')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('returns persisted codes for redownload and rejects an unknown batch', async () => {
+    repository.getBatchCodes.mockResolvedValue(['BBBB-BBBB', 'AAAA-AAAA']);
+    await expect(service.getBatchCodes('batch-1')).resolves.toEqual([
+      'BBBB-BBBB',
+      'AAAA-AAAA',
+    ]);
+
+    repository.getBatchCodes.mockResolvedValue(null);
+    await expect(service.getBatchCodes('missing')).rejects.toThrow(
+      NotFoundException,
     );
   });
 
@@ -125,6 +246,7 @@ describe(ClaimCodesService.name, () => {
     repository.findActionForCodeBatch.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
       type: 'CHECKIN',
     } as never);
     repository.insertClaimCodes.mockResolvedValue([
@@ -139,7 +261,47 @@ describe(ClaimCodesService.name, () => {
     );
 
     expect(result.codes).toEqual(['ABCD-EFGH', 'IJKL-MNOP']);
+    expect(result.batch).toMatchObject({
+      action: { id: 'action-1', name: 'Credenciamento' },
+      createdBy: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+      counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+    });
+    const batchInput = repository.createBatch.mock.calls[0]?.[0] as
+      | ClaimCodeBatchCreateInput
+      | undefined;
+    expect(batchInput).toBeDefined();
+    if (!batchInput) throw new Error('Expected a persisted batch input.');
+    expect(batchInput).toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      id: expect.any(String),
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+    });
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(repository.insertClaimCodes).toHaveBeenCalledWith(
+      'action-1',
+      batchInput.id,
+      expect.any(Array),
+    );
     expect(audit.record).toHaveBeenCalledTimes(1);
+    const auditInput = (
+      audit.record.mock.calls as unknown as Array<
+        [unknown, { entityId: string }]
+      >
+    )[0]?.[1];
+    expect(auditInput?.entityId).toBe(result.batch.id);
     expect(audit.record).toHaveBeenCalledWith(
       repository.auditWriter,
       expect.objectContaining({
@@ -167,10 +329,12 @@ describe(ClaimCodesService.name, () => {
     repository.findActionForCodeBatch.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
       type: 'CHECKIN',
     } as never);
     repository.insertClaimCodes.mockResolvedValue(
       Array.from({ length: quantity }, (_, index) => ({
+        id: `code-${index}`,
         code: `CODE-${String(index).padStart(4, '0')}`,
       })),
     );
@@ -267,7 +431,7 @@ describe(ClaimCodesService.name, () => {
     const bothInitialReads = new Promise<void>((resolve) => {
       releaseInitialReads = resolve;
     });
-    repository.findClaimCodeById.mockImplementation(async () => {
+    repository.findClaimCodeById.mockImplementation((async () => {
       initialReads += 1;
       const snapshot = {
         id: 'code-id-1',
@@ -284,13 +448,15 @@ describe(ClaimCodesService.name, () => {
         await bothInitialReads;
       }
       return snapshot;
-    });
-    repository.updateClaimCodeStatus.mockImplementation((...args) => {
+    }) as never);
+    repository.updateClaimCodeStatus.mockImplementation(((
+      ...args: [string, boolean, boolean]
+    ) => {
       const [, nextIsActive, previousIsActive] = args;
       if (isActive !== previousIsActive) return { count: 0 };
       isActive = nextIsActive;
       return { count: 1 };
-    });
+    }) as never);
 
     const results = await Promise.all([
       service.updateStatus(

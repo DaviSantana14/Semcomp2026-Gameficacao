@@ -13,13 +13,36 @@ function createRepository() {
     findMany: jest.fn(),
     findUnique: jest.fn(),
     createManyAndReturn: jest.fn(),
+    groupBy: jest.fn(),
     updateMany: jest.fn(),
   };
+  const claimCodeBatch = {
+    create: jest.fn().mockResolvedValue({
+      id: 'batch-1',
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+      createdByAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+    }),
+    count: jest.fn(),
+    findMany: jest.fn(),
+    findUnique: jest.fn(),
+  };
   const action = { findUnique: jest.fn() };
-  const tx = { action, claimCode };
+  const tx = { action, claimCode, claimCodeBatch };
   const prisma = {
     action,
     claimCode,
+    claimCodeBatch,
     $transaction: jest.fn(
       (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
     ),
@@ -147,6 +170,147 @@ describe('ClaimCodesRepository', () => {
     },
   );
 
+  it('filters and counts batches without selecting raw codes', async () => {
+    const { prisma } = createRepository();
+    const repository = new ClaimCodesRepository(prisma as never);
+    const from = new Date('2026-08-01T00:00:00.000Z');
+    const to = new Date('2026-08-31T23:59:59.999Z');
+    prisma.claimCodeBatch.count.mockResolvedValue(1);
+    prisma.claimCodeBatch.findMany.mockResolvedValue([
+      {
+        id: 'batch-1',
+        actionId: 'action-1',
+        createdByAdminId: 'admin-1',
+        requestedQuantity: 6,
+        createdQuantity: 6,
+        reason: 'Geracao administrativa do lote',
+        requestId: 'request-1',
+        createdAt: new Date('2026-08-22T12:00:00.000Z'),
+        action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+        createdByAdmin: {
+          id: 'admin-1',
+          name: 'Admin',
+          email: 'admin@example.test',
+        },
+      },
+    ]);
+    prisma.claimCode.groupBy.mockResolvedValue([
+      {
+        batchId: 'batch-1',
+        isUsed: false,
+        isActive: true,
+        _count: { _all: 2 },
+      },
+      {
+        batchId: 'batch-1',
+        isUsed: false,
+        isActive: false,
+        _count: { _all: 1 },
+      },
+      {
+        batchId: 'batch-1',
+        isUsed: true,
+        isActive: false,
+        _count: { _all: 3 },
+      },
+    ]);
+
+    const result = await repository.findBatches({
+      page: 2,
+      limit: 10,
+      actionId: 'action-1',
+      actorAdminId: 'admin-1',
+      from,
+      to,
+    });
+
+    const where = {
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      createdAt: { gte: from, lte: to },
+    };
+    expect(prisma.claimCodeBatch.count).toHaveBeenCalledWith({ where });
+    expect(prisma.claimCodeBatch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where,
+        skip: 10,
+        take: 10,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        select: expect.not.objectContaining({ claimCodes: expect.anything() }),
+      }),
+    );
+    expect(prisma.claimCode.groupBy).toHaveBeenCalledWith({
+      by: ['batchId', 'isUsed', 'isActive'],
+      where: { batchId: { in: ['batch-1'] } },
+      _count: { _all: true },
+    });
+    expect(result).toEqual({
+      total: 1,
+      rows: [
+        expect.objectContaining({
+          id: 'batch-1',
+          counts: { available: 2, disabled: 1, used: 3, blocked: 0 },
+        }),
+      ],
+    });
+  });
+
+  it('returns persisted batch details and distinguishes missing batches from empty codes', async () => {
+    const { prisma } = createRepository();
+    const repository = new ClaimCodesRepository(prisma as never);
+    prisma.claimCodeBatch.findUnique.mockResolvedValueOnce({
+      id: 'batch-1',
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      action: { id: 'action-1', name: 'Credenciamento', isActive: false },
+      createdByAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+    });
+    prisma.claimCode.groupBy.mockResolvedValue([
+      {
+        batchId: 'batch-1',
+        isUsed: false,
+        isActive: true,
+        _count: { _all: 2 },
+      },
+    ]);
+
+    await expect(repository.findBatch('batch-1')).resolves.toMatchObject({
+      id: 'batch-1',
+      counts: { available: 0, disabled: 0, used: 0, blocked: 2 },
+    });
+
+    prisma.claimCodeBatch.findUnique.mockResolvedValueOnce({ id: 'batch-1' });
+    prisma.claimCode.findMany.mockResolvedValue([
+      { code: 'BBBB-BBBB' },
+      { code: 'AAAA-AAAA' },
+    ]);
+    await expect(repository.getBatchCodes('batch-1')).resolves.toEqual([
+      'BBBB-BBBB',
+      'AAAA-AAAA',
+    ]);
+    expect(prisma.claimCode.findMany).toHaveBeenCalledWith({
+      where: { batchId: 'batch-1' },
+      orderBy: { code: 'asc' },
+      select: { code: true },
+    });
+
+    prisma.claimCodeBatch.findUnique.mockResolvedValueOnce(null);
+    await expect(repository.findBatch('legacy-code-id')).resolves.toBeNull();
+    await expect(
+      repository.getBatchCodes('legacy-code-id'),
+    ).resolves.toBeNull();
+  });
+
   it.each([
     [false, 'DISABLED'],
     [true, 'AVAILABLE'],
@@ -233,6 +397,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
     });
     jest
       .spyOn(eventCode, 'generateClaimCode')
@@ -245,24 +410,63 @@ describe('ClaimCodesRepository', () => {
       { code: 'BBBB-BBBB' },
     ]);
 
-    await expect(generateBatch(repository, 'action-1', 3)).resolves.toEqual({
+    await expect(
+      generateBatch(repository, 'action-1', 3),
+    ).resolves.toMatchObject({
       action: { id: 'action-1', name: 'Credenciamento' },
       quantity: 3,
       codes: ['AAAA-AAAA', 'BBBB-BBBB', 'CCCC-CCCC'],
+      batch: { id: 'batch-1', createdQuantity: 3 },
     });
     expect(prisma.action.findUnique).toHaveBeenCalledWith({
       where: { id: 'action-1' },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isActive: true },
     });
-    expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledWith({
-      data: [
-        { actionId: 'action-1', code: 'CCCC-CCCC', isActive: true },
-        { actionId: 'action-1', code: 'AAAA-AAAA', isActive: true },
-        { actionId: 'action-1', code: 'BBBB-BBBB', isActive: true },
-      ],
-      skipDuplicates: true,
-      select: { code: true },
-    });
+    expect(prisma.claimCodeBatch.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        data: expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          id: expect.any(String),
+          actionId: 'action-1',
+          createdByAdminId: 'admin-1',
+          requestedQuantity: 3,
+          createdQuantity: 3,
+          reason: 'Geracao administrativa do lote',
+          requestId: 'request-1',
+        }),
+      }),
+    );
+    expect(prisma.claimCode.createManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            actionId: 'action-1',
+            code: 'CCCC-CCCC',
+            isActive: true,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            batchId: expect.any(String),
+          }),
+          expect.objectContaining({
+            actionId: 'action-1',
+            code: 'AAAA-AAAA',
+            isActive: true,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            batchId: expect.any(String),
+          }),
+          expect.objectContaining({
+            actionId: 'action-1',
+            code: 'BBBB-BBBB',
+            isActive: true,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            batchId: expect.any(String),
+          }),
+        ]),
+        skipDuplicates: true,
+        select: { id: true, code: true },
+      }),
+    );
   });
 
   it('creates a batch inside a transaction', async () => {
@@ -270,6 +474,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
     });
     jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
     prisma.claimCode.createManyAndReturn.mockResolvedValue([
@@ -286,6 +491,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'inactive-action',
       name: 'Atividade encerrada',
+      isActive: false,
     });
     jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
     prisma.claimCode.createManyAndReturn.mockResolvedValue([
@@ -294,14 +500,15 @@ describe('ClaimCodesRepository', () => {
 
     await expect(
       generateBatch(repository, 'inactive-action', 1),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       action: { id: 'inactive-action', name: 'Atividade encerrada' },
       quantity: 1,
       codes: ['AAAA-AAAA'],
+      batch: { createdQuantity: 1 },
     });
     expect(prisma.action.findUnique).toHaveBeenCalledWith({
       where: { id: 'inactive-action' },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isActive: true },
     });
   });
 
@@ -310,6 +517,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
     });
     jest
       .spyOn(eventCode, 'generateClaimCode')
@@ -330,8 +538,20 @@ describe('ClaimCodesRepository', () => {
       2,
       expect.objectContaining({
         data: [
-          { actionId: 'action-1', code: 'DDDD-DDDD', isActive: true },
-          { actionId: 'action-1', code: 'EEEE-EEEE', isActive: true },
+          expect.objectContaining({
+            actionId: 'action-1',
+            code: 'DDDD-DDDD',
+            isActive: true,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            batchId: expect.any(String),
+          }),
+          expect.objectContaining({
+            actionId: 'action-1',
+            code: 'EEEE-EEEE',
+            isActive: true,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            batchId: expect.any(String),
+          }),
         ],
       }),
     );
@@ -342,6 +562,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
     });
     jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
     prisma.claimCode.createManyAndReturn.mockResolvedValue([]);
@@ -359,10 +580,33 @@ describe('ClaimCodesRepository', () => {
     let insertCalls = 0;
     const tx = {
       action: prisma.action,
+      claimCodeBatch: {
+        create: jest.fn().mockResolvedValue({
+          id: 'batch-1',
+          actionId: 'action-1',
+          createdByAdminId: 'admin-1',
+          requestedQuantity: 2,
+          createdQuantity: 2,
+          reason: 'Geracao administrativa do lote',
+          requestId: 'request-1',
+          createdAt: new Date('2026-08-22T12:00:00.000Z'),
+          action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+          createdByAdmin: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+        }),
+      },
       claimCode: {
         createManyAndReturn: jest.fn(
           (args: {
-            data: Array<{ code: string; actionId: string; isActive: boolean }>;
+            data: Array<{
+              code: string;
+              actionId: string;
+              batchId: string;
+              isActive: boolean;
+            }>;
           }) => {
             insertCalls += 1;
             const codes = args.data.map(({ code }) => code);
@@ -378,6 +622,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
     });
     jest.spyOn(eventCode, 'generateClaimCode').mockReturnValue('AAAA-AAAA');
     prisma.$transaction.mockImplementation(
@@ -401,6 +646,7 @@ describe('ClaimCodesRepository', () => {
     prisma.action.findUnique.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
     });
     let generationAttempts = 0;
     jest.spyOn(eventCode, 'generateClaimCode').mockImplementation(() => {

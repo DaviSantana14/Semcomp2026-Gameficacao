@@ -55,6 +55,51 @@ describe('ClaimCodesController', () => {
       { actorAdminId: 'admin-1', requestId: 'request-1' },
     );
   });
+
+  it('delegates batch list and detail queries', async () => {
+    const service = {
+      findBatches: jest.fn().mockResolvedValue({ items: [], meta: {} }),
+      findBatch: jest.fn().mockResolvedValue({ id: 'batch-1' }),
+    };
+    const controller = new ClaimCodesController(service as never);
+    const query = { page: 1, limit: 20, actionId: 'action-1' };
+
+    await expect(controller.findBatches(query as never)).resolves.toEqual({
+      items: [],
+      meta: {},
+    });
+    await expect(controller.findBatch('batch-1')).resolves.toEqual({
+      id: 'batch-1',
+    });
+    expect(service.findBatches).toHaveBeenCalledWith(query);
+    expect(service.findBatch).toHaveBeenCalledWith('batch-1');
+  });
+
+  it('downloads sorted persisted codes as a no-store text attachment', async () => {
+    const service = {
+      getBatchCodes: jest.fn().mockResolvedValue(['BBBB-BBBB', 'AAAA-AAAA']),
+    };
+    const controller = new ClaimCodesController(service as never);
+    const setHeader = jest.fn();
+    const send = jest.fn().mockReturnThis();
+
+    await controller.downloadBatchText('batch-1', {
+      setHeader,
+      send,
+    } as never);
+
+    expect(service.getBatchCodes).toHaveBeenCalledWith('batch-1');
+    expect(setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'text/plain; charset=utf-8',
+    );
+    expect(setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    expect(setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'attachment; filename="codigos-batch-1.txt"',
+    );
+    expect(send).toHaveBeenCalledWith('AAAA-AAAA\nBBBB-BBBB\n');
+  });
 });
 
 describe('Claim code admin DTOs', () => {

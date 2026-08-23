@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -18,7 +19,12 @@ import { AdminOperationContext } from '../common/request-context';
 import { maskClaimCode } from '../common/claim-code-mask';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { generateClaimCode } from '../common/event-code';
-import { ClaimCodesRepository } from './claim-codes.repository';
+import {
+  ClaimCodeBatchRecordWithCounts,
+  ClaimCodesRepository,
+} from './claim-codes.repository';
+import { ClaimCodeBatchSummary } from './dto/claim-code-batch-response.dto';
+import { ClaimCodeBatchesQueryDto } from './dto/claim-code-batches-query.dto';
 import { ClaimCodesQueryDto } from './dto/claim-codes-query.dto';
 import { ClaimCodeStatus } from './dto/claim-code-history-response.dto';
 import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
@@ -45,6 +51,18 @@ export class ClaimCodesService {
       if (!action) {
         throw new NotFoundException('Atividade pontuável não encontrada.');
       }
+      // The batch FK is immediate in PostgreSQL, so create the batch first
+      // inside this transaction; any incomplete generation rolls both writes back.
+      const batchId = randomUUID();
+      const createdBatch = await repository.createBatch({
+        id: batchId,
+        actionId: action.id,
+        createdByAdminId: context.actorAdminId,
+        requestedQuantity: quantity,
+        createdQuantity: quantity,
+        reason: dto.reason,
+        requestId: context.requestId,
+      });
       const insertedCodes: string[] = [];
       for (
         let round = 0;
@@ -61,7 +79,7 @@ export class ClaimCodesService {
         ) {
           candidates.add(generateClaimCode());
         }
-        const inserted = await repository.insertClaimCodes(actionId, [
+        const inserted = await repository.insertClaimCodes(actionId, batchId, [
           ...candidates,
         ]);
         insertedCodes.push(...inserted.map(({ code }) => code));
@@ -71,7 +89,6 @@ export class ClaimCodesService {
           'Não foi possível gerar o lote completo de códigos.',
         );
       }
-      const batchId = randomUUID();
       await this.audit.record(repository.auditWriter!, {
         actor: { actorType: AuditActorType.ADMIN, ...context },
         operation: AuditOperation.CLAIM_CODE_BATCH_GENERATED,
@@ -85,12 +102,69 @@ export class ClaimCodesService {
           actionId: action.id,
         },
       });
+      const batch = this.toBatchSummary({
+        ...createdBatch,
+        createdQuantity: insertedCodes.length,
+        counts: action.isActive
+          ? {
+              available: insertedCodes.length,
+              disabled: 0,
+              used: 0,
+              blocked: 0,
+            }
+          : {
+              available: 0,
+              disabled: 0,
+              used: 0,
+              blocked: insertedCodes.length,
+            },
+      });
       return {
-        action,
+        batch,
+        action: { id: action.id, name: action.name },
         quantity: insertedCodes.length,
         codes: insertedCodes.sort(),
       };
     });
+  }
+
+  async findBatches(query: ClaimCodeBatchesQueryDto) {
+    const from = this.parseDate(query.from, 'from');
+    const to = this.parseDate(query.to, 'to');
+    if (from && to && from > to) {
+      throw new BadRequestException('O intervalo de datas é inválido.');
+    }
+
+    const page = await this.repository.findBatches({
+      page: query.page,
+      limit: query.limit,
+      actionId: query.actionId,
+      actorAdminId: query.actorAdminId,
+      from,
+      to,
+    });
+    return paginate(
+      page.rows.map((row) => this.toBatchSummary(row)),
+      page.total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  async findBatch(id: string) {
+    const batch = await this.repository.findBatch(id);
+    if (!batch) {
+      throw new NotFoundException('Lote de códigos não encontrado.');
+    }
+    return this.toBatchSummary(batch);
+  }
+
+  async getBatchCodes(id: string) {
+    const codes = await this.repository.getBatchCodes(id);
+    if (!codes) {
+      throw new NotFoundException('Lote de códigos não encontrado.');
+    }
+    return codes;
   }
 
   async findAll(query: ClaimCodesQueryDto) {
@@ -191,5 +265,41 @@ export class ClaimCodesService {
       action: { id: row.action.id, name: row.action.name },
       status,
     };
+  }
+
+  private toBatchSummary(
+    row: ClaimCodeBatchRecordWithCounts & {
+      createdQuantity: number;
+    },
+  ): ClaimCodeBatchSummary {
+    return {
+      id: row.id,
+      action: { id: row.action.id, name: row.action.name },
+      createdBy: {
+        id: row.createdByAdmin.id,
+        name: row.createdByAdmin.name,
+        email: row.createdByAdmin.email,
+      },
+      requestedQuantity: row.requestedQuantity,
+      createdQuantity: row.createdQuantity,
+      reason: row.reason,
+      requestId: row.requestId,
+      createdAt:
+        row.createdAt instanceof Date
+          ? row.createdAt.toISOString()
+          : row.createdAt,
+      counts: row.counts,
+    };
+  }
+
+  private parseDate(value: string | undefined, field: 'from' | 'to') {
+    if (value === undefined) return undefined;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(
+        `O campo ${field} contém uma data inválida.`,
+      );
+    }
+    return date;
   }
 }

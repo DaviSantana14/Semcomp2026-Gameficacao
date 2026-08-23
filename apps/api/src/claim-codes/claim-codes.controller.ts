@@ -3,14 +3,17 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBody,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -19,11 +22,13 @@ import {
   ApiHeader,
   ApiNotFoundResponse,
   ApiOperation,
+  ApiProduces,
   ApiSecurity,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CsrfGuard } from '../auth/csrf.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -34,6 +39,12 @@ import {
   type AuthenticatedRequest,
 } from '../common/request-context';
 import { ClaimCodesService } from './claim-codes.service';
+import { serializeClaimCodeBatchText } from './claim-code-batch-text';
+import { ClaimCodeBatchesQueryDto } from './dto/claim-code-batches-query.dto';
+import {
+  ClaimCodeBatchResponseDto,
+  ClaimCodeBatchesPageResponseDto,
+} from './dto/claim-code-batch-response.dto';
 import { GenerateClaimCodesDto } from './dto/generate-claim-codes.dto';
 import { GeneratedClaimCodesResponseDto } from './dto/generated-claim-codes-response.dto';
 import { ClaimCodesQueryDto } from './dto/claim-codes-query.dto';
@@ -56,6 +67,42 @@ export class ClaimCodesController {
   @ApiOkResponse({ type: ClaimCodesPageResponseDto })
   findAll(@Query() query: ClaimCodesQueryDto) {
     return this.claimCodesService.findAll(query);
+  }
+
+  @Get('claim-code-batches')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Listar lotes de códigos de uso único (admin)' })
+  @ApiOkResponse({ type: ClaimCodeBatchesPageResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  findBatches(@Query() query: ClaimCodeBatchesQueryDto) {
+    return this.claimCodesService.findBatches(query);
+  }
+
+  @Get('claim-code-batches/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Consultar lote de códigos de uso único (admin)' })
+  @ApiOkResponse({ type: ClaimCodeBatchResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  findBatch(@Param('id') id: string) {
+    return this.claimCodesService.findBatch(id);
+  }
+
+  @Get('claim-code-batches/:id/download.txt')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Baixar códigos persistidos de um lote (admin)' })
+  @ApiProduces('text/plain')
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  @Header('Cache-Control', 'no-store')
+  async downloadBatchText(@Param('id') id: string, @Res() response: Response) {
+    const codes = await this.claimCodesService.getBatchCodes(id);
+    const safeBatchId = id.replace(/[^A-Za-z0-9_-]/g, '_');
+    response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="codigos-${safeBatchId}.txt"`,
+    );
+    response.send(serializeClaimCodeBatchText(codes));
   }
 
   @Patch('claim-codes/:id/status')

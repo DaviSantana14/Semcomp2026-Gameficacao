@@ -17,9 +17,37 @@ const claimCodeHistorySelect = {
   usedBy: { select: { id: true, name: true, email: true } },
 } as const;
 
+const claimCodeBatchSelect = {
+  id: true,
+  actionId: true,
+  createdByAdminId: true,
+  requestedQuantity: true,
+  createdQuantity: true,
+  reason: true,
+  requestId: true,
+  createdAt: true,
+  action: { select: { id: true, name: true, isActive: true } },
+  createdByAdmin: { select: { id: true, name: true, email: true } },
+} as const;
+
+const emptyBatchCounts = () => ({
+  available: 0,
+  disabled: 0,
+  used: 0,
+  blocked: 0,
+});
+
+type ClaimCodeBatchRecord = Prisma.ClaimCodeBatchGetPayload<{
+  select: typeof claimCodeBatchSelect;
+}>;
+
+export type ClaimCodeBatchRecordWithCounts = ClaimCodeBatchRecord & {
+  counts: ReturnType<typeof emptyBatchCounts>;
+};
+
 type ClaimCodesDatabase = Pick<
   Prisma.TransactionClient,
-  'action' | 'claimCode'
+  'action' | 'claimCode' | 'claimCodeBatch'
 >;
 
 export interface ClaimCodePageFilter {
@@ -28,6 +56,25 @@ export interface ClaimCodePageFilter {
   search?: string;
   actionId?: string;
   state?: 'available' | 'disabled' | 'blocked' | 'used';
+}
+
+export interface ClaimCodeBatchCreateInput {
+  id: string;
+  actionId: string;
+  createdByAdminId: string;
+  requestedQuantity: number;
+  createdQuantity: number;
+  reason: string;
+  requestId: string;
+}
+
+export interface ClaimCodeBatchPageFilter {
+  page: number;
+  limit: number;
+  actionId?: string;
+  actorAdminId?: string;
+  from?: Date;
+  to?: Date;
 }
 
 @Injectable()
@@ -56,16 +103,69 @@ export class ClaimCodesRepository {
   findActionForCodeBatch(actionId: string) {
     return this.client.action.findUnique({
       where: { id: actionId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isActive: true },
     });
   }
 
-  insertClaimCodes(actionId: string, codes: string[]) {
+  createBatch(input: ClaimCodeBatchCreateInput) {
+    return this.client.claimCodeBatch.create({
+      data: input,
+      select: claimCodeBatchSelect,
+    });
+  }
+
+  insertClaimCodes(actionId: string, batchId: string, codes: string[]) {
     return this.client.claimCode.createManyAndReturn({
-      data: codes.map((code) => ({ code, actionId, isActive: true })),
+      data: codes.map((code) => ({
+        code,
+        actionId,
+        batchId,
+        isActive: true,
+      })),
       skipDuplicates: true,
+      select: { id: true, code: true },
+    });
+  }
+
+  async findBatches(filter: ClaimCodeBatchPageFilter) {
+    const where = this.buildBatchWhere(filter);
+    const [total, rows] = await Promise.all([
+      this.client.claimCodeBatch.count({ where }),
+      this.client.claimCodeBatch.findMany({
+        where,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: claimCodeBatchSelect,
+      }),
+    ]);
+
+    return { rows: await this.withBatchCounts(rows), total };
+  }
+
+  async findBatch(id: string) {
+    const row = await this.client.claimCodeBatch.findUnique({
+      where: { id },
+      select: claimCodeBatchSelect,
+    });
+    if (!row) return null;
+    const [withCounts] = await this.withBatchCounts([row]);
+    return withCounts ?? null;
+  }
+
+  async getBatchCodes(id: string) {
+    const batch = await this.client.claimCodeBatch.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!batch) return null;
+
+    const rows = await this.client.claimCode.findMany({
+      where: { batchId: id },
+      orderBy: { code: 'asc' },
       select: { code: true },
     });
+    return rows.map(({ code }) => code);
   }
 
   async findClaimCodePage(filter: ClaimCodePageFilter) {
@@ -119,6 +219,56 @@ export class ClaimCodesRepository {
       where: { id },
       select: claimCodeHistorySelect,
     });
+  }
+
+  private buildBatchWhere(
+    filter: ClaimCodeBatchPageFilter,
+  ): Prisma.ClaimCodeBatchWhereInput {
+    return {
+      ...(filter.actionId && { actionId: filter.actionId }),
+      ...(filter.actorAdminId && { createdByAdminId: filter.actorAdminId }),
+      ...((filter.from || filter.to) && {
+        createdAt: {
+          ...(filter.from && { gte: filter.from }),
+          ...(filter.to && { lte: filter.to }),
+        },
+      }),
+    };
+  }
+
+  private async withBatchCounts(rows: ClaimCodeBatchRecord[]) {
+    if (rows.length === 0) return [] as ClaimCodeBatchRecordWithCounts[];
+
+    const grouped = await this.client.claimCode.groupBy({
+      by: ['batchId', 'isUsed', 'isActive'],
+      where: { batchId: { in: rows.map(({ id }) => id) } },
+      _count: { _all: true },
+    });
+    const countsByBatch = new Map<
+      string,
+      ReturnType<typeof emptyBatchCounts>
+    >();
+
+    for (const group of grouped) {
+      if (!group.batchId) continue;
+      const counts = countsByBatch.get(group.batchId) ?? emptyBatchCounts();
+      const count = group._count._all;
+      if (group.isUsed) {
+        counts.used += count;
+      } else if (!group.isActive) {
+        counts.disabled += count;
+      } else {
+        const row = rows.find(({ id }) => id === group.batchId);
+        if (row?.action.isActive) counts.available += count;
+        else counts.blocked += count;
+      }
+      countsByBatch.set(group.batchId, counts);
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      counts: countsByBatch.get(row.id) ?? emptyBatchCounts(),
+    }));
   }
 
   private transactional(tx: Prisma.TransactionClient) {
