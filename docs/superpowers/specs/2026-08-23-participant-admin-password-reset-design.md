@@ -1,5 +1,10 @@
 # Reset administrativo de senha de participantes
 
+> Substituído para a execução do Marco 13 por
+> `2026-08-23-marco-13-specialized-admin-permissions-design.md` e
+> `../plans/2026-08-23-marco-13-specialized-admin-permissions.md`. Os detalhes
+> deste reset permanecem incorporados nos documentos completos.
+
 ## Contexto
 
 Participantes autenticam com email e senha, sem envio de email e sem fluxo de

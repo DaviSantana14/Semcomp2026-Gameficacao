@@ -1,5 +1,10 @@
 # Participant Admin Password Reset Implementation Plan
 
+> Substituído para a execução do Marco 13 por
+> `../specs/2026-08-23-marco-13-specialized-admin-permissions-design.md` e
+> `2026-08-23-marco-13-specialized-admin-permissions.md`. Os detalhes deste
+> reset permanecem incorporados nos documentos completos.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an audited administrative participant-password reset that issues a 24-hour temporary password and forces the participant to choose a definitive password before accessing the application.

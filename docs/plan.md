@@ -570,29 +570,87 @@ dependente de dispositivos Android/iPhone em HTTPS.
 Objetivo: permitir que mais pessoas operem o evento sem conceder acesso total a
 todas as áreas administrativas.
 
-Tarefas:
-- Definir matriz de permissões para administrador geral, equipe da lojinha e equipe de atividades/códigos.
-- Separar autorização por capacidade no backend; ocultar navegação no frontend apenas como complemento visual.
-- Restringir dados pessoais e ajustes financeiros/pontos aos perfis que realmente necessitam deles.
-- Integrar cada ação desses perfis ao log de auditoria do Marco 10.
-- Criar provisionamento de novos operadores com código de ativação de uso único,
-  validade curta, armazenamento somente do hash e exibição única por canal
-  operacional controlado, sem email. O operador define sua própria senha no
-  primeiro acesso por HTTPS; o código nunca substitui a senha em acessos
-  posteriores.
-- Implementar bloqueio/desativação e reset manual auditado de senha
-  administrativa, sem fluxo de recuperação por email. Reset revoga sessões,
-  invalida a credencial anterior e exige nova ativação.
-- Aplicar limites específicos às mutações de cada perfil, usando o ID do
-  operador como chave e preservando o motivo de auditoria.
-- Criar testes e2e cobrindo permissão concedida, acesso negado e tentativa por chamada direta à API.
+Documentos de execução:
+- Especificação completa:
+  `docs/superpowers/specs/2026-08-23-marco-13-specialized-admin-permissions-design.md`.
+- Plano completo:
+  `docs/superpowers/plans/2026-08-23-marco-13-specialized-admin-permissions.md`.
+
+### Perfis e autorização
+
+- Manter `UserRole.ADMIN` como identidade administrativa e adicionar os perfis
+  fixos `GENERAL`, `SHOP` e `ACTIVITIES`.
+- Definir uma matriz estática de capacidades: administrador geral tem acesso
+  completo; lojinha acessa apenas catálogo e transições de resgates;
+  atividades/códigos acessa apenas actions, códigos reutilizáveis e claim codes.
+- Aplicar autorização por capacidade em todas as rotas administrativas do
+  backend. Navegação filtrada e redirects no frontend são somente complemento
+  visual e não substituem a validação da API.
+- Restringir CPF, email, detalhe de participante, ajustes financeiros/pontos,
+  reconciliação, auditoria, presença, segurança e exportações com PII ao
+  administrador geral. Telas operacionais recebem apenas ID e nome necessários.
+
+### Cadastro e ciclo de vida de operadores
+
+- Permitir que um administrador geral cadastre outros administradores gerais,
+  operadores da lojinha e operadores de atividades/códigos.
+- Provisionar cada novo operador como pendente, com código de ativação de uso
+  único, pelo menos 100 bits de entropia, validade de 1 hora, armazenamento
+  somente do hash e exibição única, sem email e sem código na URL.
+- Exigir que o operador informe código, CPF e email e defina a própria senha na
+  página pública de ativação por HTTPS. A ativação não inicia sessão e o código
+  nunca funciona como senha posterior.
+- Permitir correção auditada de identidade/perfil, bloqueio, desbloqueio,
+  desativação e reset administrativo. Bloqueio/desativação e mudança de perfil
+  revogam sessões conforme o plano.
+- Fazer o reset administrativo revogar sessões e códigos anteriores, invalidar
+  a senha, voltar a conta para pendente e emitir uma nova ativação de 1 hora.
+- Impedir, inclusive sob concorrência, que o último administrador geral ativo
+  seja bloqueado, desativado, resetado ou movido para outro perfil.
+- Manter o bootstrap via Session Manager como recuperação de emergência quando
+  não existir administrador geral ativo; não criar recuperação por email.
+
+### Reset administrativo de participante
+
+- Permitir que somente o administrador geral gere senha temporária de
+  participante com exibição única e validade de 24 horas, sempre com motivo.
+- Revogar sessões e substituir a credencial anterior no reset. Enquanto a troca
+  estiver pendente, a sessão temporária acessa somente CSRF, logout e a definição
+  da senha definitiva.
+- Exigir senha definitiva diferente da temporária, revogar novamente as sessões
+  ao concluir e exigir novo login. Reset expirado ou substituído falha sem
+  revelar detalhes da credencial.
+
+### Auditoria, limites e testes
+
+- Auditar cadastro, edição, status, ativação/reset de operador e reset de
+  participante no log do Marco 10, sem código, senha temporária, senha
+  definitiva ou hash em snapshots/metadata.
+- Aplicar limites específicos para ativação, gestão de operadores, reset de
+  participante, lojinha e atividades/códigos. Mutações autenticadas usam o ID do
+  operador; ativação usa chave HMAC de CPF + email sem PII em claro.
+- Criar testes unitários, de arquitetura e e2e para a matriz completa, chamadas
+  diretas à API, ausência de PII, ativação expirada/reutilizada/concorrente,
+  ciclo de vida, último administrador geral e reset obrigatório de participante.
 
 Critério de aceite:
-- Equipe da lojinha opera catálogo e entregas sem acessar códigos ou ajustes de participantes.
-- Equipe de atividades/códigos opera apenas seu domínio.
-- Administrador geral mantém acesso completo e todas as restrições são garantidas no backend.
-- Novo operador só entra depois de ativação única por HTTPS; código expirado ou
-  reutilizado falha, e bloqueio/reset encerra suas sessões existentes.
+- Administrador geral cadastra qualquer um dos três perfis e recebe uma única
+  exibição do código de ativação válido por 1 hora.
+- Equipe da lojinha opera catálogo, entregas e cancelamentos sem acessar códigos,
+  participantes, pontos, auditoria, segurança, exportações ou operadores.
+- Equipe de atividades/códigos opera actions e códigos sem acessar lojinha,
+  participantes, pontos, auditoria, segurança, exportações ou operadores.
+- Administrador geral mantém acesso completo; todas as restrições são garantidas
+  no backend e chamadas diretas negadas não alteram o banco.
+- Novo operador só entra depois de ativação única por HTTPS; código expirado,
+  substituído, reutilizado ou submetido concorrentemente falha, e bloqueio,
+  desativação ou reset encerra as sessões previstas.
+- O último administrador geral ativo permanece protegido sob concorrência.
+- Reset de participante invalida senha/sessões anteriores, restringe a sessão
+  temporária à troca obrigatória e exige novo login com a senha definitiva.
+- Nenhum código, senha ou hash aparece em banco fora do campo de hash, logs,
+  auditoria, métricas, URLs, toasts ou cache de consultas.
+- Prisma, testes unitários/e2e, lint e builds da API e do frontend passam.
 
 ## Marco 14 — Preparação final e go-live
 
