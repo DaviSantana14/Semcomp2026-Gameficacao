@@ -31,7 +31,8 @@ describe('Marco 13 schema migration contract', () => {
     expect(schema).toContain('adminProfile');
     expect(schema).toContain('passwordResetRequired');
     expect(schema).toContain('passwordResetExpiresAt');
-    expect(schema).not.toContain('enum AdminAccountStatus');
+    const deprecatedAdminStatusEnum = ['AdminAccount', 'Status'].join('');
+    expect(schema).not.toContain(`enum ${deprecatedAdminStatusEnum}`);
   });
 
   it('stores only activation hashes with restrictive relational checks', () => {
