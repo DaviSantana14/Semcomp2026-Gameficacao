@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { login, logout } from "@/features/auth/auth.service";
+import {
+  changeRequiredPassword,
+  fetchSessionSecurity,
+  login,
+  logout,
+} from "@/features/auth/auth.service";
+import { resetParticipantPassword } from "@/features/participants/participants.service";
 import { apiFetch } from "./client";
 import { clearCsrfToken, setCsrfToken } from "./csrf";
 
@@ -219,5 +225,116 @@ describe("HTTP response handling", () => {
     );
 
     await expect(apiFetch("/invalid")).rejects.toThrow("first second");
+  });
+
+  it("preserves a coded API error for feature-specific handling", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        {
+          statusCode: 403,
+          code: "PASSWORD_CHANGE_REQUIRED",
+          message: "Defina uma nova senha para continuar.",
+        },
+        403,
+      ),
+    );
+
+    await expect(apiFetch("/users/me")).rejects.toMatchObject({
+      status: 403,
+      code: "PASSWORD_CHANGE_REQUIRED",
+      message: "Defina uma nova senha para continuar.",
+    });
+  });
+
+  it("sends the participant reset reason and replacement decision", async () => {
+    setCsrfToken("csrf-token");
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({
+        temporaryPassword: "temporary-password",
+        expiresAt: "2026-08-24T12:00:00.000Z",
+      }),
+    );
+
+    await resetParticipantPassword("participant-1", {
+      reason: "Acesso administrativo solicitado",
+      replacePending: true,
+    });
+
+    expect(fetch).toHaveBeenCalledOnce();
+    const [input, options] = vi.mocked(fetch).mock.calls[0];
+    expect(input).toContain("/admin/participants/participant-1/password-reset");
+    expect(options?.method).toBe("POST");
+    expect(options?.body).toBe(
+      JSON.stringify({
+        reason: "Acesso administrativo solicitado",
+        replacePending: true,
+      }),
+    );
+  });
+});
+
+describe("required password change transport", () => {
+  beforeEach(() => {
+    clearCsrfToken();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  it("loads session security and installs the returned CSRF token", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({ csrfToken: "session-token", passwordChangeRequired: true }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await expect(fetchSessionSecurity()).resolves.toEqual({
+      csrfToken: "session-token",
+      passwordChangeRequired: true,
+    });
+    await apiFetch("/allowed-after-security", { method: "POST" });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(new Headers(vi.mocked(fetch).mock.calls[1][1]?.headers).get("X-CSRF-Token")).toBe(
+      "session-token",
+    );
+  });
+
+  it("clears the client CSRF token only after a successful definitive change", async () => {
+    setCsrfToken("temporary-session-token");
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ csrfToken: "fresh-token" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await changeRequiredPassword({ newPassword: "definitive-password" });
+    await apiFetch("/after-password-change", { method: "POST" });
+
+    expect(vi.mocked(fetch).mock.calls[1][0]).toContain("/auth/csrf");
+    expect(new Headers(vi.mocked(fetch).mock.calls[2][1]?.headers).get("X-CSRF-Token")).toBe(
+      "fresh-token",
+    );
+  });
+
+  it("keeps the CSRF token when the definitive change fails", async () => {
+    setCsrfToken("temporary-session-token");
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            code: "PASSWORD_MUST_CHANGE",
+            message: "Escolha uma senha diferente da temporária.",
+          },
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await expect(
+      changeRequiredPassword({ newPassword: "temporary-password" }),
+    ).rejects.toMatchObject({ code: "PASSWORD_MUST_CHANGE" });
+    await apiFetch("/retry-password-change", { method: "POST" });
+
+    expect(new Headers(vi.mocked(fetch).mock.calls[1][1]?.headers).get("X-CSRF-Token")).toBe(
+      "temporary-session-token",
+    );
   });
 });

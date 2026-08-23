@@ -50,7 +50,13 @@ export function LoginForm() {
       });
 
       toast.success("Login realizado.");
-      router.replace(response.user.role === "ADMIN" ? "/admin" : "/home");
+      router.replace(
+        response.user.passwordChangeRequired
+          ? "/trocar-senha"
+          : response.user.role === "ADMIN"
+            ? "/admin"
+            : "/home",
+      );
     } catch (error) {
       const message =
         error instanceof ApiError

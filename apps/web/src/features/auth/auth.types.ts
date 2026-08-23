@@ -32,3 +32,12 @@ export type LoginResponse = {
   user: User;
   csrfToken: string;
 };
+
+export type SessionSecurityResponse = {
+  csrfToken: string;
+  passwordChangeRequired: boolean;
+};
+
+export type ChangeRequiredPasswordPayload = {
+  newPassword: string;
+};

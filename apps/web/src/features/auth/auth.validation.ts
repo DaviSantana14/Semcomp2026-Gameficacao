@@ -56,3 +56,13 @@ export const adminActivationSchema = z
     message: "As senhas precisam ser iguais.",
     path: ["passwordConfirmation"],
   });
+
+export const requiredPasswordChangeSchema = z
+  .object({
+    newPassword: participantPasswordSchema,
+    passwordConfirmation: z.string().min(1, "Confirme a nova senha."),
+  })
+  .refine((values) => values.newPassword === values.passwordConfirmation, {
+    message: "As senhas precisam ser iguais.",
+    path: ["passwordConfirmation"],
+  });

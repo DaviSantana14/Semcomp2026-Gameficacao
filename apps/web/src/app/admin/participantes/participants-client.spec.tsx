@@ -36,6 +36,8 @@ const participant = {
   xp: 50,
   level: 1,
   isActive: true,
+  passwordResetRequired: false,
+  passwordResetExpiresAt: null,
   lastLoginAt: null,
   actionRedemptionsCount: 2,
   pendingRewardRedemptionsCount: 1,

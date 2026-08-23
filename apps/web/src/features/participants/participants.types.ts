@@ -9,11 +9,23 @@ export type AdminParticipant = {
   xp: number;
   level: number;
   isActive: boolean;
+  passwordResetRequired: boolean;
+  passwordResetExpiresAt: string | null;
   lastLoginAt: string | null;
   actionRedemptionsCount: number;
   pendingRewardRedemptionsCount: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ParticipantPasswordResetPayload = {
+  reason: string;
+  replacePending: boolean;
+};
+
+export type ParticipantPasswordResetResult = {
+  temporaryPassword: string;
+  expiresAt: string;
 };
 
 export type AdminParticipantDetail = AdminParticipant & {

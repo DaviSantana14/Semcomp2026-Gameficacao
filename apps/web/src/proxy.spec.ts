@@ -33,4 +33,19 @@ describe("proxy", () => {
     expect(response.headers.get("location")).toBeNull();
     expect(config.matcher).toContain("/ativar-admin");
   });
+
+  it("requires a session for the required password change page", () => {
+    const response = proxy(new NextRequest("http://semcomp.test/trocar-senha"));
+
+    expect(response.headers.get("location")).toBe("http://semcomp.test/login");
+    expect(config.matcher).toContain("/trocar-senha");
+  });
+
+  it("allows a session to reach the required password change page", () => {
+    const request = new NextRequest("http://semcomp.test/trocar-senha", {
+      headers: { Cookie: "access_token=session-token" },
+    });
+
+    expect(proxy(request).headers.get("location")).toBeNull();
+  });
 });

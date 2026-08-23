@@ -39,6 +39,13 @@ function createUser(role: UserRole): User {
   };
 }
 
+function createParticipantWithRequiredPassword(): User {
+  return {
+    ...createUser("PARTICIPANT"),
+    passwordChangeRequired: true,
+  };
+}
+
 async function submitValidLogin() {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(/^e-?mail$/i), "Davi@Example.com");
@@ -99,5 +106,19 @@ describe("LoginForm", () => {
     await submitValidLogin();
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/admin"));
+  });
+
+  it("direciona participante com reset pendente para a troca obrigatória", async () => {
+    loginMock.mockResolvedValue({
+      csrfToken: "csrf-token",
+      user: createParticipantWithRequiredPassword(),
+    });
+    render(<LoginForm />);
+
+    await submitValidLogin();
+
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith("/trocar-senha"),
+    );
   });
 });

@@ -9,6 +9,8 @@ import type {
   AdminParticipantsFilters,
   AdminPointEventsFilters,
   AdminRewardRedemptionsFilters,
+  ParticipantPasswordResetPayload,
+  ParticipantPasswordResetResult,
 } from "./participants.types";
 
 export function fetchAdminParticipants(filters: AdminParticipantsFilters) {
@@ -50,4 +52,17 @@ export function updateParticipantStatus(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function resetParticipantPassword(
+  id: string,
+  payload: ParticipantPasswordResetPayload,
+) {
+  return apiFetch<ParticipantPasswordResetResult>(
+    `/admin/participants/${id}/password-reset`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
