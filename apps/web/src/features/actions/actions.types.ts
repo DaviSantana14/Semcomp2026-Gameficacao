@@ -136,6 +136,48 @@ export type UpdateClaimCodeStatusPayload = {
   reason: string;
 };
 
+export type ClaimCodeBulkOutcome =
+  | "CHANGED"
+  | "ALREADY_IN_STATE"
+  | "ALREADY_USED"
+  | "NOT_FOUND";
+
+export type ClaimCodeBulkCounts = {
+  selected: number;
+  changed: number;
+  unchanged: number;
+  used: number;
+  notFound: number;
+};
+
+export type ClaimCodeBulkOperationItem = {
+  requestedClaimCodeId: string;
+  claimCodeId: string | null;
+  maskedCode: string | null;
+  outcome: ClaimCodeBulkOutcome;
+};
+
+export type ClaimCodeBulkOperationSummary = {
+  id: string;
+  actor: { id: string; name: string; email: string };
+  targetIsActive: boolean;
+  reason: string;
+  requestId: string;
+  counts: ClaimCodeBulkCounts;
+  createdAt: string;
+};
+
+export type ClaimCodeBulkOperationDetail = ClaimCodeBulkOperationSummary & {
+  items: ClaimCodeBulkOperationItem[];
+};
+
+export type BulkUpdateClaimCodesPayload = {
+  ids: string[];
+  isActive: boolean;
+  reason: string;
+  confirmation: "ATIVAR" | "DESATIVAR";
+};
+
 export type GeneratedClaimCodesResponse = {
   batch: ClaimCodeBatchSummary;
   action: Pick<Action, "id" | "name">;

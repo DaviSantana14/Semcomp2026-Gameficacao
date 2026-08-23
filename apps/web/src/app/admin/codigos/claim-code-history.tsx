@@ -9,11 +9,19 @@ import {
   fetchAdminClaimCodes,
   updateClaimCodeStatus,
 } from "@/features/actions/actions.service";
-import type { AdminClaimCode } from "@/features/actions/actions.types";
+import type {
+  AdminClaimCode,
+  ClaimCodeBulkOperationDetail,
+} from "@/features/actions/actions.types";
 import { ApiError } from "@/lib/http/api-error";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
+import {
+  ClaimCodeBulkDialog,
+  MAX_CLAIM_CODE_BULK_SELECTION,
+} from "./claim-code-bulk-dialog";
+import { ClaimCodeBulkReport } from "./claim-code-bulk-report";
 import {
   AdminPanel,
   AdminSectionHeader,
@@ -25,6 +33,29 @@ const status = {
   BLOCKED_BY_ACTION: ["Atividade bloqueada", "pending"],
   USED: ["Utilizado", "inactive"],
 } as const;
+
+function isBulkSelectable(code: AdminClaimCode) {
+  return !code.isUsed && code.status !== "USED";
+}
+
+export function addClaimCodeSelection(
+  selectedIds: ReadonlySet<string>,
+  candidateIds: readonly string[],
+  max = MAX_CLAIM_CODE_BULK_SELECTION,
+) {
+  const selection = new Set(selectedIds);
+  let truncated = false;
+  for (const id of candidateIds) {
+    if (selection.has(id)) continue;
+    if (selection.size >= max) {
+      truncated = true;
+      break;
+    }
+    selection.add(id);
+  }
+  return { selection, truncated };
+}
+
 export function ClaimCodeHistory() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
@@ -35,6 +66,12 @@ export function ClaimCodeHistory() {
   >("all");
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [toggleIntent, setToggleIntent] = useState<AdminClaimCode | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkIntent, setBulkIntent] = useState<
+    "activate" | "deactivate" | null
+  >(null);
+  const [bulkReportId, setBulkReportId] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const actions = useQuery({
     queryKey: ["admin", "actions", "claim-filter"],
     queryFn: () => fetchAdminActions({ page: 1, limit: 100 }),
@@ -85,6 +122,69 @@ export function ClaimCodeHistory() {
         return next;
       }),
   });
+  const pageSelectableIds =
+    query.data?.items.filter(isBulkSelectable).map((code) => code.id) ?? [];
+  const pageIsSelected =
+    pageSelectableIds.length > 0 &&
+    pageSelectableIds.every((id) => selectedIds.has(id));
+
+  function toggleSelected(id: string) {
+    if (
+      !selectedIds.has(id) &&
+      selectedIds.size >= MAX_CLAIM_CODE_BULK_SELECTION
+    ) {
+      setSelectionError(
+        `É possível selecionar no máximo ${MAX_CLAIM_CODE_BULK_SELECTION} códigos.`,
+      );
+      return;
+    }
+    setSelectionError(null);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function togglePageSelection() {
+    if (!pageSelectableIds.length) return;
+    setSelectionError(null);
+    if (pageIsSelected) {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        pageSelectableIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      return;
+    }
+
+    const { selection, truncated } = addClaimCodeSelection(
+      selectedIds,
+      pageSelectableIds,
+    );
+    if (truncated) {
+      setSelectionError(
+        `A seleção foi limitada a ${MAX_CLAIM_CODE_BULK_SELECTION} códigos.`,
+      );
+    }
+    setSelectedIds(selection);
+  }
+
+  async function handleBulkSuccess(operation: ClaimCodeBulkOperationDetail) {
+    setSelectedIds(new Set());
+    setBulkIntent(null);
+    setBulkReportId(operation.id);
+    toast.success("Operação em lote registrada.");
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["admin", "claim-codes"] }),
+      qc.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
+      qc.invalidateQueries({
+        queryKey: ["admin", "claim-code-bulk-operations"],
+      }),
+    ]);
+  }
+
   return (
     <section aria-labelledby="single-code-history-title" className="grid gap-5">
       <AdminSectionHeader
@@ -135,6 +235,49 @@ export function ClaimCodeHistory() {
           <option value="used">Utilizados</option>
         </select>
       </AdminPanel>
+      {query.data?.items.length ? (
+        <AdminPanel className="grid gap-3 p-4 md:flex md:items-center md:justify-between md:p-5">
+          <div className="grid gap-1">
+            <label className="inline-flex min-h-11 items-center gap-3 text-sm font-semibold">
+              <input
+                aria-label="Selecionar todos os códigos disponíveis desta página"
+                checked={pageIsSelected}
+                className="size-5 accent-primary"
+                disabled={!pageSelectableIds.length}
+                onChange={togglePageSelection}
+                type="checkbox"
+              />
+              Selecionar página
+            </label>
+            <p aria-live="polite" className="text-xs text-muted-foreground">
+              {selectedIds.size} {selectedIds.size === 1 ? "código" : "códigos"}{" "}
+              selecionado
+              {selectedIds.size === 1 ? "" : "s"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!selectedIds.size}
+              onClick={() => setBulkIntent("activate")}
+              variant="outline"
+            >
+              Ativar selecionados
+            </Button>
+            <Button
+              disabled={!selectedIds.size}
+              onClick={() => setBulkIntent("deactivate")}
+              variant="outline"
+            >
+              Desativar selecionados
+            </Button>
+          </div>
+          {selectionError ? (
+            <p className="text-sm text-destructive md:col-span-2" role="alert">
+              {selectionError}
+            </p>
+          ) : null}
+        </AdminPanel>
+      ) : null}
       {query.isPending ? (
         <p role="status">Carregando códigos...</p>
       ) : query.error ? (
@@ -149,22 +292,33 @@ export function ClaimCodeHistory() {
                 className="grid gap-4 px-4 py-5 transition-colors hover:bg-muted/25 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-5"
                 key={c.id}
               >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <code className="font-mono text-base font-bold tracking-[0.08em] text-foreground">
-                      {c.code}
-                    </code>
-                    <StatusBadge
-                      label={status[c.status][0]}
-                      status={status[c.status][1]}
+                <div className="flex gap-3">
+                  {isBulkSelectable(c) ? (
+                    <input
+                      aria-label={`Selecionar código ${c.code}`}
+                      checked={selectedIds.has(c.id)}
+                      className="mt-1 size-5 shrink-0 accent-primary"
+                      onChange={() => toggleSelected(c.id)}
+                      type="checkbox"
                     />
+                  ) : null}
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <code className="font-mono text-base font-bold tracking-[0.08em] text-foreground">
+                        {c.code}
+                      </code>
+                      <StatusBadge
+                        label={status[c.status][0]}
+                        status={status[c.status][1]}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {c.action.name} ·{" "}
+                      {c.usedBy
+                        ? `Usado por ${c.usedBy.name} (${c.usedBy.email}) em ${new Date(c.usedAt!).toLocaleString("pt-BR")}`
+                        : `Criado em ${new Date(c.createdAt).toLocaleString("pt-BR")}`}
+                    </p>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {c.action.name} ·{" "}
-                    {c.usedBy
-                      ? `Usado por ${c.usedBy.name} (${c.usedBy.email}) em ${new Date(c.usedAt!).toLocaleString("pt-BR")}`
-                      : `Criado em ${new Date(c.createdAt).toLocaleString("pt-BR")}`}
-                  </p>
                 </div>
                 {c.status !== "USED" ? (
                   <Button
@@ -193,6 +347,20 @@ export function ClaimCodeHistory() {
           Nenhum código encontrado. Ajuste os filtros ou gere um lote.
         </p>
       )}
+      {bulkIntent ? (
+        <ClaimCodeBulkDialog
+          intent={bulkIntent}
+          onClose={() => setBulkIntent(null)}
+          onSuccess={(operation) => void handleBulkSuccess(operation)}
+          selectedIds={selectedIds}
+        />
+      ) : null}
+      {bulkReportId ? (
+        <ClaimCodeBulkReport
+          onClose={() => setBulkReportId(null)}
+          operationId={bulkReportId}
+        />
+      ) : null}
       {toggleIntent ? (
         <AdminReasonDialog
           confirmLabel="Confirmar alteração"

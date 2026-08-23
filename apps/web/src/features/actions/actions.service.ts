@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/http/client";
+import { downloadFile } from "@/lib/http/download";
 import type { PaginatedResponse } from "@/lib/http/pagination.types";
 import { withQuery } from "@/lib/http/query-string";
 import type {
@@ -6,7 +7,9 @@ import type {
   AdminAction,
   AdminActionsFilters,
   AdminClaimCode,
+  BulkUpdateClaimCodesPayload,
   ClaimCodeBatchSummary,
+  ClaimCodeBulkOperationDetail,
   ClaimCodeBatchesFilters,
   AdminClaimCodesFilters,
   AdminReusableCode,
@@ -81,6 +84,28 @@ export function updateClaimCodeStatus(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function bulkUpdateClaimCodes(payload: BulkUpdateClaimCodesPayload) {
+  return apiFetch<ClaimCodeBulkOperationDetail>(
+    "/admin/claim-codes/bulk-status",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function fetchClaimCodeBulkOperation(operationId: string) {
+  return apiFetch<ClaimCodeBulkOperationDetail>(
+    `/admin/claim-code-bulk-operations/${operationId}`,
+  );
+}
+
+export function downloadClaimCodeBulkReport(operationId: string) {
+  return downloadFile(
+    `/admin/claim-code-bulk-operations/${operationId}/report.csv`,
+  );
 }
 
 export function fetchAdminReusableCodes(filters: AdminReusableCodesFilters) {
