@@ -1,8 +1,8 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { DECORATORS } from '@nestjs/swagger/dist/constants';
-import { ROLES_KEY } from '../../auth/roles.decorator';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
 import { PaginationMetaDto } from '../../common/dto/pagination-response.dto';
 import { AdminRewardsController } from '../admin-rewards.controller';
 import { AdminRewardsQueryDto } from '../dto/admin-rewards-query.dto';
@@ -15,9 +15,9 @@ import { parseRedemptionDateRange } from '../dto/admin-redemptions-query.dto';
 
 describe('AdminRewardsController', () => {
   it('guards the whole controller as admin', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, AdminRewardsController)).toEqual([
-      UserRole.ADMIN,
-    ]);
+    expect(
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminRewardsController),
+    ).toEqual([AdminProfile.GENERAL, AdminProfile.SHOP]);
   });
 
   it('delegates catalog and history queries', async () => {

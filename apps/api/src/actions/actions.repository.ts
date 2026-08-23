@@ -270,7 +270,7 @@ export class ActionsRepository {
           id: true,
           points: true,
           createdAt: true,
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true } },
         },
       }),
     ]);

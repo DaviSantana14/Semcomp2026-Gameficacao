@@ -8,10 +8,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import type {
   AuthenticatedRequest,
@@ -23,7 +23,7 @@ import { UsersService } from './users.service';
 @ApiTags('Users')
 @ApiSecurity('access-token-cookie')
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, AdminProfilesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -44,7 +44,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN)
+  @AdminProfiles(AdminProfile.GENERAL)
   @ApiOperation({ summary: 'Listar usuários (admin)' })
   @ApiOkResponse({ type: UserResponseDto, isArray: true })
   @ApiUnauthorizedResponse({
@@ -70,7 +70,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN)
+  @AdminProfiles(AdminProfile.GENERAL)
   @ApiOperation({ summary: 'Buscar usuário por id (admin)' })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiUnauthorizedResponse({

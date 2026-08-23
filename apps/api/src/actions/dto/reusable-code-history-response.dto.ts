@@ -37,10 +37,6 @@ export class ReusableCodeParticipantResponseDto {
   id!: string;
   @ApiProperty()
   name!: string;
-  @ApiProperty()
-  email!: string;
-  @ApiProperty()
-  cpf!: string;
 }
 
 export class ReusableCodeRedemptionResponseDto {

@@ -79,6 +79,11 @@ describe('global code-redemption ledger', () => {
         skip: 10,
         take: 10,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        // Jest's nested asymmetric matcher is intentionally dynamic.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        select: expect.objectContaining({
+          user: { select: { id: true, name: true } },
+        }),
       }),
     );
   });
@@ -100,6 +105,7 @@ describe('global code-redemption ledger', () => {
               id: 'participant-1',
               name: 'Ada',
               email: 'ada@example.test',
+              cpf: '123.456.789-00',
             },
             action: {
               id: 'action-1',
@@ -122,18 +128,21 @@ describe('global code-redemption ledger', () => {
       method: 'reusable_code',
     });
 
-    expect(result.items[0]).toMatchObject({
+    expect(result.items[0]).toEqual({
       id: 'event-1',
+      points: 30,
+      xpDelta: 30,
       participant: {
         id: 'participant-1',
         name: 'Ada',
-        email: 'ada@example.test',
       },
       action: { id: 'action-1', name: 'Credenciamento' },
       method: ActionRedemptionMethod.REUSABLE_CODE,
       code: 'RE********AW',
       createdAt: '2026-08-02T12:00:00.000Z',
     });
+    expect(JSON.stringify(result)).not.toContain('ada@example.test');
+    expect(JSON.stringify(result)).not.toContain('123.456.789-00');
     expect(JSON.stringify(result)).not.toContain('REUSABLE-RAW');
   });
 });

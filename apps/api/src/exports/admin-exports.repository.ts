@@ -11,7 +11,6 @@ import {
 import {
   buildCodeRedemptionWhere,
   type CodeRedemptionFilter,
-  type CodeRedemptionRecord,
 } from '../claim-codes/claim-codes.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -54,7 +53,9 @@ export type RedemptionExportRow = Prisma.RewardRedemptionGetPayload<{
 }>;
 
 export type PointEventExportRow = PointEventRecord;
-export type CodeRedemptionExportRow = CodeRedemptionRecord;
+// Exports are general-admin-only and intentionally retain the PII select.
+// The operational code-redemption endpoint uses a separate minimized select.
+export type CodeRedemptionExportRow = PointEventExportRow;
 
 @Injectable()
 export class AdminExportsRepository {

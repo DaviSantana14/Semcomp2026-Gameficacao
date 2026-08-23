@@ -259,7 +259,7 @@ export class ActionsService {
         id: row.id,
         points: row.points,
         createdAt: row.createdAt.toISOString(),
-        participant: row.user,
+        participant: { id: row.user.id, name: row.user.name },
       })),
       page.total,
       query.page,

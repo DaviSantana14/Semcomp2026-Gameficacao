@@ -1,14 +1,13 @@
-import { UserRole } from '@prisma/client';
 import { DECORATORS } from '@nestjs/swagger/dist/constants';
-import { ROLES_KEY } from '../../auth/roles.decorator';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
 import { DownloadCapacityError } from '../../common/download-gate';
 import { AdminExportsController } from '../admin-exports.controller';
 
 describe(AdminExportsController.name, () => {
-  it('is protected as an admin-only controller', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, AdminExportsController)).toEqual([
-      UserRole.ADMIN,
-    ]);
+  it('is protected as a general-profile controller', () => {
+    expect(
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminExportsController),
+    ).toEqual(['GENERAL']);
   });
 
   it('delegates count endpoints with the applied query object', async () => {

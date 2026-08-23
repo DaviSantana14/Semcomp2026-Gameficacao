@@ -13,6 +13,11 @@ import {
 import { RateLimitPolicy } from './rate-limit-policy.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { RateLimitKey } from './rate-limit-key';
+import {
+  AdminProfiles,
+  ADMIN_PROFILES_KEY,
+} from '../auth/admin-profiles.decorator';
+import { AdminProfile } from '@prisma/client';
 
 const throttlerOptions: ThrottlerModuleOptions = [
   { name: 'default', limit: 5, ttl: 60_000 },
@@ -51,6 +56,11 @@ class NamedPolicyController {
 
   @RateLimitPolicy('bulk')
   bulkMutation(this: void) {}
+}
+
+class ProfileProtectedController {
+  @AdminProfiles(AdminProfile.SHOP)
+  shopMutation(this: void) {}
 }
 
 const emptyStorage: ThrottlerStorage = {
@@ -210,6 +220,54 @@ describe(AppThrottlerGuard.name, () => {
       );
     },
   );
+
+  it('uses the existing admin mutation policy for profile-protected mutations', async () => {
+    const increment = jest
+      .fn<
+        Promise<ThrottlerStorageRecord>,
+        [string, number, number, number, string]
+      >()
+      .mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+    const guard = new AppThrottlerGuard(
+      throttlerOptions,
+      { increment },
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    await guard.onModuleInit();
+
+    const handler = ProfileProtectedController.prototype.shopMutation;
+    await expect(
+      guard.canActivate(
+        contextFor(
+          {
+            path: '/rewards/:id',
+            method: 'PATCH',
+            user: { id: 'shop-admin-1' },
+            response: { header: jest.fn() },
+          },
+          undefined,
+          handler,
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(increment).toHaveBeenCalledWith(
+      expect.any(String),
+      60 * 1000,
+      30,
+      60 * 1000,
+      'default',
+    );
+    expect(Reflect.getMetadata(ADMIN_PROFILES_KEY, handler)).toEqual([
+      AdminProfile.SHOP,
+    ]);
+  });
 
   it('shares one counter across endpoints in the same authenticated limit class', async () => {
     const increment = jest

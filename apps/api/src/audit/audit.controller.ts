@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import {
   ApiBadRequestResponse,
   ApiForbiddenResponse,
@@ -9,9 +9,9 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CsrfGuard } from '../auth/csrf.guard';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { AuditService } from './audit.service';
 import { AuditEventPageResponseDto } from './dto/audit-event-response.dto';
@@ -23,8 +23,8 @@ import {
 @ApiTags('Admin Audit')
 @ApiSecurity('access-token-cookie')
 @Controller('admin')
-@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminProfilesGuard)
+@AdminProfiles(AdminProfile.GENERAL)
 @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
 @ApiForbiddenResponse({ type: HttpErrorResponseDto })
 export class AuditController {

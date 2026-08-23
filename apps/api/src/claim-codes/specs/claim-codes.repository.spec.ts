@@ -152,7 +152,7 @@ describe('ClaimCodesRepository', () => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         select: expect.objectContaining({
           action: { select: { id: true, name: true, isActive: true } },
-          usedBy: { select: { id: true, name: true, email: true } },
+          usedBy: { select: { id: true, name: true } },
         }),
       }),
     );

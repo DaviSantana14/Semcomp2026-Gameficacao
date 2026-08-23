@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -9,9 +9,9 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CsrfGuard } from '../auth/csrf.guard';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { DownloadCapacityError } from '../common/download-gate';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { AdminParticipantsQueryDto } from '../admin/dto/admin-participants-query.dto';
@@ -24,8 +24,8 @@ import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
 @ApiTags('Admin Exports')
 @ApiSecurity('access-token-cookie')
 @Controller('admin')
-@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminProfilesGuard)
+@AdminProfiles(AdminProfile.GENERAL)
 export class AdminExportsController {
   constructor(private readonly exports: AdminExportsService) {}
 

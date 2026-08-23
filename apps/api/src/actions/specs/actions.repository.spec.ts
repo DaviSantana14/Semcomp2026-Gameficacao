@@ -549,9 +549,19 @@ describe('ActionsRepository', () => {
         where: reusableWhere,
       });
       expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: reusableWhere }),
+        expect.objectContaining({
+          where: reusableWhere,
+          // Jest's nested asymmetric matcher is intentionally dynamic.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          select: expect.objectContaining({
+            user: { select: { id: true, name: true } },
+          }),
+        }),
       );
-      expect(result.items[0]?.participant.id).toBe('user-1');
+      expect(result.items[0]?.participant).toEqual({
+        id: 'user-1',
+        name: 'Ana',
+      });
     });
   });
 

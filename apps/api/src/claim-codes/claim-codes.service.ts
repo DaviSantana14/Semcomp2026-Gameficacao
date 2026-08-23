@@ -452,7 +452,7 @@ export class ClaimCodesService {
       code: row.code,
       isActive: row.isActive,
       isUsed: row.isUsed,
-      usedBy: row.usedBy,
+      usedBy: row.usedBy ? { id: row.usedBy.id, name: row.usedBy.name } : null,
       createdAt:
         row.createdAt instanceof Date
           ? row.createdAt.toISOString()
@@ -566,7 +566,7 @@ function mapCodeRedemption(
     id: row.id,
     points: row.points,
     xpDelta: row.xpDelta,
-    participant: row.user,
+    participant: { id: row.user.id, name: row.user.name },
     action: row.action ? { id: row.action.id, name: row.action.name } : null,
     method: row.redemptionMethod as 'REUSABLE_CODE' | 'CLAIM_CODE',
     code: rawCode ? maskClaimCode(rawCode) : null,

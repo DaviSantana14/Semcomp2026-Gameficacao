@@ -24,7 +24,7 @@ const claimCodeHistorySelect = {
   createdAt: true,
   usedAt: true,
   action: { select: { id: true, name: true, isActive: true } },
-  usedBy: { select: { id: true, name: true, email: true } },
+  usedBy: { select: { id: true, name: true } },
 } as const;
 
 const claimCodeBatchSelect = {
@@ -196,6 +196,7 @@ export function buildCodeRedemptionWhere(
 
 const codeRedemptionSelect = {
   ...pointEventSelect,
+  user: { select: { id: true, name: true } },
 } as const;
 
 export type CodeRedemptionRecord = Prisma.PointEventGetPayload<{

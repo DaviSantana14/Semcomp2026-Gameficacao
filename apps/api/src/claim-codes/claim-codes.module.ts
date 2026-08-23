@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CsrfGuard } from '../auth/csrf.guard';
-import { RolesGuard } from '../auth/roles.guard';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { ClaimCodesController } from './claim-codes.controller';
 import { ClaimCodesService } from './claim-codes.service';
 import { ClaimCodesRepository } from './claim-codes.repository';
@@ -17,7 +17,7 @@ import { ClaimCodeArtifactsService } from './claim-code-artifacts.service';
     ClaimCodeArtifactsService,
     DownloadGate,
     CsrfGuard,
-    RolesGuard,
+    AdminProfilesGuard,
   ],
 })
 export class ClaimCodesModule {}

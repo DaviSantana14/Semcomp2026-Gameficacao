@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import {
   Body,
   Controller,
@@ -31,9 +31,9 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CsrfGuard } from '../auth/csrf.guard';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import {
   getAdminOperationContext,
@@ -71,7 +71,8 @@ import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
 @ApiTags('Claim Codes')
 @ApiSecurity('access-token-cookie')
 @Controller('admin')
-@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminProfilesGuard)
+@AdminProfiles(AdminProfile.GENERAL, AdminProfile.ACTIVITIES)
 export class ClaimCodesController {
   constructor(
     private readonly claimCodesService: ClaimCodesService,
@@ -79,7 +80,6 @@ export class ClaimCodesController {
   ) {}
 
   @Get('claim-codes')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Listar histórico de códigos de uso único (admin)' })
   @ApiOkResponse({ type: ClaimCodesPageResponseDto })
   findAll(@Query() query: ClaimCodesQueryDto) {
@@ -87,7 +87,6 @@ export class ClaimCodesController {
   }
 
   @Get('code-redemptions')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Listar resgates por código (admin)' })
   @ApiOkResponse({ type: CodeRedemptionsPageResponseDto })
   findCodeRedemptions(@Query() query: CodeRedemptionsQueryDto) {
@@ -95,7 +94,6 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-batches')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Listar lotes de códigos de uso único (admin)' })
   @ApiOkResponse({ type: ClaimCodeBatchesPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
@@ -104,7 +102,6 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-batches/:id')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Consultar lote de códigos de uso único (admin)' })
   @ApiOkResponse({ type: ClaimCodeBatchResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -114,7 +111,6 @@ export class ClaimCodesController {
 
   @Post('claim-codes/bulk-status')
   @RateLimitPolicy('bulk')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Alterar status de códigos em lote (admin)' })
   @ApiBody({ type: BulkClaimCodeStatusDto })
   @ApiCreatedResponse({ type: ClaimCodeBulkOperationResponseDto })
@@ -131,7 +127,6 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-bulk-operations')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Listar operações de status em lote (admin)' })
   @ApiOkResponse({ type: ClaimCodeBulkOperationsPageResponseDto })
   @ApiBadRequestResponse({ type: HttpErrorResponseDto })
@@ -140,7 +135,6 @@ export class ClaimCodesController {
   }
 
   @Get('claim-code-bulk-operations/:id')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Consultar operação de status em lote (admin)' })
   @ApiOkResponse({ type: ClaimCodeBulkOperationResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -150,7 +144,6 @@ export class ClaimCodesController {
 
   @Get('claim-code-bulk-operations/:id/report.csv')
   @RateLimitPolicy('export')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar relatório de operação em lote (admin)' })
   @ApiProduces('text/csv')
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -169,7 +162,6 @@ export class ClaimCodesController {
 
   @Get('claim-code-batches/:id/download.txt')
   @RateLimitPolicy('export')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar códigos persistidos de um lote (admin)' })
   @ApiProduces('text/plain')
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -188,7 +180,6 @@ export class ClaimCodesController {
 
   @Get('claim-code-batches/:id/qr.pdf')
   @RateLimitPolicy('export')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar PDF QR de um lote (admin)' })
   @ApiProduces('application/pdf')
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -214,7 +205,6 @@ export class ClaimCodesController {
 
   @Get('claim-code-batches/:id/qr-images.zip')
   @RateLimitPolicy('export')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Baixar ZIP de imagens QR de um lote (admin)' })
   @ApiProduces('application/zip')
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -234,7 +224,6 @@ export class ClaimCodesController {
   }
 
   @Patch('claim-codes/:id/status')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Ativar ou desativar código de uso único (admin)' })
   @ApiOkResponse({ type: ClaimCodeHistoryResponseDto })
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
@@ -252,7 +241,6 @@ export class ClaimCodesController {
   }
 
   @Post('actions/:id/claim-codes/generate')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Gerar lote de códigos de uso único (admin)' })
   @ApiHeader({
     name: 'X-CSRF-Token',

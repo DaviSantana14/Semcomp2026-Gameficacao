@@ -5,7 +5,6 @@ import { PaginationMetaDto } from '../../common/dto/pagination-response.dto';
 class CodeRedemptionParticipantDto {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty() email!: string;
 }
 
 class CodeRedemptionActionDto {

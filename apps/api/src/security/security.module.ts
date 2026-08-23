@@ -6,7 +6,7 @@ import { AppThrottlerGuard } from './app-throttler.guard';
 import { RateLimitKey } from './rate-limit-key';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CsrfGuard } from '../auth/csrf.guard';
-import { RolesGuard } from '../auth/roles.guard';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { SecurityHttpMetricsController } from './security-http-metrics.controller';
 import { SecurityHttpMetricsBuffer } from './security-http-metrics.buffer';
 import { SecurityHttpMetricsMiddleware } from './security-http-metrics.middleware';
@@ -50,7 +50,7 @@ function getRateLimitKeySecret() {
     SecurityHttpMetricsScheduler,
     JwtAuthGuard,
     CsrfGuard,
-    RolesGuard,
+    AdminProfilesGuard,
     {
       provide: APP_GUARD,
       useExisting: AppThrottlerGuard,

@@ -1,19 +1,19 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { UserRole } from '@prisma/client';
 import type { Response } from 'express';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../../auth/admin-profiles.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { RolesGuard } from '../../auth/roles.guard';
 import { AdminPresenceController } from '../admin-presence.controller';
 
 describe(AdminPresenceController.name, () => {
-  it('protects every route with authentication, CSRF and admin role guards', () => {
+  it('protects every route with authentication, CSRF and profile guards', () => {
     expect(
       Reflect.getMetadata(GUARDS_METADATA, AdminPresenceController),
-    ).toEqual([JwtAuthGuard, CsrfGuard, RolesGuard]);
-    expect(Reflect.getMetadata('roles', AdminPresenceController)).toEqual([
-      UserRole.ADMIN,
-    ]);
+    ).toEqual([JwtAuthGuard, CsrfGuard, AdminProfilesGuard]);
+    expect(
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminPresenceController),
+    ).toEqual(['GENERAL']);
   });
 
   it('delegates a validated history range to the presence service', async () => {

@@ -19,7 +19,7 @@ const rewardSelect = {
 } as const;
 
 const redemptionInclude = {
-  user: { select: { id: true, name: true, email: true, points: true } },
+  user: { select: { id: true, name: true, points: true } },
   reward: { select: rewardSelect },
   pointEvents: {
     select: {
@@ -241,7 +241,7 @@ export class RewardsRepository {
           deliveredByAdminId: true,
           cancelledAt: true,
           cancelledByAdminId: true,
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true } },
           reward: { select: rewardSelect },
           pointEvents: redemptionInclude.pointEvents,
         },

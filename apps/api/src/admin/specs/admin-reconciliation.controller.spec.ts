@@ -1,9 +1,8 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { UserRole } from '@prisma/client';
 import { CsrfGuard } from '../../auth/csrf.guard';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { ROLES_KEY } from '../../auth/roles.decorator';
-import { RolesGuard } from '../../auth/roles.guard';
 import { AdminReconciliationController } from '../admin-reconciliation.controller';
 import { ReconciliationFilter } from '../dto/list-reconciliation.dto';
 
@@ -59,12 +58,12 @@ describe(AdminReconciliationController.name, () => {
     });
   });
 
-  it('requires JWT, CSRF semantics and the administrator role', () => {
+  it('requires JWT, CSRF semantics and the general profile', () => {
     expect(
       Reflect.getMetadata(GUARDS_METADATA, AdminReconciliationController),
-    ).toEqual([JwtAuthGuard, CsrfGuard, RolesGuard]);
+    ).toEqual([JwtAuthGuard, CsrfGuard, AdminProfilesGuard]);
     expect(
-      Reflect.getMetadata(ROLES_KEY, AdminReconciliationController),
-    ).toEqual([UserRole.ADMIN]);
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminReconciliationController),
+    ).toEqual(['GENERAL']);
   });
 });

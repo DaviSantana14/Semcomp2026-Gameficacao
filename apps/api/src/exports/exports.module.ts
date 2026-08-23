@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CsrfGuard } from '../auth/csrf.guard';
-import { RolesGuard } from '../auth/roles.guard';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { DownloadGate } from '../common/download-gate';
 import { AdminExportsController } from './admin-exports.controller';
 import { AdminExportsRepository } from './admin-exports.repository';
@@ -15,7 +15,7 @@ import { ExportLimits } from './export-limits';
     DownloadGate,
     ExportLimits,
     CsrfGuard,
-    RolesGuard,
+    AdminProfilesGuard,
   ],
 })
 export class ExportsModule {}

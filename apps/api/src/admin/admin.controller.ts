@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import {
   Body,
   Controller,
@@ -11,9 +11,9 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { CsrfGuard } from '../auth/csrf.guard';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminParticipantsService } from './admin-participants.service';
 import { AdminPointEventsPageResponseDto } from './dto/admin-point-event-response.dto';
@@ -28,8 +28,8 @@ import type { AuthenticatedRequest } from '../common/request-context';
 @ApiTags('Admin')
 @ApiSecurity('access-token-cookie')
 @Controller('admin')
-@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminProfilesGuard)
+@AdminProfiles(AdminProfile.GENERAL)
 export class AdminController {
   constructor(
     private readonly dashboard: AdminDashboardService,

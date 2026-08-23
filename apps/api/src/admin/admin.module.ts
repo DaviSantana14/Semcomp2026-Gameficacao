@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { AdminController } from './admin.controller';
 import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminParticipantsService } from './admin-participants.service';
@@ -30,6 +31,7 @@ import { AdminPresenceController } from './admin-presence.controller';
     AdminParticipantsRepository,
     AdminReconciliationService,
     AdminReconciliationRepository,
+    AdminProfilesGuard,
   ],
 })
 export class AdminModule {}

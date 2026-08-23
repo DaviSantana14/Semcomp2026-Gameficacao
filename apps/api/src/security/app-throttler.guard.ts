@@ -10,6 +10,7 @@ import {
 } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import { createHash } from 'crypto';
+import { ADMIN_PROFILES_KEY } from '../auth/admin-profiles.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { RateLimitKey } from './rate-limit-key';
 import {
@@ -155,6 +156,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
       ROLES_KEY,
       [context.getHandler(), context.getClass()],
     );
+    const requiredAdminProfiles = this.reflector.getAllAndOverride<
+      unknown[] | undefined
+    >(ADMIN_PROFILES_KEY, [context.getHandler(), context.getClass()]);
     const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(
       request.method ?? '',
     );
@@ -163,7 +167,8 @@ export class AppThrottlerGuard extends ThrottlerGuard {
       return { name: 'authenticated-read', limit: 120, ttl: 60 * 1000 };
     }
 
-    return requiredRoles?.includes(UserRole.ADMIN)
+    return requiredAdminProfiles !== undefined ||
+      requiredRoles?.includes(UserRole.ADMIN)
       ? { name: 'admin-mutation', limit: 30, ttl: 60 * 1000 }
       : { name: 'participant-mutation', limit: 10, ttl: 60 * 1000 };
   }
