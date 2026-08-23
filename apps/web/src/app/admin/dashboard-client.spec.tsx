@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAdminDashboard } from "@/features/dashboard/dashboard.service";
+import { fetchSecurityMetricsOverview } from "@/features/security/security-metrics.service";
 import {
   fetchPresenceHistory,
   fetchPresenceOverview,
@@ -10,6 +11,9 @@ import { DashboardClient } from "./dashboard-client";
 
 vi.mock("@/features/dashboard/dashboard.service", () => ({
   fetchAdminDashboard: vi.fn(),
+}));
+vi.mock("@/features/security/security-metrics.service", () => ({
+  fetchSecurityMetricsOverview: vi.fn(),
 }));
 vi.mock("@/features/presence/presence.service", () => ({
   downloadPresenceCsv: vi.fn(),
@@ -22,6 +26,7 @@ vi.mock("@/features/presence/presence.service", () => ({
 }));
 
 const fetchAdminDashboardMock = vi.mocked(fetchAdminDashboard);
+const fetchSecurityMetricsOverviewMock = vi.mocked(fetchSecurityMetricsOverview);
 const fetchPresenceHistoryMock = vi.mocked(fetchPresenceHistory);
 const fetchPresenceOverviewMock = vi.mocked(fetchPresenceOverview);
 
@@ -54,6 +59,21 @@ describe("DashboardClient", () => {
           reward: { id: "reward-1", name: "Kit SEMCOMP 2026" },
         },
       ],
+    });
+    fetchSecurityMetricsOverviewMock.mockResolvedValue({
+      status: "NORMAL",
+      lastFlushedMinute: "2026-08-22T12:00:00.000Z",
+      periods: {
+        fiveMinutes: { unauthorized: 2, forbidden: 1, rateLimited: 0 },
+        oneHour: { unauthorized: 5, forbidden: 2, rateLimited: 1 },
+        twentyFourHours: { unauthorized: 11, forbidden: 4, rateLimited: 2 },
+      },
+      thresholds: {
+        unauthorized: 20,
+        forbidden: 10,
+        rateLimited: 5,
+        windowMinutes: 5,
+      },
     });
     fetchPresenceOverviewMock.mockResolvedValue({
       status: "LIVE",
@@ -119,5 +139,19 @@ describe("DashboardClient", () => {
     );
     expect(screen.getByText("18.400")).toBeInTheDocument();
     expect(screen.getByText("Kit SEMCOMP 2026")).toBeInTheDocument();
+  });
+
+  it("mantém operação e presença visíveis quando as métricas de segurança falham", async () => {
+    fetchSecurityMetricsOverviewMock.mockRejectedValueOnce(
+      new Error("Segurança indisponível."),
+    );
+
+    renderWithQueryClient(<DashboardClient />);
+
+    expect(await screen.findByText("Segurança indisponível.")).toBeVisible();
+    expect(screen.getByText("18.400")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Presença dos participantes"),
+    ).toBeInTheDocument();
   });
 });

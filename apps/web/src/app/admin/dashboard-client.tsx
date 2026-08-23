@@ -19,6 +19,7 @@ import { ApiError } from "@/lib/http/api-error";
 import { cn } from "@/lib/utils";
 import { PresenceHistory } from "./_components/presence-history";
 import { PresencePanel } from "./_components/presence-panel";
+import { SecurityMetricsPanel } from "./_components/security-metrics-panel";
 
 const numberFormatter = new Intl.NumberFormat("pt-BR");
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -291,6 +292,7 @@ export function DashboardClient() {
 
       <PresencePanel />
       <PresenceHistory />
+      <SecurityMetricsPanel />
     </div>
   );
 }
