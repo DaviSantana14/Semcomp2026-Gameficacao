@@ -2,6 +2,10 @@ import {
   DEMO_PARTICIPANT_PASSWORD,
   getSeedConfig,
 } from '../../prisma/seed-config';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const seedSource = readFileSync(join(process.cwd(), 'prisma/seed.ts'), 'utf8');
 
 describe('getSeedConfig', () => {
   const validEnvironment = {
@@ -36,6 +40,14 @@ describe('getSeedConfig', () => {
     expect(
       Buffer.byteLength(DEMO_PARTICIPANT_PASSWORD, 'utf8'),
     ).toBeLessThanOrEqual(72);
+  });
+
+  it('cria o admin inicial como geral sem resetar o estado operacional no rerun', () => {
+    expect(seedSource).toContain('adminProfile: AdminProfile.GENERAL');
+    expect(seedSource).toContain('adminProfile: user.adminProfile');
+    expect(seedSource).not.toMatch(
+      /update:\s*\{[\s\S]*?role: user\.role,[\s\S]*?isActive:\s*true/,
+    );
   });
 
   it.each(['', 'ADMIN-ONLY', 'all', 'demo '])(

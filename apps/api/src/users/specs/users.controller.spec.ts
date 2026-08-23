@@ -18,6 +18,9 @@ describe('UsersController', () => {
         level: 2,
         isActive: true,
         lastLoginAt: null,
+        adminProfile: null,
+        passwordResetRequired: false,
+        passwordResetExpiresAt: null,
         createdAt,
         csrfToken: 'csrf-token',
       },
@@ -34,6 +37,8 @@ describe('UsersController', () => {
       level: 2,
       isActive: true,
       lastLoginAt: null,
+      adminProfile: null,
+      passwordChangeRequired: false,
       createdAt,
     });
     expect(result).not.toHaveProperty('csrfToken');

@@ -4,6 +4,7 @@ import { hash } from 'bcrypt';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { AdminProfile } from '@prisma/client';
 import { AppModule } from '../../src/app.module';
 import { AuditService } from '../../src/audit/audit.service';
 import { AdminReconciliationRepository } from '../../src/admin/admin-reconciliation.repository';
@@ -36,7 +37,11 @@ export async function loginForE2e(
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await hash(password, 12), isActive: true },
+    data: {
+      passwordHash: await hash(password, 12),
+      isActive: true,
+      ...(isAdmin ? { adminProfile: AdminProfile.GENERAL } : {}),
+    },
   });
 
   const response = await request(app.getHttpServer())

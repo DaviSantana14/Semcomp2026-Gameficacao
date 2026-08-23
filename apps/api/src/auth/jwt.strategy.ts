@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
-import { UserRole } from '@prisma/client';
+import { AdminProfile, UserRole } from '@prisma/client';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { SessionsService } from '../presence/sessions.service';
 import { ensureJwtSecret } from './jwt-env';
@@ -75,6 +75,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: string;
       role: UserRole;
       isActive: boolean;
+      adminProfile: AdminProfile | null;
+      passwordResetRequired: boolean;
+      passwordResetExpiresAt: Date | null;
       lastLoginAt: Date | null;
       createdAt: Date;
       jti: string;

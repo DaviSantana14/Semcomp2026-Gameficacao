@@ -13,7 +13,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
-import type { AuthenticatedRequest } from '../common/request-context';
+import type {
+  AuthenticatedRequest,
+  AuthenticatedUserIdentity,
+} from '../common/request-context';
 import { toUserResponseDto, UserResponseDto } from './dto/user-response.dto';
 import { UsersService } from './users.service';
 
@@ -36,7 +39,7 @@ export class UsersController {
       error: 'Unauthorized',
     },
   })
-  me(@Req() request: AuthenticatedRequest<UserResponseDto>) {
+  me(@Req() request: AuthenticatedRequest<AuthenticatedUserIdentity>) {
     return toUserResponseDto(request.user);
   }
 

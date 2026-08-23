@@ -106,6 +106,102 @@ describe('semantic repository transactions', () => {
 });
 
 describe(UsersRepository.name, () => {
+  it('locks the general admin, restores it, and revokes its open sessions atomically', async () => {
+    type UserUpdateArgs = {
+      where: { id: string };
+      data: {
+        passwordHash: string;
+        passwordChangedAt: Date;
+        isActive: boolean;
+        passwordResetRequired: boolean;
+        passwordResetExpiresAt: null;
+      };
+    };
+    type SessionUpdateArgs = {
+      where: {
+        userId: string;
+        endedAt: null;
+        expiresAt: { gt: Date };
+      };
+      data: { endedAt: Date; endReason: 'REVOKED' };
+    };
+    const queryRaw = jest
+      .fn<Promise<Array<{ id: string }>>, [unknown]>()
+      .mockResolvedValue([{ id: 'admin-1' }]);
+    const userUpdate = jest
+      .fn<Promise<unknown>, [UserUpdateArgs]>()
+      .mockResolvedValue({});
+    const sessionUpdateMany = jest
+      .fn<Promise<{ count: number }>, [SessionUpdateArgs]>()
+      .mockResolvedValue({ count: 1 });
+    const transaction = {
+      $queryRaw: queryRaw,
+      user: { update: userUpdate },
+      userSession: { updateMany: sessionUpdateMany },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof transaction) => Promise<boolean>) =>
+          callback(transaction),
+      ),
+    };
+    const repository = new UsersRepository(prisma as never);
+
+    await expect(
+      repository.setAdminPassword(
+        '52998224725',
+        'admin@example.com',
+        '$2b$12$new-hash',
+      ),
+    ).resolves.toBe(true);
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const updateArgs = userUpdate.mock.calls[0]?.[0];
+    expect(updateArgs?.where).toEqual({ id: 'admin-1' });
+    expect(updateArgs?.data.passwordHash).toBe('$2b$12$new-hash');
+    expect(updateArgs?.data.passwordChangedAt).toBeInstanceOf(Date);
+    expect(updateArgs?.data.isActive).toBe(true);
+    expect(updateArgs?.data.passwordResetRequired).toBe(false);
+    expect(updateArgs?.data.passwordResetExpiresAt).toBeNull();
+
+    const sessionArgs = sessionUpdateMany.mock.calls[0]?.[0];
+    expect(sessionArgs?.where.userId).toBe('admin-1');
+    expect(sessionArgs?.where.endedAt).toBeNull();
+    expect(sessionArgs?.where.expiresAt.gt).toBeInstanceOf(Date);
+    expect(sessionArgs?.data.endedAt).toBeInstanceOf(Date);
+    expect(sessionArgs?.data.endReason).toBe('REVOKED');
+  });
+
+  it('does not mutate anything when no general admin matches the bootstrap identity', async () => {
+    const queryRaw = jest
+      .fn<Promise<Array<{ id: string }>>, [unknown]>()
+      .mockResolvedValue([]);
+    const userUpdate = jest.fn();
+    const sessionUpdateMany = jest.fn();
+    const transaction = {
+      $queryRaw: queryRaw,
+      user: { update: userUpdate },
+      userSession: { updateMany: sessionUpdateMany },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof transaction) => Promise<boolean>) =>
+          callback(transaction),
+      ),
+    };
+    const repository = new UsersRepository(prisma as never);
+
+    await expect(
+      repository.setAdminPassword(
+        '52998224725',
+        'admin@example.com',
+        '$2b$12$new-hash',
+      ),
+    ).resolves.toBe(false);
+    expect(userUpdate).not.toHaveBeenCalled();
+    expect(sessionUpdateMany).not.toHaveBeenCalled();
+  });
+
   it('translates Prisma uniqueness failures to a neutral persistence error', async () => {
     const prisma = {
       user: {

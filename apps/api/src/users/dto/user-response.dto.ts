@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile, UserRole } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UserResponseDto {
@@ -27,6 +27,18 @@ export class UserResponseDto {
     example: UserRole.PARTICIPANT,
   })
   role: UserRole;
+
+  @ApiProperty({
+    enum: AdminProfile,
+    nullable: true,
+    example: AdminProfile.GENERAL,
+  })
+  adminProfile: AdminProfile | null;
+
+  @ApiProperty({
+    example: false,
+  })
+  passwordChangeRequired: boolean;
 
   @ApiProperty({
     example: 120,
@@ -67,6 +79,8 @@ export class UserResponseDto {
     this.cpf = data.cpf;
     this.email = data.email;
     this.role = data.role;
+    this.adminProfile = data.adminProfile ?? null;
+    this.passwordChangeRequired = data.passwordResetRequired ?? false;
     this.points = data.points;
     this.xp = data.xp;
     this.level = data.level;
@@ -82,6 +96,8 @@ export type UserResponseSource = {
   cpf: string;
   email: string;
   role: UserRole;
+  adminProfile: AdminProfile | null;
+  passwordResetRequired: boolean;
   points: number;
   xp: number;
   level: number;

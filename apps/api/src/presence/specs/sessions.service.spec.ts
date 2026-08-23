@@ -26,6 +26,9 @@ const userSummary = {
   level: 1,
   isActive: true,
   lastLoginAt: now,
+  adminProfile: null,
+  passwordResetRequired: false,
+  passwordResetExpiresAt: null,
   createdAt: now,
 };
 
@@ -178,5 +181,83 @@ describe(SessionsService.name, () => {
 
     await expect(service.deleteRetained(now)).resolves.toBe(3);
     expect(repository.deleteSessionsEndedBefore).toHaveBeenCalledWith(cutoff);
+  });
+});
+
+describe(`${SessionsRepository.name} identity selection`, () => {
+  it('loads the administrative profile and participant reset state with a session identity', async () => {
+    type FindUniqueArgs = {
+      where: { id: string };
+      select: Record<string, boolean>;
+    };
+    type AdminIdentity = Omit<typeof userSummary, 'role' | 'adminProfile'> & {
+      role: 'ADMIN';
+      adminProfile: 'SHOP';
+    };
+    const findUnique = jest.fn<Promise<AdminIdentity>, [FindUniqueArgs]>();
+    const transaction = {
+      user: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique,
+      },
+      userSession: { create: jest.fn().mockResolvedValue(undefined) },
+    };
+    findUnique.mockResolvedValue({
+      ...userSummary,
+      id: 'admin-1',
+      role: 'ADMIN',
+      adminProfile: 'SHOP',
+      passwordResetRequired: false,
+      passwordResetExpiresAt: null,
+    });
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementation((callback: (tx: typeof transaction) => unknown) =>
+          callback(transaction),
+        ),
+    };
+    const repository = new SessionsRepository(prisma as never);
+
+    const identity = await repository.startSession('admin-1', 'ADMIN', draft);
+
+    expect(identity?.adminProfile).toBe('SHOP');
+    expect(transaction.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'admin-1', role: 'ADMIN', isActive: true },
+      data: { lastLoginAt: draft.startedAt },
+    });
+    const findUniqueArgs = findUnique.mock.calls[0]?.[0];
+    expect(findUniqueArgs?.where).toEqual({ id: 'admin-1' });
+    expect(findUniqueArgs?.select.adminProfile).toBe(true);
+    expect(findUniqueArgs?.select.passwordResetRequired).toBe(true);
+    expect(findUniqueArgs?.select.passwordResetExpiresAt).toBe(true);
+  });
+
+  it('keeps participant profile null and validates only an active session owner', async () => {
+    type SessionLookupArgs = {
+      where: Record<string, unknown>;
+      select: { user: { select: Record<string, boolean> } };
+    };
+    const findFirst = jest.fn<
+      Promise<{ user: typeof userSummary } | null>,
+      [SessionLookupArgs]
+    >();
+    findFirst.mockResolvedValue({ user: userSummary });
+    const repository = new SessionsRepository({
+      userSession: { findFirst },
+    } as never);
+
+    const identity = await repository.findValidSessionWithUser(
+      draft.id,
+      userSummary.id,
+      now,
+    );
+
+    expect(identity?.adminProfile).toBeNull();
+    const findFirstArgs = findFirst.mock.calls[0]?.[0];
+    expect(findFirstArgs?.where.user).toEqual({ is: { isActive: true } });
+    expect(findFirstArgs?.select.user.select.adminProfile).toBe(true);
+    expect(findFirstArgs?.select.user.select.passwordResetRequired).toBe(true);
+    expect(findFirstArgs?.select.user.select.passwordResetExpiresAt).toBe(true);
   });
 });

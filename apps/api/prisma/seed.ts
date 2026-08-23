@@ -4,6 +4,7 @@ import { hash } from 'bcrypt';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   ActionType,
+  AdminProfile,
   PrismaClient,
   UserRole,
   type Prisma,
@@ -59,7 +60,9 @@ async function upsertUser(user: Prisma.UserCreateInput) {
       name: user.name,
       cpf: user.cpf,
       role: user.role,
-      isActive: true,
+      ...(user.adminProfile !== undefined
+        ? { adminProfile: user.adminProfile }
+        : {}),
       ...(user.passwordHash !== undefined
         ? { passwordHash: user.passwordHash }
         : {}),
@@ -95,6 +98,7 @@ async function main() {
   const adminUser = {
     ...admin,
     role: UserRole.ADMIN,
+    adminProfile: AdminProfile.GENERAL,
   } satisfies Prisma.UserCreateInput;
 
   await upsertUser(adminUser);

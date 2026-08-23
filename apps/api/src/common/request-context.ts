@@ -2,6 +2,7 @@ import {
   InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AdminProfile } from '@prisma/client';
 import type { Request } from 'express';
 
 export type RequestWithRequestId = Request & {
@@ -10,7 +11,19 @@ export type RequestWithRequestId = Request & {
 
 export type AuthenticatedUserIdentity = {
   id: string;
+  name: string;
+  cpf: string;
+  email: string;
   role: 'PARTICIPANT' | 'ADMIN';
+  points: number;
+  xp: number;
+  level: number;
+  isActive: boolean;
+  lastLoginAt: Date | null;
+  adminProfile: AdminProfile | null;
+  passwordResetRequired: boolean;
+  passwordResetExpiresAt: Date | null;
+  createdAt: Date;
   csrfToken: string;
   jti: string;
 };

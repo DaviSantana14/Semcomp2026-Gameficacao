@@ -3,6 +3,12 @@ enum UserRole {
   ADMIN
 }
 
+enum AdminProfile {
+  GENERAL
+  SHOP
+  ACTIVITIES
+}
+
 model User {
   id                       String             @id @default(cuid())
   name                     String
@@ -16,6 +22,9 @@ model User {
   lastLoginAt              DateTime?
   passwordHash             String?
   passwordChangedAt        DateTime?
+  adminProfile             AdminProfile?
+  passwordResetRequired    Boolean            @default(false)
+  passwordResetExpiresAt   DateTime?
   pointEvents              PointEvent[]
   rewardRedemptions        RewardRedemption[]
   auditEventsAsActor       AdminAuditEvent[]  @relation("AuditActor")
@@ -27,8 +36,26 @@ model User {
   claimCodeBulkOperations  ClaimCodeBulkOperation[] @relation("ClaimCodeBulkOperationActor")
   usedClaimCodes           ClaimCode[]
   sessions                 UserSession[]
+  adminActivations         AdminActivation[]  @relation("AdminActivationSubject")
+  adminActivationsCreated  AdminActivation[]  @relation("AdminActivationCreator")
   createdAt                DateTime           @default(now())
   updatedAt                DateTime           @updatedAt
 
-  @@index([role, createdAt])
+  @@index([role, adminProfile, isActive, createdAt])
+}
+
+model AdminActivation {
+  id               String   @id @default(cuid())
+  adminUserId      String
+  codeHash         String   @unique
+  expiresAt        DateTime
+  usedAt           DateTime?
+  revokedAt        DateTime?
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+  adminUser        User     @relation("AdminActivationSubject", fields: [adminUserId], references: [id], onDelete: Restrict)
+  createdByAdmin   User     @relation("AdminActivationCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+
+  @@index([adminUserId, createdAt])
+  @@index([expiresAt])
 }

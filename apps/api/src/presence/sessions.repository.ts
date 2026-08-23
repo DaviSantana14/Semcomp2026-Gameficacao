@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AdminProfile, Prisma } from '@prisma/client';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -28,6 +28,9 @@ export type SessionUserIdentity = {
   level: number;
   isActive: boolean;
   lastLoginAt: Date | null;
+  adminProfile: AdminProfile | null;
+  passwordResetRequired: boolean;
+  passwordResetExpiresAt: Date | null;
   createdAt: Date;
 };
 
@@ -46,6 +49,9 @@ const userSummarySelect = {
   level: true,
   isActive: true,
   lastLoginAt: true,
+  adminProfile: true,
+  passwordResetRequired: true,
+  passwordResetExpiresAt: true,
   createdAt: true,
 } as const;
 

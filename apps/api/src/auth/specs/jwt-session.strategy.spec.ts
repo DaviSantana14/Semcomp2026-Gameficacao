@@ -14,6 +14,9 @@ const userSummary = {
   level: 1,
   isActive: true,
   lastLoginAt: null,
+  adminProfile: null,
+  passwordResetRequired: false,
+  passwordResetExpiresAt: null,
   createdAt: new Date('2026-08-01T12:00:00.000Z'),
 };
 
@@ -41,12 +44,22 @@ describe(JwtStrategy.name, () => {
   });
 
   it('validates the persisted session whose id is the JWT jti', async () => {
-    const identity = { ...userSummary, jti: 'session-1' };
+    const identity = {
+      ...userSummary,
+      role: 'ADMIN' as const,
+      adminProfile: 'SHOP' as const,
+      jti: 'session-1',
+    };
     sessionsService.validate.mockResolvedValue(identity);
 
-    await expect(
-      strategy.validate({ sub: 'user-1', csrfToken: 'csrf', jti: 'session-1' }),
-    ).resolves.toEqual({ ...identity, csrfToken: 'csrf' });
+    const result = await strategy.validate({
+      sub: 'user-1',
+      csrfToken: 'csrf',
+      jti: 'session-1',
+    });
+
+    expect(result).toEqual({ ...identity, csrfToken: 'csrf' });
+    expect(result.adminProfile).toBe('SHOP');
     expect(sessionsService.validate).toHaveBeenCalledWith(
       'session-1',
       'user-1',
