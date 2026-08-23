@@ -26,10 +26,18 @@ import {
 } from './claim-codes.repository';
 import { ClaimCodeBatchSummary } from './dto/claim-code-batch-response.dto';
 import { ClaimCodeBatchesQueryDto } from './dto/claim-code-batches-query.dto';
+import { BulkClaimCodeStatusDto } from './dto/bulk-claim-code-status.dto';
+import { ClaimCodeBulkQueryDto } from './dto/claim-code-bulk-query.dto';
+import type {
+  ClaimCodeBulkOperationDetail,
+  ClaimCodeBulkOperationItem,
+  ClaimCodeBulkOperationSummary,
+} from './dto/claim-code-bulk-response.dto';
 import { ClaimCodesQueryDto } from './dto/claim-codes-query.dto';
 import { ClaimCodeStatus } from './dto/claim-code-history-response.dto';
 import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
 import { GenerateClaimCodesDto } from './dto/generate-claim-codes.dto';
+import { ClaimCodeBulkOutcome } from './claim-code-bulk-outcome';
 
 const MAX_GENERATION_ROUNDS = 5;
 const MAX_GENERATION_ATTEMPTS_PER_CODE = 10;
@@ -260,6 +268,151 @@ export class ClaimCodesService {
     });
   }
 
+  async bulkUpdateStatus(
+    dto: BulkClaimCodeStatusDto,
+    context: AdminOperationContext,
+  ): Promise<ClaimCodeBulkOperationDetail> {
+    const ids = [...new Set(dto.ids.map((id) => id.trim()))].sort();
+
+    return this.repository.withTransaction(async (repository) => {
+      const locked = await repository.lockClaimCodes(ids);
+      const lockedById = new Map(locked.map((row) => [row.id, row]));
+      const changedIds: string[] = [];
+      const items: ClaimCodeBulkOperationItem[] = [];
+      const counts = {
+        selected: ids.length,
+        changed: 0,
+        unchanged: 0,
+        used: 0,
+        notFound: 0,
+      };
+
+      for (const requestedClaimCodeId of ids) {
+        const row = lockedById.get(requestedClaimCodeId);
+        if (!row) {
+          counts.notFound += 1;
+          items.push({
+            requestedClaimCodeId,
+            claimCodeId: null,
+            maskedCode: null,
+            outcome: ClaimCodeBulkOutcome.NOT_FOUND,
+          });
+          continue;
+        }
+
+        const safeItem = {
+          requestedClaimCodeId,
+          claimCodeId: row.id,
+          maskedCode: maskClaimCode(row.code),
+        };
+        if (row.isUsed) {
+          counts.used += 1;
+          items.push({
+            ...safeItem,
+            outcome: ClaimCodeBulkOutcome.ALREADY_USED,
+          });
+        } else if (row.isActive === dto.isActive) {
+          counts.unchanged += 1;
+          items.push({
+            ...safeItem,
+            outcome: ClaimCodeBulkOutcome.ALREADY_IN_STATE,
+          });
+        } else {
+          counts.changed += 1;
+          changedIds.push(row.id);
+          items.push({
+            ...safeItem,
+            outcome: ClaimCodeBulkOutcome.CHANGED,
+          });
+        }
+      }
+
+      const changed = await repository.updateClaimCodeStatuses(
+        changedIds,
+        dto.isActive,
+      );
+      if (changed.count !== changedIds.length) {
+        throw new ConflictException(
+          'Os códigos selecionados foram alterados concorrentemente.',
+        );
+      }
+
+      const operationInput = {
+        id: randomUUID(),
+        actorAdminId: context.actorAdminId,
+        targetIsActive: dto.isActive,
+        reason: dto.reason.trim(),
+        requestId: context.requestId,
+        selectedCount: counts.selected,
+        changedCount: counts.changed,
+        unchangedCount: counts.unchanged,
+        usedCount: counts.used,
+        notFoundCount: counts.notFound,
+        items,
+      } satisfies Parameters<ClaimCodesRepository['createBulkOperation']>[0];
+      const operation = await repository.createBulkOperation(operationInput);
+
+      await this.audit.record(repository.auditWriter!, {
+        actor: { actorType: AuditActorType.ADMIN, ...context },
+        operation: AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+        entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+        entityId: operation.id,
+        reason: dto.reason,
+        after: {
+          targetIsActive: dto.isActive,
+          selectedCount: counts.selected,
+          changedCount: counts.changed,
+          unchangedCount: counts.unchanged,
+          usedCount: counts.used,
+          notFoundCount: counts.notFound,
+        },
+      });
+
+      return this.toBulkDetail(operation);
+    });
+  }
+
+  async findBulkOperations(query: ClaimCodeBulkQueryDto) {
+    const from = this.parseDate(query.from, 'from');
+    const to = this.parseDate(query.to, 'to');
+    if (from && to && from > to) {
+      throw new BadRequestException('O intervalo de datas é inválido.');
+    }
+
+    const page = await this.repository.findBulkOperations({
+      page: query.page,
+      limit: query.limit,
+      actorAdminId: query.actorAdminId,
+      targetIsActive: query.targetIsActive,
+      from,
+      to,
+    });
+    return paginate(
+      page.rows.map((row) => this.toBulkSummary(row)),
+      page.total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  async findBulkOperation(id: string) {
+    const operation = await this.repository.findBulkOperation(id);
+    if (!operation) {
+      throw new NotFoundException('Operação em lote não encontrada.');
+    }
+    return this.toBulkDetail(operation);
+  }
+
+  async getBulkReport(id: string) {
+    const operation = await this.repository.findBulkReport(id);
+    if (!operation) {
+      throw new NotFoundException('Operação em lote não encontrada.');
+    }
+    return [...operation.items].sort((first, second) =>
+      first.requestedClaimCodeId.localeCompare(second.requestedClaimCodeId),
+    );
+  }
+
   private toHistory(
     row: Awaited<ReturnType<ClaimCodesRepository['findClaimCodeById']>> & {},
   ) {
@@ -309,6 +462,61 @@ export class ClaimCodesService {
           ? row.createdAt.toISOString()
           : row.createdAt,
       counts: row.counts,
+    };
+  }
+
+  private toBulkSummary(row: {
+    id: string;
+    actorAdmin: { id: string; name: string; email: string };
+    targetIsActive: boolean;
+    reason: string;
+    requestId: string;
+    selectedCount: number;
+    changedCount: number;
+    unchangedCount: number;
+    usedCount: number;
+    notFoundCount: number;
+    createdAt: Date | string;
+  }): ClaimCodeBulkOperationSummary {
+    return {
+      id: row.id,
+      actor: row.actorAdmin,
+      targetIsActive: row.targetIsActive,
+      reason: row.reason,
+      requestId: row.requestId,
+      counts: {
+        selected: row.selectedCount,
+        changed: row.changedCount,
+        unchanged: row.unchangedCount,
+        used: row.usedCount,
+        notFound: row.notFoundCount,
+      },
+      createdAt:
+        row.createdAt instanceof Date
+          ? row.createdAt.toISOString()
+          : row.createdAt,
+    };
+  }
+
+  private toBulkDetail(row: {
+    id: string;
+    actorAdmin: { id: string; name: string; email: string };
+    targetIsActive: boolean;
+    reason: string;
+    requestId: string;
+    selectedCount: number;
+    changedCount: number;
+    unchangedCount: number;
+    usedCount: number;
+    notFoundCount: number;
+    createdAt: Date | string;
+    items: ClaimCodeBulkOperationItem[];
+  }): ClaimCodeBulkOperationDetail {
+    return {
+      ...this.toBulkSummary(row),
+      items: [...row.items].sort((first, second) =>
+        first.requestedClaimCodeId.localeCompare(second.requestedClaimCodeId),
+      ),
     };
   }
 

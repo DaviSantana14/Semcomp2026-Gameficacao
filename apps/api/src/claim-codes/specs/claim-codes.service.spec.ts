@@ -14,6 +14,8 @@ import {
   AuditEntityType,
   AuditOperation,
 } from '../../audit/audit.repository';
+import { BulkClaimCodeStatusDto } from '../dto/bulk-claim-code-status.dto';
+import { ClaimCodeBulkQueryDto } from '../dto/claim-code-bulk-query.dto';
 
 describe(ClaimCodesService.name, () => {
   let service: ClaimCodesService;
@@ -43,6 +45,12 @@ describe(ClaimCodesService.name, () => {
       updateClaimCodeStatus: jest.fn(),
       findClaimCodeById: jest.fn(),
       insertClaimCodes: jest.fn(),
+      lockClaimCodes: jest.fn(),
+      updateClaimCodeStatuses: jest.fn(),
+      createBulkOperation: jest.fn(),
+      findBulkOperations: jest.fn(),
+      findBulkOperation: jest.fn(),
+      findBulkReport: jest.fn(),
       auditWriter: { create: jest.fn() },
       withTransaction: jest.fn(
         (callback: (transactional: ClaimCodesRepository) => unknown) =>
@@ -74,6 +82,192 @@ describe(ClaimCodesService.name, () => {
       ),
     ).rejects.toEqual(
       new NotFoundException('Atividade pontuável não encontrada.'),
+    );
+  });
+
+  it('classifies a mixed bulk status request, persists one report and writes one safe audit', async () => {
+    const bulkRepository = repository as unknown as {
+      lockClaimCodes: jest.Mock;
+      updateClaimCodeStatuses: jest.Mock;
+      createBulkOperation: jest.Mock;
+    };
+    bulkRepository.lockClaimCodes.mockResolvedValue([
+      {
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: true,
+        isUsed: false,
+      },
+      {
+        id: 'code-2',
+        code: 'IJKL-MNOP',
+        isActive: false,
+        isUsed: false,
+      },
+      {
+        id: 'code-3',
+        code: 'QRST-UVWX',
+        isActive: true,
+        isUsed: true,
+      },
+    ]);
+    bulkRepository.updateClaimCodeStatuses.mockResolvedValue({ count: 1 });
+    bulkRepository.createBulkOperation.mockResolvedValue({
+      id: 'bulk-1',
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      reason: 'Desativacao preventiva dos codigos selecionados',
+      requestId: 'request-1',
+      selectedCount: 4,
+      changedCount: 1,
+      unchangedCount: 1,
+      usedCount: 1,
+      notFoundCount: 1,
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      actorAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      items: [
+        {
+          requestedClaimCodeId: 'code-1',
+          claimCodeId: 'code-1',
+          maskedCode: 'AB*****GH',
+          outcome: 'CHANGED',
+        },
+        {
+          requestedClaimCodeId: 'code-2',
+          claimCodeId: 'code-2',
+          maskedCode: 'IJ*****OP',
+          outcome: 'ALREADY_IN_STATE',
+        },
+        {
+          requestedClaimCodeId: 'code-3',
+          claimCodeId: 'code-3',
+          maskedCode: 'QR*****WX',
+          outcome: 'ALREADY_USED',
+        },
+        {
+          requestedClaimCodeId: 'code-4',
+          claimCodeId: null,
+          maskedCode: null,
+          outcome: 'NOT_FOUND',
+        },
+      ],
+    });
+
+    const dto: BulkClaimCodeStatusDto = {
+      ids: ['code-3', 'code-1', 'code-4', 'code-2'],
+      isActive: false,
+      reason: 'Desativacao preventiva dos codigos selecionados',
+      confirmation: 'DESATIVAR',
+    };
+
+    const result = await service.bulkUpdateStatus(dto, context);
+
+    expect(result.counts).toEqual({
+      selected: 4,
+      changed: 1,
+      unchanged: 1,
+      used: 1,
+      notFound: 1,
+    });
+    expect(
+      result.items.map(({ requestedClaimCodeId }) => requestedClaimCodeId),
+    ).toEqual(['code-1', 'code-2', 'code-3', 'code-4']);
+    expect(bulkRepository.updateClaimCodeStatuses).toHaveBeenCalledWith(
+      ['code-1'],
+      false,
+    );
+    expect(bulkRepository.createBulkOperation).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.stringify(bulkRepository.createBulkOperation.mock.calls),
+    ).not.toContain('ABCD-EFGH');
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain('ABCD-EFGH');
+  });
+
+  it('maps bulk history and detail dates while keeping report rows masked', async () => {
+    const bulkRepository = repository as unknown as {
+      findBulkOperations: jest.Mock;
+      findBulkOperation: jest.Mock;
+      findBulkReport: jest.Mock;
+    };
+    const row = {
+      id: 'bulk-1',
+      actorAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      targetIsActive: false,
+      reason: 'Desativacao preventiva dos codigos',
+      requestId: 'request-1',
+      selectedCount: 1,
+      changedCount: 1,
+      unchangedCount: 0,
+      usedCount: 0,
+      notFoundCount: 0,
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      items: [
+        {
+          requestedClaimCodeId: 'code-1',
+          claimCodeId: 'code-1',
+          maskedCode: 'AB*****GH',
+          outcome: 'CHANGED',
+        },
+      ],
+    };
+    bulkRepository.findBulkOperations.mockResolvedValue({
+      rows: [row],
+      total: 1,
+    });
+    bulkRepository.findBulkOperation.mockResolvedValue(row);
+    bulkRepository.findBulkReport.mockResolvedValue({
+      id: 'bulk-1',
+      items: row.items,
+    });
+
+    const query: ClaimCodeBulkQueryDto = {
+      page: 1,
+      limit: 20,
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      from: '2026-08-01T00:00:00.000Z',
+      to: '2026-08-31T23:59:59.999Z',
+    };
+    await expect(service.findBulkOperations(query)).resolves.toMatchObject({
+      meta: { total: 1 },
+      items: [
+        {
+          id: 'bulk-1',
+          createdAt: '2026-08-22T12:00:00.000Z',
+          counts: { selected: 1, changed: 1 },
+        },
+      ],
+    });
+    expect(bulkRepository.findBulkOperations).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-31T23:59:59.999Z'),
+    });
+    await expect(service.findBulkOperation('bulk-1')).resolves.toMatchObject({
+      id: 'bulk-1',
+      createdAt: '2026-08-22T12:00:00.000Z',
+    });
+    await expect(service.getBulkReport('bulk-1')).resolves.toEqual(row.items);
+
+    bulkRepository.findBulkOperation.mockResolvedValue(null);
+    bulkRepository.findBulkReport.mockResolvedValue(null);
+    await expect(service.findBulkOperation('missing')).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(service.getBulkReport('missing')).rejects.toThrow(
+      NotFoundException,
     );
   });
 

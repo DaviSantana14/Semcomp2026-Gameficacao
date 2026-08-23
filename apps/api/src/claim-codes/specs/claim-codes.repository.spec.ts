@@ -4,7 +4,10 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import * as eventCode from '../../common/event-code';
-import { ClaimCodesRepository } from '../claim-codes.repository';
+import {
+  ClaimCodeBulkOperationCreateInput,
+  ClaimCodesRepository,
+} from '../claim-codes.repository';
 import { ClaimCodesService } from '../claim-codes.service';
 
 function createRepository() {
@@ -15,6 +18,12 @@ function createRepository() {
     createManyAndReturn: jest.fn(),
     groupBy: jest.fn(),
     updateMany: jest.fn(),
+  };
+  const claimCodeBulkOperation = {
+    count: jest.fn(),
+    findMany: jest.fn(),
+    findUnique: jest.fn(),
+    create: jest.fn(),
   };
   const claimCodeBatch = {
     create: jest.fn().mockResolvedValue({
@@ -38,11 +47,13 @@ function createRepository() {
     findUnique: jest.fn(),
   };
   const action = { findUnique: jest.fn() };
-  const tx = { action, claimCode, claimCodeBatch };
+  const tx = { action, claimCode, claimCodeBatch, claimCodeBulkOperation };
   const prisma = {
     action,
     claimCode,
     claimCodeBatch,
+    claimCodeBulkOperation,
+    $queryRaw: jest.fn(),
     $transaction: jest.fn(
       (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
     ),
@@ -332,6 +343,116 @@ describe('ClaimCodesRepository', () => {
     await expect(
       repository.getBatchCodes('legacy-code-id'),
     ).resolves.toBeNull();
+  });
+
+  it('locks existing bulk ids in deterministic order without loading unselected rows', async () => {
+    const { prisma } = createRepository();
+    prisma.$queryRaw.mockResolvedValue([
+      {
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: true,
+        isUsed: false,
+      },
+    ]);
+    const repository = new ClaimCodesRepository(prisma as never);
+
+    await expect(
+      repository.lockClaimCodes(['code-2', 'code-1']),
+    ).resolves.toEqual([
+      {
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: true,
+        isUsed: false,
+      },
+    ]);
+
+    const rawCalls = prisma.$queryRaw.mock.calls as unknown as Array<[unknown]>;
+    const query = rawCalls[0]?.[0] as {
+      strings: readonly string[];
+    };
+    expect(query.strings.join(' ')).toMatch(
+      /SELECT[\s\S]*"id"[\s\S]*"code"[\s\S]*"isActive"[\s\S]*"isUsed"[\s\S]*FROM "ClaimCode"[\s\S]*ORDER BY "id"[\s\S]*FOR UPDATE/,
+    );
+  });
+
+  it('persists safe bulk items and pages operations without selecting raw codes', async () => {
+    const { prisma } = createRepository();
+    const repository = new ClaimCodesRepository(prisma as never);
+    const input: ClaimCodeBulkOperationCreateInput = {
+      id: 'bulk-1',
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      reason: 'Desativacao preventiva dos codigos',
+      requestId: 'request-1',
+      selectedCount: 1,
+      changedCount: 1,
+      unchangedCount: 0,
+      usedCount: 0,
+      notFoundCount: 0,
+      items: [
+        {
+          requestedClaimCodeId: 'code-1',
+          claimCodeId: 'code-1',
+          maskedCode: 'AB*****GH',
+          outcome: 'CHANGED',
+        },
+      ],
+    };
+    prisma.claimCodeBulkOperation.create.mockResolvedValue({
+      id: 'bulk-1',
+    });
+    prisma.claimCodeBulkOperation.count.mockResolvedValue(1);
+    prisma.claimCodeBulkOperation.findMany.mockResolvedValue([
+      {
+        id: 'bulk-1',
+        actorAdminId: 'admin-1',
+        targetIsActive: false,
+        reason: input.reason,
+        requestId: 'request-1',
+        selectedCount: 1,
+        changedCount: 1,
+        unchangedCount: 0,
+        usedCount: 0,
+        notFoundCount: 0,
+        createdAt: new Date('2026-08-22T12:00:00.000Z'),
+        actorAdmin: {
+          id: 'admin-1',
+          name: 'Admin',
+          email: 'admin@example.test',
+        },
+      },
+    ]);
+
+    await repository.createBulkOperation(input);
+    expect(prisma.claimCodeBulkOperation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        data: expect.objectContaining({
+          items: { create: input.items },
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        select: expect.objectContaining({ items: expect.anything() }),
+      }),
+    );
+
+    await expect(
+      repository.findBulkOperations({
+        page: 1,
+        limit: 20,
+        actorAdminId: 'admin-1',
+        targetIsActive: false,
+      }),
+    ).resolves.toMatchObject({ total: 1, rows: [{ id: 'bulk-1' }] });
+    expect(prisma.claimCodeBulkOperation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { actorAdminId: 'admin-1', targetIsActive: false },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        select: expect.not.objectContaining({ items: expect.anything() }),
+      }),
+    );
   });
 
   it.each([

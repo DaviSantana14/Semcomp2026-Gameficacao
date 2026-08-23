@@ -45,6 +45,12 @@ import { ClaimCodeArtifactsService } from './claim-code-artifacts.service';
 import { ClaimCodesService } from './claim-codes.service';
 import { serializeClaimCodeBatchText } from './claim-code-batch-text';
 import { ClaimCodeBatchesQueryDto } from './dto/claim-code-batches-query.dto';
+import { BulkClaimCodeStatusDto } from './dto/bulk-claim-code-status.dto';
+import { ClaimCodeBulkQueryDto } from './dto/claim-code-bulk-query.dto';
+import {
+  ClaimCodeBulkOperationResponseDto,
+  ClaimCodeBulkOperationsPageResponseDto,
+} from './dto/claim-code-bulk-response.dto';
 import {
   ClaimCodeBatchResponseDto,
   ClaimCodeBatchesPageResponseDto,
@@ -57,6 +63,7 @@ import {
   ClaimCodesPageResponseDto,
 } from './dto/claim-code-history-response.dto';
 import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
+import { serializeClaimCodeBulkCsv } from './claim-code-bulk-csv';
 
 @ApiTags('Claim Codes')
 @ApiSecurity('access-token-cookie')
@@ -92,6 +99,59 @@ export class ClaimCodesController {
   @ApiNotFoundResponse({ type: HttpErrorResponseDto })
   findBatch(@Param('id') id: string) {
     return this.claimCodesService.findBatch(id);
+  }
+
+  @Post('claim-codes/bulk-status')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Alterar status de códigos em lote (admin)' })
+  @ApiBody({ type: BulkClaimCodeStatusDto })
+  @ApiCreatedResponse({ type: ClaimCodeBulkOperationResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
+  bulkUpdateStatus(
+    @Body() dto: BulkClaimCodeStatusDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.claimCodesService.bulkUpdateStatus(
+      dto,
+      getAdminOperationContext(request),
+    );
+  }
+
+  @Get('claim-code-bulk-operations')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Listar operações de status em lote (admin)' })
+  @ApiOkResponse({ type: ClaimCodeBulkOperationsPageResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  findBulkOperations(@Query() query: ClaimCodeBulkQueryDto) {
+    return this.claimCodesService.findBulkOperations(query);
+  }
+
+  @Get('claim-code-bulk-operations/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Consultar operação de status em lote (admin)' })
+  @ApiOkResponse({ type: ClaimCodeBulkOperationResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  findBulkOperation(@Param('id') id: string) {
+    return this.claimCodesService.findBulkOperation(id);
+  }
+
+  @Get('claim-code-bulk-operations/:id/report.csv')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Baixar relatório de operação em lote (admin)' })
+  @ApiProduces('text/csv')
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  @Header('Cache-Control', 'no-store')
+  async downloadBulkReport(@Param('id') id: string, @Res() response: Response) {
+    const items = await this.claimCodesService.getBulkReport(id);
+    const safeId = id.replace(/[^A-Za-z0-9_-]/g, '_');
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="codigos-bulk-${safeId}.csv"`,
+    );
+    response.send(serializeClaimCodeBulkCsv(items));
   }
 
   @Get('claim-code-batches/:id/download.txt')

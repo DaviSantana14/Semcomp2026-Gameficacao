@@ -5,6 +5,7 @@ import {
   AuditRepository,
   TransactionAuditWriter,
 } from '../audit/audit.repository';
+import { ClaimCodeBulkOutcome } from './claim-code-bulk-outcome';
 
 const claimCodeHistorySelect = {
   id: true,
@@ -30,6 +31,36 @@ const claimCodeBatchSelect = {
   createdByAdmin: { select: { id: true, name: true, email: true } },
 } as const;
 
+const claimCodeBulkOperationSummarySelect = {
+  id: true,
+  actorAdminId: true,
+  targetIsActive: true,
+  reason: true,
+  requestId: true,
+  selectedCount: true,
+  changedCount: true,
+  unchangedCount: true,
+  usedCount: true,
+  notFoundCount: true,
+  createdAt: true,
+  actorAdmin: { select: { id: true, name: true, email: true } },
+} as const;
+
+const claimCodeBulkOperationItemSelect = {
+  requestedClaimCodeId: true,
+  claimCodeId: true,
+  maskedCode: true,
+  outcome: true,
+} as const;
+
+const claimCodeBulkOperationDetailSelect = {
+  ...claimCodeBulkOperationSummarySelect,
+  items: {
+    select: claimCodeBulkOperationItemSelect,
+    orderBy: { requestedClaimCodeId: 'asc' },
+  },
+} as const;
+
 const emptyBatchCounts = () => ({
   available: 0,
   disabled: 0,
@@ -41,13 +72,28 @@ type ClaimCodeBatchRecord = Prisma.ClaimCodeBatchGetPayload<{
   select: typeof claimCodeBatchSelect;
 }>;
 
+type ClaimCodeBulkOperationRecord = Prisma.ClaimCodeBulkOperationGetPayload<{
+  select: typeof claimCodeBulkOperationDetailSelect;
+}>;
+
+export type LockedClaimCode = {
+  id: string;
+  code: string;
+  isActive: boolean;
+  isUsed: boolean;
+};
+
 export type ClaimCodeBatchRecordWithCounts = ClaimCodeBatchRecord & {
   counts: ReturnType<typeof emptyBatchCounts>;
 };
 
 type ClaimCodesDatabase = Pick<
   Prisma.TransactionClient,
-  'action' | 'claimCode' | 'claimCodeBatch'
+  | '$queryRaw'
+  | 'action'
+  | 'claimCode'
+  | 'claimCodeBatch'
+  | 'claimCodeBulkOperation'
 >;
 
 export interface ClaimCodePageFilter {
@@ -75,6 +121,34 @@ export interface ClaimCodeBatchPageFilter {
   actorAdminId?: string;
   from?: Date;
   to?: Date;
+}
+
+export interface ClaimCodeBulkOperationPageFilter {
+  page: number;
+  limit: number;
+  actorAdminId?: string;
+  targetIsActive?: boolean;
+  from?: Date;
+  to?: Date;
+}
+
+export interface ClaimCodeBulkOperationCreateInput {
+  id: string;
+  actorAdminId: string;
+  targetIsActive: boolean;
+  reason: string;
+  requestId: string;
+  selectedCount: number;
+  changedCount: number;
+  unchangedCount: number;
+  usedCount: number;
+  notFoundCount: number;
+  items: Array<{
+    requestedClaimCodeId: string;
+    claimCodeId: string | null;
+    maskedCode: string | null;
+    outcome: ClaimCodeBulkOutcome;
+  }>;
 }
 
 @Injectable()
@@ -233,6 +307,92 @@ export class ClaimCodesRepository {
     });
   }
 
+  async lockClaimCodes(ids: string[]): Promise<LockedClaimCode[]> {
+    if (ids.length === 0) return [];
+
+    return this.client.$queryRaw<LockedClaimCode[]>(Prisma.sql`
+      SELECT "id", "code", "isActive", "isUsed"
+      FROM "ClaimCode"
+      WHERE "id" IN (${Prisma.join(ids)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+  }
+
+  updateClaimCodeStatuses(ids: string[], isActive: boolean) {
+    if (ids.length === 0) return Promise.resolve({ count: 0 });
+
+    return this.client.claimCode.updateMany({
+      where: {
+        id: { in: ids },
+        isUsed: false,
+        isActive: { not: isActive },
+      },
+      data: { isActive },
+    });
+  }
+
+  createBulkOperation(input: ClaimCodeBulkOperationCreateInput) {
+    return this.client.claimCodeBulkOperation.create({
+      data: {
+        id: input.id,
+        actorAdminId: input.actorAdminId,
+        targetIsActive: input.targetIsActive,
+        reason: input.reason,
+        requestId: input.requestId,
+        selectedCount: input.selectedCount,
+        changedCount: input.changedCount,
+        unchangedCount: input.unchangedCount,
+        usedCount: input.usedCount,
+        notFoundCount: input.notFoundCount,
+        items: {
+          create: input.items.map((item) => ({
+            ...item,
+            outcome: item.outcome,
+          })),
+        },
+      },
+      select: claimCodeBulkOperationDetailSelect,
+    });
+  }
+
+  async findBulkOperations(filter: ClaimCodeBulkOperationPageFilter) {
+    const where = this.buildBulkOperationWhere(filter);
+    const [total, rows] = await Promise.all([
+      this.client.claimCodeBulkOperation.count({ where }),
+      this.client.claimCodeBulkOperation.findMany({
+        where,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: claimCodeBulkOperationSummarySelect,
+      }),
+    ]);
+
+    return { rows, total };
+  }
+
+  findBulkOperation(id: string): Promise<ClaimCodeBulkOperationRecord | null> {
+    return this.client.claimCodeBulkOperation.findUnique({
+      where: { id },
+      select: claimCodeBulkOperationDetailSelect,
+    });
+  }
+
+  async findBulkReport(id: string) {
+    const row = await this.client.claimCodeBulkOperation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        items: {
+          select: claimCodeBulkOperationItemSelect,
+          orderBy: { requestedClaimCodeId: 'asc' },
+        },
+      },
+    });
+    return row;
+  }
+
   findClaimCodeById(id: string) {
     return this.client.claimCode.findUnique({
       where: { id },
@@ -246,6 +406,23 @@ export class ClaimCodesRepository {
     return {
       ...(filter.actionId && { actionId: filter.actionId }),
       ...(filter.actorAdminId && { createdByAdminId: filter.actorAdminId }),
+      ...((filter.from || filter.to) && {
+        createdAt: {
+          ...(filter.from && { gte: filter.from }),
+          ...(filter.to && { lte: filter.to }),
+        },
+      }),
+    };
+  }
+
+  private buildBulkOperationWhere(
+    filter: ClaimCodeBulkOperationPageFilter,
+  ): Prisma.ClaimCodeBulkOperationWhereInput {
+    return {
+      ...(filter.actorAdminId && { actorAdminId: filter.actorAdminId }),
+      ...(filter.targetIsActive !== undefined && {
+        targetIsActive: filter.targetIsActive,
+      }),
       ...((filter.from || filter.to) && {
         createdAt: {
           ...(filter.from && { gte: filter.from }),
