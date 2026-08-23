@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  Download,
   LoaderCircle,
   RefreshCw,
   RotateCcw,
@@ -15,6 +16,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  downloadRedemptionsExport,
+  fetchRedemptionsExportCount,
+} from "@/features/exports/exports.service";
+import {
   cancelRedemption,
   deliverRedemption,
   fetchAdminRedemptions,
@@ -24,6 +29,7 @@ import type {
   AdminReward,
 } from "@/features/rewards/rewards.types";
 import { ApiError } from "@/lib/http/api-error";
+import { AdminExportDialog } from "../_components/admin-export-dialog";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
@@ -61,6 +67,11 @@ export function RedemptionHistory({
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
   const [rewardId, setRewardId] = useState("");
+  const [draftFrom, setDraftFrom] = useState("");
+  const [from, setFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
+  const [to, setTo] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
   const [actionIntent, setActionIntent] = useState<{
     item: AdminRedemption;
     kind: "deliver" | "cancel";
@@ -69,7 +80,7 @@ export function RedemptionHistory({
     queryKey: [
       "admin",
       "redemptions",
-      { page, limit: 10, status, search, rewardId },
+      { page, limit: 10, status, search, rewardId, from, to },
     ],
     queryFn: () =>
       fetchAdminRedemptions({
@@ -78,9 +89,33 @@ export function RedemptionHistory({
         status,
         search: search || undefined,
         rewardId: rewardId || undefined,
+        from: from || undefined,
+        to: to || undefined,
       }),
     retry: false,
   });
+  const countExport = useCallback(
+    () =>
+      fetchRedemptionsExportCount({
+        search: search || undefined,
+        status,
+        rewardId: rewardId || undefined,
+        from: from || undefined,
+        to: to || undefined,
+      }),
+    [from, rewardId, search, status, to],
+  );
+  const downloadExport = useCallback(
+    () =>
+      downloadRedemptionsExport({
+        search: search || undefined,
+        status,
+        rewardId: rewardId || undefined,
+        from: from || undefined,
+        to: to || undefined,
+      }),
+    [from, rewardId, search, status, to],
+  );
   const action = useMutation({
     mutationFn: async ({
       id,
@@ -137,6 +172,8 @@ export function RedemptionHistory({
   function submit(event: FormEvent) {
     event.preventDefault();
     setSearch(draft.trim());
+    setFrom(draftFrom);
+    setTo(draftTo);
     setPage(1);
   }
   return (
@@ -171,7 +208,7 @@ export function RedemptionHistory({
           ))}
         </div>
         <form
-          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)_auto]"
+          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)] lg:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)_12rem_12rem_auto]"
           onSubmit={submit}
         >
           <Input
@@ -204,11 +241,33 @@ export function RedemptionHistory({
               </option>
             ))}
           </select>
-          <Button variant="outline">
+          <Input
+            aria-label="Data inicial"
+            onChange={(event) => setDraftFrom(event.target.value)}
+            type="date"
+            value={draftFrom}
+          />
+          <Input
+            aria-label="Data final"
+            onChange={(event) => setDraftTo(event.target.value)}
+            type="date"
+            value={draftTo}
+          />
+          <Button type="submit" variant="outline">
             <Search />
             Buscar
           </Button>
         </form>
+        <div className="flex flex-wrap justify-end">
+          <Button
+            aria-label="Exportar pedidos"
+            onClick={() => setExportOpen(true)}
+            variant="outline"
+          >
+            <Download aria-hidden="true" />
+            Exportar pedidos
+          </Button>
+        </div>
         {optionsError ? (
           <div
             className="rounded-lg border border-destructive/40 p-4"
@@ -349,6 +408,34 @@ export function RedemptionHistory({
           )}
         </div>
       </div>
+      {exportOpen ? (
+        <AdminExportDialog
+          appliedFilters={[
+            {
+              label: "Busca",
+              value: search || "Todos os participantes",
+            },
+            { label: "Status", value: labels[status] },
+            {
+              label: "Recompensa",
+              value:
+                rewards.find((reward) => reward.id === rewardId)?.name ??
+                "Todas as recompensas",
+            },
+            {
+              label: "Período",
+              value:
+                from || to
+                  ? `${from || "início"} a ${to || "fim"}`
+                  : "Todo o período",
+            },
+          ]}
+          count={countExport}
+          download={downloadExport}
+          onClose={() => setExportOpen(false)}
+          title="Exportar pedidos da lojinha"
+        />
+      ) : null}
       {actionIntent ? (
         <AdminReasonDialog
           confirmLabel={
