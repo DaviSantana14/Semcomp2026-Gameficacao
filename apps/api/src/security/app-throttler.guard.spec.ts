@@ -56,6 +56,9 @@ class NamedPolicyController {
 
   @RateLimitPolicy('bulk')
   bulkMutation(this: void) {}
+
+  @RateLimitPolicy('activation')
+  activation(this: void) {}
 }
 
 class ProfileProtectedController {
@@ -320,11 +323,12 @@ describe(AppThrottlerGuard.name, () => {
   });
 
   it.each([
-    ['export', NamedPolicyController.prototype.exportFile, 5],
-    ['bulk', NamedPolicyController.prototype.bulkMutation, 2],
+    ['export', NamedPolicyController.prototype.exportFile, 5, 60_000],
+    ['bulk', NamedPolicyController.prototype.bulkMutation, 2, 60_000],
+    ['activation', NamedPolicyController.prototype.activation, 5, 900_000],
   ] as const)(
     'applies the named %s policy before the method fallback',
-    async (_policy, handler, limit) => {
+    async (_policy, handler, limit, ttl) => {
       const increment = jest
         .fn<
           Promise<ThrottlerStorageRecord>,
@@ -362,13 +366,37 @@ describe(AppThrottlerGuard.name, () => {
 
       expect(increment).toHaveBeenCalledWith(
         expect.any(String),
-        60_000,
+        ttl,
         limit,
-        60_000,
+        ttl,
         'default',
       );
     },
   );
+
+  it('tracks public activation attempts by the HMAC credential key', async () => {
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+
+    const first = await guard.tracker({
+      ip: '203.0.113.10',
+      path: '/auth/admin/activate',
+      body: { cpf: '529.982.247-25', email: 'admin@example.com' },
+    });
+    const equivalent = await guard.tracker({
+      ip: '198.51.100.10',
+      path: '/auth/admin/activate',
+      body: { cpf: '52998224725', email: ' ADMIN@example.com ' },
+    });
+
+    expect(first).toBe(equivalent);
+    expect(first).toMatch(/^credential:/);
+    expect(first).not.toContain('admin@example.com');
+  });
 
   it('shares named export counters without sharing the common admin mutation counter', async () => {
     const increment = jest

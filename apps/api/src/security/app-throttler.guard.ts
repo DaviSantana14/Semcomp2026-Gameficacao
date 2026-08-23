@@ -43,11 +43,21 @@ const NAMED_RATE_LIMIT_POLICIES: Record<
 > = {
   export: { name: 'admin-export', limit: 5, ttl: 60_000 },
   bulk: { name: 'claim-code-bulk', limit: 2, ttl: 60_000 },
+  activation: {
+    name: 'admin-activation',
+    limit: 5,
+    ttl: 15 * 60 * 1000,
+  },
 };
 
 const LOGIN_ROUTE_POLICIES: Record<string, ResolvedRateLimitPolicy> = {
   '/auth/login': { name: 'participant-login', limit: 5, ttl: 15 * 60 * 1000 },
   '/auth/admin/login': { name: 'admin-login', limit: 5, ttl: 15 * 60 * 1000 },
+  '/auth/admin/activate': {
+    name: 'admin-activation',
+    limit: 5,
+    ttl: 15 * 60 * 1000,
+  },
   '/auth/register': { name: 'register', limit: 3, ttl: 60 * 60 * 1000 },
 };
 

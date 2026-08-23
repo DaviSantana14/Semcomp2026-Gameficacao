@@ -28,5 +28,6 @@ import { ensureJwtSecret } from './jwt-env';
     CsrfGuard,
     AllowedOriginGuard,
   ],
+  exports: [AdminPasswordService],
 })
 export class AuthModule {}

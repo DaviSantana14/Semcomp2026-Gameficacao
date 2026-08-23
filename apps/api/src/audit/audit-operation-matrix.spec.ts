@@ -39,6 +39,14 @@ const reconciliation = {
   pointsDifference: 2,
   xpDifference: 3,
 };
+const operator = {
+  id: 'operator-1',
+  name: 'Bia Operadora',
+  adminProfile: 'SHOP',
+  isActive: true,
+  createdAt: '2026-08-23T12:00:00.000Z',
+  updatedAt: '2026-08-23T12:00:00.000Z',
+};
 
 const operationMatrix: Array<{
   input: RecordAuditEventInput;
@@ -312,6 +320,52 @@ const operationMatrix: Array<{
         pointEventId: 'compensation-1',
       },
       metadata: { pointEventId: 'compensation-1' },
+    },
+    expected: { participantId: 'participant-1' },
+  },
+  {
+    input: {
+      actor,
+      operation: AuditOperation.ADMIN_OPERATOR_CREATED,
+      entityType: AuditEntityType.ADMIN_OPERATOR,
+      entityId: operator.id,
+      reason: 'Cadastro de operador autorizado',
+      after: operator,
+    },
+    expected: { participantId: null, before: undefined },
+  },
+  {
+    input: {
+      actor,
+      operation: AuditOperation.ADMIN_OPERATOR_UPDATED,
+      entityType: AuditEntityType.ADMIN_OPERATOR,
+      entityId: operator.id,
+      reason: 'Edicao de operador autorizada',
+      before: operator,
+      after: { ...operator, name: 'Bia Loja' },
+      metadata: { sessionsRevoked: 1 },
+    },
+    expected: { participantId: null },
+  },
+  {
+    input: {
+      actor,
+      operation: AuditOperation.PARTICIPANT_PASSWORD_RESET,
+      entityType: AuditEntityType.PARTICIPANT,
+      entityId: 'participant-1',
+      participantId: 'participant-1',
+      reason: 'Reset de senha solicitado',
+      before: {
+        id: 'participant-1',
+        passwordResetRequired: false,
+        passwordResetExpiresAt: null,
+      },
+      after: {
+        id: 'participant-1',
+        passwordResetRequired: true,
+        passwordResetExpiresAt: '2026-08-24T12:00:00.000Z',
+      },
+      metadata: { sessionsRevoked: 2 },
     },
     expected: { participantId: 'participant-1' },
   },

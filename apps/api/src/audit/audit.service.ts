@@ -32,6 +32,21 @@ export interface ParticipantStatusSnapshot {
   isActive: boolean;
 }
 
+export interface AdminOperatorAuditSnapshot {
+  id: string;
+  name: string;
+  adminProfile: string;
+  isActive: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface ParticipantPasswordResetAuditSnapshot {
+  id: string;
+  passwordResetRequired: boolean;
+  passwordResetExpiresAt: Date | string | null;
+}
+
 export interface ActionAuditSnapshot {
   id: string;
   name: string;
@@ -146,6 +161,7 @@ export interface AuditMetadataSource {
   originalPointEventId?: string;
   reversalPointEventId?: string;
   rewardRedemptionId?: string;
+  sessionsRevoked?: number;
 }
 
 interface AuditEventBase<
@@ -211,6 +227,10 @@ type RedemptionMetadata = {
 
 type RedemptionCancellationMetadata = {
   metadata?: Pick<AuditMetadataSource, 'rewardRedemptionId' | 'pointEventId'>;
+};
+
+type OperatorMetadata = {
+  metadata?: Pick<AuditMetadataSource, 'sessionsRevoked'>;
 };
 
 export type RecordAuditEventInput =
@@ -332,6 +352,48 @@ export type RecordAuditEventInput =
       ReconciliationAuditSnapshot,
       RequiredParticipant,
       BalanceMetadata
+    >
+  | CreatedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_CREATED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_UPDATED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_STATUS_CHANGED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_ACTIVATION_RESET,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_ACTIVATED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.PARTICIPANT_PASSWORD_RESET,
+      typeof AuditEntityType.PARTICIPANT,
+      ParticipantPasswordResetAuditSnapshot,
+      RequiredParticipant,
+      Pick<OperatorMetadata, 'metadata'>
     >;
 
 type FieldKind =
@@ -361,6 +423,27 @@ interface OperationRule {
 
 const participantStatusRule: ObjectRule = {
   required: { id: 'string', isActive: 'boolean' },
+};
+const adminOperatorRule: ObjectRule = {
+  required: {
+    id: 'string',
+    name: 'string',
+    adminProfile: 'string',
+    isActive: 'boolean',
+    createdAt: 'date',
+    updatedAt: 'date',
+  },
+};
+const participantPasswordResetRule: ObjectRule = {
+  required: {
+    id: 'string',
+    passwordResetRequired: 'boolean',
+    passwordResetExpiresAt: 'nullableDate',
+  },
+};
+const sessionsRevokedMetadataRule: ObjectRule = {
+  required: {},
+  optional: { sessionsRevoked: 'number' },
 };
 const actionRule: ObjectRule = {
   required: {
@@ -618,6 +701,46 @@ const operationRules = {
     after: reconciliationBalanceRule,
     metadata: balanceMetadataRule,
   },
+  [AuditOperation.ADMIN_OPERATOR_CREATED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_UPDATED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_STATUS_CHANGED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_ACTIVATION_RESET]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_ACTIVATED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+  },
+  [AuditOperation.PARTICIPANT_PASSWORD_RESET]: {
+    entityType: AuditEntityType.PARTICIPANT,
+    participant: 'required',
+    before: participantPasswordResetRule,
+    after: participantPasswordResetRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
 } satisfies Record<AuditOperation, OperationRule>;
 
 @Injectable()
@@ -734,6 +857,7 @@ export class AuditService {
       [AuditEntityType.REWARD_REDEMPTION]: 'Resgate',
       [AuditEntityType.POINT_EVENT]: 'Evento de pontos',
       [AuditEntityType.RECONCILIATION]: 'Reconciliação',
+      [AuditEntityType.ADMIN_OPERATOR]: 'Operador administrativo',
     }[entityType];
   }
 
@@ -900,6 +1024,25 @@ export class AuditService {
           'pointEventIds',
           'originalPointEventId',
         ]);
+      case AuditOperation.ADMIN_OPERATOR_CREATED:
+      case AuditOperation.ADMIN_OPERATOR_UPDATED:
+      case AuditOperation.ADMIN_OPERATOR_STATUS_CHANGED:
+      case AuditOperation.ADMIN_OPERATOR_ACTIVATION_RESET:
+      case AuditOperation.ADMIN_OPERATOR_ACTIVATED:
+        return pickScalarFields(value, [
+          'id',
+          'name',
+          'adminProfile',
+          'isActive',
+          'createdAt',
+          'updatedAt',
+        ]);
+      case AuditOperation.PARTICIPANT_PASSWORD_RESET:
+        return pickScalarFields(value, [
+          'id',
+          'passwordResetRequired',
+          'passwordResetExpiresAt',
+        ]);
     }
   }
 
@@ -916,6 +1059,7 @@ export class AuditService {
       'originalPointEventId',
       'reversalPointEventId',
       'rewardRedemptionId',
+      'sessionsRevoked',
     ]);
     if (
       Array.isArray(value.claimCodeIds) &&

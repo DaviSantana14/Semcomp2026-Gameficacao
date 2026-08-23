@@ -18,6 +18,56 @@ describe(AuditService.name, () => {
     service = new AuditService({ findPage: jest.fn() } as never);
   });
 
+  it('keeps operator and participant-reset audit snapshots free of credentials and PII', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.ADMIN_OPERATOR_UPDATED,
+      entityType: AuditEntityType.ADMIN_OPERATOR,
+      entityId: 'operator-1',
+      reason: 'Edicao de operador autorizada',
+      before: {
+        id: 'operator-1',
+        name: 'Operador',
+        adminProfile: 'SHOP',
+        isActive: true,
+        createdAt: new Date('2026-08-23T12:00:00Z'),
+        updatedAt: new Date('2026-08-23T12:00:00Z'),
+      },
+      after: {
+        id: 'operator-1',
+        name: 'Operador novo',
+        adminProfile: 'ACTIVITIES',
+        isActive: true,
+        createdAt: new Date('2026-08-23T12:00:00Z'),
+        updatedAt: new Date('2026-08-23T12:01:00Z'),
+      },
+      metadata: { sessionsRevoked: 1 },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        before: expect.objectContaining({
+          id: 'operator-1',
+          name: 'Operador',
+          updatedAt: '2026-08-23T12:00:00.000Z',
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        after: expect.objectContaining({
+          id: 'operator-1',
+          name: 'Operador novo',
+          adminProfile: 'ACTIVITIES',
+        }),
+        metadata: { sessionsRevoked: 1 },
+      }),
+    );
+    expect(JSON.stringify(create.mock.calls)).not.toContain('passwordHash');
+  });
+
   it('writes an ADMIN event with a normalized reason and safe action snapshots', async () => {
     await service.record(writer, {
       actor: {

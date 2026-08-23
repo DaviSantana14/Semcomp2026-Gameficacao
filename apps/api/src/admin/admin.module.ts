@@ -14,13 +14,20 @@ import { AdminReconciliationRepository } from './admin-reconciliation.repository
 import { AdminReconciliationService } from './admin-reconciliation.service';
 import { PresenceModule } from '../presence/presence.module';
 import { AdminPresenceController } from './admin-presence.controller';
+import { AuthModule } from '../auth/auth.module';
+import { AdminOperatorsController } from './admin-operators.controller';
+import { AdminActivationController } from './admin-activation.controller';
+import { AdminOperatorsRepository } from './admin-operators.repository';
+import { AdminOperatorsService } from './admin-operators.service';
 @Module({
-  imports: [AuditModule, PresenceModule],
+  imports: [AuditModule, PresenceModule, AuthModule],
   controllers: [
     AdminController,
     AdminAdjustmentsController,
     AdminReconciliationController,
     AdminPresenceController,
+    AdminOperatorsController,
+    AdminActivationController,
   ],
   providers: [
     AdminAdjustmentsService,
@@ -32,6 +39,8 @@ import { AdminPresenceController } from './admin-presence.controller';
     AdminReconciliationService,
     AdminReconciliationRepository,
     AdminProfilesGuard,
+    AdminOperatorsRepository,
+    AdminOperatorsService,
   ],
 })
 export class AdminModule {}

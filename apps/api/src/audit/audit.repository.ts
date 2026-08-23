@@ -171,6 +171,13 @@ class BoundTransactionAuditWriter implements TransactionAuditWriter {
         return `Evento de pontos ${data.entityId}`;
       case AuditEntityType.RECONCILIATION:
         return `Reconciliação ${data.entityId}`;
+      case AuditEntityType.ADMIN_OPERATOR: {
+        const user = await this.client.user.findUnique({
+          where: { id: data.entityId },
+          select: { name: true },
+        });
+        return user?.name ?? `Operador administrativo ${data.entityId}`;
+      }
     }
   }
 
