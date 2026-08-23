@@ -36,6 +36,8 @@ const registerResponse: LoginResponse = {
     cpf: "12345678900",
     email: "ada@example.com",
     role: "PARTICIPANT",
+    adminProfile: null,
+    passwordChangeRequired: false,
     points: 0,
     xp: 0,
     level: 1,

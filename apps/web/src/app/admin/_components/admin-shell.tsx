@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Trophy,
+  UserCog,
   UsersRound,
   Zap,
 } from "lucide-react";
@@ -17,23 +18,37 @@ import { LogoutButton } from "@/components/logout-button";
 import { BrandLogo } from "@/components/semcomp/brand-logo";
 import { Button } from "@/components/ui/button";
 import { useMe } from "@/hooks/use-auth";
+import {
+  adminAreasForProfile,
+  canAccessAdminRoute,
+  firstAdminRoute,
+} from "@/features/auth/admin-profile-routes";
 import { ApiError } from "@/lib/http/api-error";
 import { cn } from "@/lib/utils";
 import { AdminLoading } from "./admin-loading";
 
-const ADMIN_AREAS = [
-  { href: "/admin", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/admin/participantes", label: "Participantes", icon: UsersRound },
-  { href: "/admin/atividades", label: "Atividades", icon: Zap },
-  {
-    href: "/admin/movimentacoes",
-    label: "Movimentações",
-    icon: ArrowLeftRight,
-  },
-  { href: "/admin/codigos", label: "Códigos", icon: KeyRound },
-  { href: "/admin/lojinha", label: "Lojinha", icon: ShoppingBag },
-  { href: "/admin/auditoria", label: "Auditoria", icon: ClipboardList },
-] as const;
+function iconForAdminArea(href: string) {
+  switch (href) {
+    case "/admin":
+      return LayoutDashboard;
+    case "/admin/participantes":
+      return UsersRound;
+    case "/admin/atividades":
+      return Zap;
+    case "/admin/movimentacoes":
+      return ArrowLeftRight;
+    case "/admin/codigos":
+      return KeyRound;
+    case "/admin/lojinha":
+      return ShoppingBag;
+    case "/admin/auditoria":
+      return ClipboardList;
+    case "/admin/operadores":
+      return UserCog;
+    default:
+      return LayoutDashboard;
+  }
+}
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -41,6 +56,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const { data: user, error, isFetching, isLoading, refetch } = useMe();
   const errorRef = useRef<HTMLDivElement>(null);
   const isUnauthorized = error instanceof ApiError && error.status === 401;
+  const adminProfile = user?.role === "ADMIN" ? user.adminProfile : null;
+  const profileRouteBlocked = Boolean(
+    adminProfile && !canAccessAdminRoute(adminProfile, pathname),
+  );
 
   useEffect(() => {
     if (isUnauthorized) router.replace("/login");
@@ -49,6 +68,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user && user.role !== "ADMIN") router.replace("/home");
   }, [router, user]);
+
+  useEffect(() => {
+    if (profileRouteBlocked && adminProfile) {
+      router.replace(firstAdminRoute(adminProfile));
+    }
+  }, [adminProfile, profileRouteBlocked, router]);
 
   useEffect(() => {
     if (error && !isUnauthorized) errorRef.current?.focus();
@@ -92,7 +117,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (isLoading || !user || user.role !== "ADMIN") {
+  if (isLoading || !user || user.role !== "ADMIN" || !adminProfile) {
     return (
       <main className="semcomp-atmosphere min-h-dvh p-4 md:p-6">
         <AdminLoading />
@@ -117,7 +142,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
             aria-label="Áreas administrativas"
             className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:overflow-visible"
           >
-            {ADMIN_AREAS.map(({ href, icon: Icon, label }) => {
+            {adminAreasForProfile(adminProfile).map(({ href, label }) => {
+              const Icon = iconForAdminArea(href);
               const active =
                 href === "/admin"
                   ? pathname === href

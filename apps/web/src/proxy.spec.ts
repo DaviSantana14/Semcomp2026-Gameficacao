@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it } from "vitest";
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
 
 describe("proxy", () => {
   const originalAuthProxyEnabled = process.env.AUTH_PROXY_ENABLED;
@@ -25,5 +25,12 @@ describe("proxy", () => {
     const response = proxy(new NextRequest("http://semcomp.test/home"));
 
     expect(response.headers.get("location")).toBe("http://semcomp.test/login");
+  });
+
+  it("mantém a ativação administrativa pública", () => {
+    const response = proxy(new NextRequest("http://semcomp.test/ativar-admin"));
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(config.matcher).toContain("/ativar-admin");
   });
 });

@@ -1,5 +1,7 @@
 import type { User } from "@/features/users/users.types";
 
+export type { AdminProfile } from "@/features/users/users.types";
+
 export type LoginPayload = {
   email: string;
   password: string;
@@ -9,6 +11,14 @@ export type AdminLoginPayload = {
   cpf: string;
   email: string;
   password: string;
+};
+
+export type AdminActivationPayload = {
+  code: string;
+  cpf: string;
+  email: string;
+  password: string;
+  passwordConfirmation: string;
 };
 
 export type RegisterPayload = {

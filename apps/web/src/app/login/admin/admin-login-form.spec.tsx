@@ -34,6 +34,8 @@ describe("AdminLoginForm", () => {
         cpf: "12345678900",
         email: "admin@example.com",
         role: "ADMIN",
+        adminProfile: "GENERAL",
+        passwordChangeRequired: false,
         points: 0,
         xp: 0,
         level: 1,
@@ -59,7 +61,40 @@ describe("AdminLoginForm", () => {
         password: "correct-password",
       }),
     );
-    expect(replaceMock).toHaveBeenCalledWith("/admin");
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/admin"));
+  });
+
+  it.each([
+    ["SHOP", "/admin/lojinha"],
+    ["ACTIVITIES", "/admin/atividades"],
+  ] as const)("lands a %s administrator on the first permitted area", async (adminProfile, route) => {
+    adminLoginMock.mockResolvedValue({
+      csrfToken: "csrf-token",
+      user: {
+        id: "admin-1",
+        name: "Admin",
+        cpf: "12345678900",
+        email: "admin@example.com",
+        role: "ADMIN",
+        adminProfile,
+        passwordChangeRequired: false,
+        points: 0,
+        xp: 0,
+        level: 1,
+        isActive: true,
+        lastLoginAt: null,
+        createdAt: "2026-07-30T12:00:00.000Z",
+      },
+    });
+    const user = userEvent.setup();
+    render(<AdminLoginForm />);
+
+    await user.type(screen.getByLabelText("CPF"), "12345678900");
+    await user.type(screen.getByLabelText("E-mail"), "admin@example.com");
+    await user.type(screen.getByLabelText("Senha"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "Entrar como administrador" }));
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith(route));
   });
 
   it("valida CPF, e-mail e senha antes de chamar o serviço", async () => {

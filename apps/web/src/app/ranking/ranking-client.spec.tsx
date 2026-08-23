@@ -47,6 +47,8 @@ function createUser(role: UserRole = "PARTICIPANT"): User {
     cpf: "00000000000",
     email: "davi@example.com",
     role,
+    adminProfile: role === "ADMIN" ? "GENERAL" : null,
+    passwordChangeRequired: false,
     points: 620,
     xp: 1840,
     level: 7,

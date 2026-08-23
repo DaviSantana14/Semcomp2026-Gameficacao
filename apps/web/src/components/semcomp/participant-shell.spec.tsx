@@ -22,6 +22,8 @@ const participant: User = {
   cpf: "00000000000",
   email: "davi@example.com",
   role: "PARTICIPANT",
+  adminProfile: null,
+  passwordChangeRequired: false,
   points: 620,
   xp: 1840,
   level: 7,

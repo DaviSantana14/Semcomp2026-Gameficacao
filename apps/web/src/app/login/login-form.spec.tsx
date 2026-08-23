@@ -28,6 +28,8 @@ function createUser(role: UserRole): User {
     cpf: "12345678900",
     email: "davi@example.com",
     role,
+    adminProfile: role === "ADMIN" ? "GENERAL" : null,
+    passwordChangeRequired: false,
     points: 620,
     xp: 1840,
     level: 7,
