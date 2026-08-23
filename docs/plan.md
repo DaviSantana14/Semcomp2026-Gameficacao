@@ -536,26 +536,34 @@ Fora deste marco:
 - Analytics avançado, funis, mapas de calor ou integração com ferramentas externas.
 - Alertas por email/WhatsApp quando um pico ocorrer.
 
-## Marco 12 — Operação em escala e exportações
+## Marco 12 — Operação em escala e exportações (em validação)
 
 Objetivo: reduzir trabalho repetitivo quando o volume real de participantes e
-códigos justificar automações em lote.
+códigos justificar automações em lote, mantendo os fluxos do evento dentro dos
+limites de latência e privacidade.
 
-Tarefas:
-- Exportar CSV de participantes, resgates de códigos, movimentações de pontos e pedidos da lojinha, respeitando filtros ativos.
-- Implementar ativação/desativação em lote de Claim Codes ainda não usados.
-- Permitir baixar novamente um lote de códigos gerado, com rastreabilidade do lote e sem regenerar os valores.
-- Adicionar confirmação reforçada, contagem de afetados e relatório de falhas parciais nas operações em lote.
-- Definir limites de tamanho e processamento para não bloquear requisições comuns do evento.
-- Revisar limites por usuário e endpoint usando as métricas do Marco 9, mantendo
-  proteção por conta e compatibilidade com participantes atrás do mesmo NAT.
-- Expor métricas operacionais agregadas de `401`, `403` e `429` e definir
-  limiares de alerta sem armazenar CPF, email, cookies ou tokens.
+Entregas do marco:
 
-Critério de aceite:
-- Exportações reproduzem os filtros da tela e não expõem campos além do necessário.
-- Operações em lote nunca alteram códigos já usados e informam exatamente o resultado de cada execução.
-- A operação individual existente continua funcionando sem regressões.
+- Exportações de participantes, resgates de códigos, movimentações e pedidos
+  reutilizam os filtros aplicados nas telas e os limites de 50.000 linhas/25 MiB.
+- Lotes de Claim Codes, operações em massa e redownloads permanecem rastreáveis;
+  PDF/ZIP reproduzem os códigos persistidos sem regeneração.
+- PDFs/ZIPs e CSVs são derivados sob demanda, com no máximo uma geração QR e
+  duas gerações CSV simultâneas por processo.
+- O leitor de câmera exige gesto explícito, HTTPS hospedado e confirmação antes
+  do resgate; a entrada manual permanece disponível.
+- O ensaio Marco 12 executa 150 participantes em paralelo com um administrador
+  gerando 500 Claim Codes, baixando CSV/PDF/ZIP, consultando métricas agregadas
+  e verificando que o segundo QR simultâneo recebe `429`/`Retry-After`.
+- O relatório registra latência, status, bytes/contagens de artefatos e apenas
+  contadores agregados de `401`/`403`/`429`; códigos, PII, cookies e tokens não
+  são serializados.
+- CI executa o contrato de carga, a migration do Marco 12, os testes de QR/PDF/
+  ZIP e constrói as imagens Docker com a tag `marco12`.
+
+O Marco 12 só deve ser marcado como implementado depois que o gate automatizado
+e o ensaio hospedado reduzido passarem. O check manual de câmera continua
+dependente de dispositivos Android/iPhone em HTTPS.
 
 ## Marco 13 — Permissões administrativas especializadas
 
@@ -631,7 +639,6 @@ Critério de aceite:
 
 Estes itens continuam planejados, mas não devem bloquear o primeiro MVP testável:
 
-- QR codes.
 - Cálculo automático refinado de level.
 - Código por email/WhatsApp.
 - Dashboard avançado para TV do evento.

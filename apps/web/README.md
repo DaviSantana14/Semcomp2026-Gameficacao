@@ -9,6 +9,16 @@ transient failures. The admin dashboard reads the independent presence overview
 and daily history, with an aggregate CSV download rather than minute-level
 samples.
 
+Claim Code and reusable-code QR artifacts are administrative downloads. The
+participant camera reader starts only after an explicit click, prefers the rear
+camera, pauses for confirmation before calling the existing redemption
+mutation, and keeps manual code entry available. Camera access works on
+`localhost` during development and requires HTTPS when hosted; denied
+permission, missing cameras and insecure origins remain recoverable states.
+
+Marco 12 administrative downloads enforce 500-code batch/PDF/ZIP limits,
+50,000-row and 25 MiB CSV limits, and expose only aggregate security metrics.
+
 ## Getting Started
 
 First, run the development server:

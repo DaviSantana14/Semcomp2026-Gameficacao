@@ -15,6 +15,10 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
 const DEFAULT_HEARTBEAT_WINDOW_MS = 130_000;
 const DEFAULT_PRESENCE_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_PRESENCE_POLL_TIMEOUT_MS = 60_000;
+const DEFAULT_CLAIM_CODE_QUANTITY = 500;
+const CLAIM_CODE_GENERATION_REASON = "Marco 12 load rehearsal";
+const MARCO12_EXPORT_PATH = "/admin/participants/export.csv?status=active";
+const SECURITY_METRIC_STATUSES = new Set(["ATTENTION", "DEGRADED", "NORMAL"]);
 const MAX_CPF_INDEX = 899_999_998;
 const OPERATIONAL_TIME_ZONE = "America/Sao_Paulo";
 const READ_OPERATION_NAMES = new Set([
@@ -202,6 +206,20 @@ function getConfig() {
   const reduced = parseBoolean(process.env.LOAD_REDUCED, false);
   const participantFallback = reduced ? 5 : DEFAULT_PARTICIPANT_COUNT;
   const redemptionFallback = reduced ? 2 : DEFAULT_REDEMPTION_COUNT;
+  const claimCodeQuantity = parsePositiveInteger(
+    process.env.LOAD_CLAIM_CODE_QUANTITY,
+    DEFAULT_CLAIM_CODE_QUANTITY,
+    "LOAD_CLAIM_CODE_QUANTITY",
+  );
+  if (claimCodeQuantity > DEFAULT_CLAIM_CODE_QUANTITY) {
+    throw new Error(
+      `LOAD_CLAIM_CODE_QUANTITY must be at most ${DEFAULT_CLAIM_CODE_QUANTITY}`,
+    );
+  }
+  const marco12 = parseBoolean(
+    process.env.LOAD_MARCO12,
+    Boolean(process.env.LOAD_CLAIM_CODE_ACTION_ID),
+  );
   const baseUrl = normalizeBaseUrl(process.env.BASE_URL ?? "http://localhost");
 
   if (
@@ -215,6 +233,8 @@ function getConfig() {
 
   return {
     baseUrl,
+    claimCodeActionId: process.env.LOAD_CLAIM_CODE_ACTION_ID,
+    claimCodeQuantity,
     origin: normalizeOrigin(process.env.LOAD_ORIGIN ?? new URL(baseUrl).origin),
     participants: parsePositiveInteger(
       process.env.LOAD_PARTICIPANTS,
@@ -263,11 +283,15 @@ function getConfig() {
     ),
     runId: sanitizeRunId(process.env.LOAD_RUN_ID ?? Date.now()),
     reportPath:
-      process.env.LOAD_REPORT_PATH ?? "artifacts/marco-11-load-report.json",
+      process.env.LOAD_REPORT_PATH ??
+      (marco12
+        ? "artifacts/marco-12-load-report.json"
+        : "artifacts/marco-11-load-report.json"),
     redeemCode: process.env.LOAD_REDEEM_CODE,
     adminCpf: process.env.LOAD_ADMIN_CPF,
     adminEmail: process.env.LOAD_ADMIN_EMAIL,
     skipAdmin: parseBoolean(process.env.LOAD_SKIP_ADMIN_SCENARIOS, false),
+    marco12,
     hostMetricsPath: process.env.LOAD_HOST_METRICS_PATH,
     enforceHostLimits: parseBoolean(
       process.env.LOAD_ENFORCE_HOST_LIMITS,
@@ -351,10 +375,18 @@ async function request(baseUrl, path, options = {}) {
         options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: AbortSignal.timeout(options.timeoutMs),
     });
-    const body = await response.text();
+    let body = "";
+    let bodyBytes = 0;
+    if (options.responseType === "bytes") {
+      bodyBytes = (await response.arrayBuffer()).byteLength;
+    } else {
+      body = await response.text();
+      bodyBytes = Buffer.byteLength(body, "utf8");
+    }
 
     return {
       body,
+      bodyBytes,
       cookie: extractAuthCookie(response.headers),
       durationMs: performance.now() - startedAt,
       headers: response.headers,
@@ -363,6 +395,7 @@ async function request(baseUrl, path, options = {}) {
   } catch {
     return {
       body: "",
+      bodyBytes: 0,
       cookie: null,
       durationMs: performance.now() - startedAt,
       headers: new Headers(),
@@ -518,6 +551,9 @@ async function runParticipantReads(config, sessions, metrics) {
 }
 
 async function runParticipantHeartbeats(config, sessions, metrics) {
+  let count = 0;
+  let rateLimited = 0;
+
   await Promise.all(
     sessions.map(async (participant) => {
       let inFlight;
@@ -539,6 +575,8 @@ async function runParticipantHeartbeats(config, sessions, metrics) {
             response,
             statusIs(response, 204),
           );
+          count += 1;
+          if (response.status === 429) rateLimited += 1;
           consumeJson(response);
         })().finally(() => {
           inFlight = undefined;
@@ -560,6 +598,8 @@ async function runParticipantHeartbeats(config, sessions, metrics) {
       }
     }),
   );
+
+  return { count, rateLimited };
 }
 
 async function runRedemptions(config, sessions, metrics) {
@@ -761,6 +801,238 @@ function addOperationalDays(dateOnly, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function safeMetricCount(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function summarizeSecurityMetrics(body) {
+  const lastFlushedMinute =
+    typeof body?.lastFlushedMinute === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(body.lastFlushedMinute)
+      ? body.lastFlushedMinute
+      : null;
+  const status = SECURITY_METRIC_STATUSES.has(body?.status)
+    ? body.status
+    : null;
+  const period = (name) => ({
+    unauthorized: safeMetricCount(body?.periods?.[name]?.unauthorized),
+    forbidden: safeMetricCount(body?.periods?.[name]?.forbidden),
+    rateLimited: safeMetricCount(body?.periods?.[name]?.rateLimited),
+  });
+
+  return {
+    containsPii: false,
+    lastFlushedMinute,
+    periods: {
+      fiveMinutes: period("fiveMinutes"),
+      oneHour: period("oneHour"),
+      twentyFourHours: period("twentyFourHours"),
+    },
+    status,
+    thresholds: {
+      forbidden: safeMetricCount(body?.thresholds?.forbidden),
+      rateLimited: safeMetricCount(body?.thresholds?.rateLimited),
+      unauthorized: safeMetricCount(body?.thresholds?.unauthorized),
+      windowMinutes: safeMetricCount(body?.thresholds?.windowMinutes),
+    },
+  };
+}
+
+function emptyMarco12Artifacts(expectedClaimCodeCount) {
+  return {
+    batchId: null,
+    claimCodeCount: 0,
+    csvBytes: 0,
+    csvDownloaded: false,
+    expectedClaimCodeCount,
+    pdfBytes: 0,
+    pdfDownloaded: false,
+    qrConcurrencyRejected: false,
+    qrRetryAfterSeconds: null,
+    statuses: {
+      csv: null,
+      pdf: null,
+      qrConcurrency: null,
+      zip: null,
+    },
+    zipBytes: 0,
+    zipDownloaded: false,
+  };
+}
+
+async function runMarco12AdminWorkload(config, adminSession, metrics) {
+  const expectedClaimCodeCount =
+    config.claimCodeQuantity ?? DEFAULT_CLAIM_CODE_QUANTITY;
+  const artifacts = emptyMarco12Artifacts(expectedClaimCodeCount);
+  const sensitiveValues = [];
+
+  if (!config.claimCodeActionId) {
+    return {
+      artifacts,
+      securityMetrics: null,
+      sensitiveValues,
+      valid: false,
+    };
+  }
+
+  const actionId = encodeURIComponent(String(config.claimCodeActionId));
+  const generation = await request(
+    config.baseUrl,
+    `/admin/actions/${actionId}/claim-codes/generate`,
+    {
+      body: {
+        quantity: expectedClaimCodeCount,
+        reason: CLAIM_CODE_GENERATION_REASON,
+      },
+      csrfToken: adminSession.csrfToken,
+      method: "POST",
+      origin: config.origin,
+      session: adminSession,
+      timeoutMs: config.timeoutMs,
+    },
+  );
+  const generationBody = consumeJson(generation);
+  const generatedCodes = Array.isArray(generationBody?.codes)
+    ? generationBody.codes
+    : [];
+  sensitiveValues.push(
+    ...generatedCodes.filter(
+      (code) => typeof code === "string" && code.length > 0,
+    ),
+  );
+  artifacts.batchId =
+    typeof generationBody?.batch?.id === "string"
+      ? generationBody.batch.id
+      : null;
+  artifacts.claimCodeCount = generatedCodes.length;
+  const generationValid =
+    statusIs(generation, 201) &&
+    artifacts.batchId !== null &&
+    artifacts.claimCodeCount === expectedClaimCodeCount;
+  recordResponse(
+    metrics,
+    "claimCodeBatchGeneration",
+    generation,
+    generationValid,
+  );
+  generatedCodes.length = 0;
+
+  if (!generationValid) {
+    return {
+      artifacts,
+      securityMetrics: null,
+      sensitiveValues,
+      valid: false,
+    };
+  }
+
+  const adminExport = await request(config.baseUrl, MARCO12_EXPORT_PATH, {
+    method: "GET",
+    origin: config.origin,
+    responseType: "bytes",
+    session: adminSession,
+    timeoutMs: config.timeoutMs,
+  });
+  artifacts.csvDownloaded = statusIs(adminExport, 200);
+  artifacts.csvBytes = adminExport.bodyBytes;
+  artifacts.statuses.csv = adminExport.status;
+  recordResponse(
+    metrics,
+    "adminExportCsv",
+    adminExport,
+    artifacts.csvDownloaded,
+  );
+
+  const batchId = encodeURIComponent(artifacts.batchId);
+  const qrPath = `/admin/claim-code-batches/${batchId}/qr.pdf`;
+  const qrResponses = await Promise.all([
+    request(config.baseUrl, qrPath, {
+      method: "GET",
+      origin: config.origin,
+      responseType: "bytes",
+      session: adminSession,
+      timeoutMs: config.timeoutMs,
+    }),
+    request(config.baseUrl, qrPath, {
+      method: "GET",
+      origin: config.origin,
+      responseType: "bytes",
+      session: adminSession,
+      timeoutMs: config.timeoutMs,
+    }),
+  ]);
+  const successfulPdf = qrResponses.find((response) => statusIs(response, 200));
+  const rejectedQr = qrResponses.find((response) => statusIs(response, 429));
+  const qrRetryAfter = rejectedQr?.headers.get("retry-after");
+  const qrRetryAfterSeconds = qrRetryAfter ? Number(qrRetryAfter) : null;
+  artifacts.pdfDownloaded = Boolean(successfulPdf);
+  artifacts.pdfBytes = successfulPdf?.bodyBytes ?? 0;
+  artifacts.qrConcurrencyRejected =
+    Boolean(rejectedQr) && qrRetryAfterSeconds === 30;
+  artifacts.qrRetryAfterSeconds = Number.isFinite(qrRetryAfterSeconds)
+    ? qrRetryAfterSeconds
+    : null;
+  artifacts.statuses.pdf = successfulPdf?.status ?? null;
+  artifacts.statuses.qrConcurrency = rejectedQr?.status ?? null;
+  for (const response of qrResponses) {
+    const expectedConcurrentResult =
+      statusIs(response, 200) ||
+      (statusIs(response, 429) && response.headers.get("retry-after") === "30");
+    recordResponse(
+      metrics,
+      response === successfulPdf ? "claimCodePdf" : "claimCodeQrConcurrency",
+      response,
+      expectedConcurrentResult,
+    );
+  }
+
+  const zip = await request(
+    config.baseUrl,
+    `/admin/claim-code-batches/${batchId}/qr-images.zip`,
+    {
+      method: "GET",
+      origin: config.origin,
+      responseType: "bytes",
+      session: adminSession,
+      timeoutMs: config.timeoutMs,
+    },
+  );
+  artifacts.zipDownloaded = statusIs(zip, 200);
+  artifacts.zipBytes = zip.bodyBytes;
+  artifacts.statuses.zip = zip.status;
+  recordResponse(metrics, "claimCodeZip", zip, artifacts.zipDownloaded);
+
+  const security = await request(
+    config.baseUrl,
+    "/admin/security-metrics/overview",
+    {
+      method: "GET",
+      origin: config.origin,
+      session: adminSession,
+      timeoutMs: config.timeoutMs,
+    },
+  );
+  const securityBody = consumeJson(security);
+  recordResponse(
+    metrics,
+    "securityMetricsOverview",
+    security,
+    statusIs(security, 200),
+  );
+
+  return {
+    artifacts,
+    securityMetrics: summarizeSecurityMetrics(securityBody),
+    sensitiveValues,
+    valid:
+      artifacts.csvDownloaded &&
+      artifacts.pdfDownloaded &&
+      artifacts.zipDownloaded &&
+      artifacts.qrConcurrencyRejected &&
+      statusIs(security, 200),
+  };
+}
+
 async function pollPresence(config, adminSession, metrics) {
   const today = formatOperationalDate(new Date());
   const tomorrow = addOperationalDays(today, 1);
@@ -824,7 +1096,9 @@ async function pollPresence(config, adminSession, metrics) {
 }
 
 async function runAdminScenario(config, credentials, metrics) {
-  if (!credentials) return { skipped: true, valid: false, presence: null };
+  if (!credentials) {
+    return { marco12: null, presence: null, skipped: true, valid: false };
+  }
 
   const missingPassword = await request(config.baseUrl, "/auth/admin/login", {
     body: { cpf: credentials.cpf, email: credentials.email },
@@ -881,6 +1155,7 @@ async function runAdminScenario(config, credentials, metrics) {
 
   if (!valid) {
     return {
+      marco12: null,
       skipped: false,
       valid: false,
       presence: null,
@@ -907,6 +1182,9 @@ async function runAdminScenario(config, credentials, metrics) {
     }),
   );
 
+  const marco12 = config.marco12
+    ? await runMarco12AdminWorkload(config, adminSession, metrics)
+    : null;
   const presence = await pollPresence(config, adminSession, metrics);
 
   const logout = await request(config.baseUrl, "/auth/logout", {
@@ -922,8 +1200,13 @@ async function runAdminScenario(config, credentials, metrics) {
   return {
     skipped: false,
     valid: true,
+    marco12,
     presence,
-    sensitiveValues: [adminSession.cookie, adminSession.csrfToken],
+    sensitiveValues: [
+      adminSession.cookie,
+      adminSession.csrfToken,
+      ...(marco12?.sensitiveValues ?? []),
+    ],
   };
 }
 
@@ -1015,7 +1298,10 @@ function calculateThresholds(
     readP95Values.length > 0 ? Math.max(...readP95Values) : null;
   const mutationP95Ms =
     mutationP95Values.length > 0 ? Math.max(...mutationP95Values) : null;
-  const validParticipant429 = workload.reads.rateLimited;
+  const validParticipant429 =
+    workload.reads.rateLimited +
+    (workload.heartbeats?.rateLimited ?? 0) +
+    workload.redemptions.rateLimited;
   const minimumHeartbeats = sessions.length * 3;
   const registrationLogoutCount = sessions.filter(
     (participant) => participant.registrationLogoutSucceeded,
@@ -1032,6 +1318,9 @@ function calculateThresholds(
   }
   if (workload.reads.rateLimited > 0) {
     issues.push("valid participant reads were rate limited");
+  }
+  if (validParticipant429 > workload.reads.rateLimited) {
+    issues.push("valid participant operations were rate limited");
   }
   if (workload.redemptions.missingCode) {
     issues.push("LOAD_REDEEM_CODE is required for the redemption scenario");
@@ -1076,6 +1365,19 @@ function calculateThresholds(
     issues.push("host resource limits were exceeded");
   }
 
+  if (config.marco12) {
+    const marco12 = adminResult.marco12;
+    if (!marco12?.valid) {
+      issues.push("Marco 12 administrative artifact rehearsal failed");
+    }
+    if (
+      marco12?.artifacts?.claimCodeCount !==
+      (config.claimCodeQuantity ?? DEFAULT_CLAIM_CODE_QUANTITY)
+    ) {
+      issues.push("Marco 12 Claim Code count was incomplete");
+    }
+  }
+
   return {
     errorRatePercent: roundMs(errorRatePercent),
     maxErrorRatePercent: 1,
@@ -1084,6 +1386,7 @@ function calculateThresholds(
     mutationP95Ms,
     maxMutationP95Ms: 1_000,
     authenticatedParticipants: sessions.length,
+    expectedParticipants: config.participants,
     requestedParticipants: config.participants,
     validParticipant429,
     abuseReceived429: workload.abuse.throttled,
@@ -1169,20 +1472,34 @@ export async function runLoad(config = getConfig()) {
   const sessions = (
     await registerAndLoginParticipants(config, participants, metrics)
   ).filter(Boolean);
-  const reads = await runParticipantReads(config, sessions, metrics);
-  await runParticipantHeartbeats(config, sessions, metrics);
-  const redemptions = await runRedemptions(config, sessions, metrics);
-  const abuse = await runAbuseScenario(config, metrics);
-  const adminResult = credentials
-    ? await runAdminScenario(config, credentials, metrics)
-    : { skipped: config.skipAdmin, valid: false, presence: null };
+  const participantWorkloadPromise = (async () => {
+    const [reads, heartbeats, redemptions] = await Promise.all([
+      runParticipantReads(config, sessions, metrics),
+      runParticipantHeartbeats(config, sessions, metrics),
+      runRedemptions(config, sessions, metrics),
+    ]);
+    const abuse = await runAbuseScenario(config, metrics);
+    return { abuse, heartbeats, reads, redemptions };
+  })();
+  const adminWorkloadPromise = credentials
+    ? runAdminScenario(config, credentials, metrics)
+    : Promise.resolve({
+        marco12: null,
+        presence: null,
+        skipped: config.skipAdmin,
+        valid: false,
+      });
+  const [workload, adminResult] = await Promise.all([
+    participantWorkloadPromise,
+    adminWorkloadPromise,
+  ]);
   const sensitiveValues = collectSensitiveValues(
     participants,
     credentials,
     sessions,
     [
-      ...(abuse.sensitiveValues ?? []),
-      ...(redemptions.sensitiveValues ?? []),
+      ...(workload.abuse.sensitiveValues ?? []),
+      ...(workload.redemptions.sensitiveValues ?? []),
       ...(adminResult.sensitiveValues ?? []),
     ],
   );
@@ -1191,7 +1508,6 @@ export async function runLoad(config = getConfig()) {
   if (!config.skipAdmin && !credentials) {
     issues.push("protected administrative credential input was unavailable");
   }
-  const workload = { reads, redemptions, abuse };
   const thresholds = calculateThresholds(
     metrics,
     sessions,
@@ -1202,12 +1518,14 @@ export async function runLoad(config = getConfig()) {
     issues,
   );
   const report = {
-    schemaVersion: 2,
+    schemaVersion: config.marco12 ? 3 : 2,
+    artifacts: adminResult.marco12?.artifacts ?? null,
     generatedAt: new Date().toISOString(),
     targetOrigin: config.baseUrl,
     mode: config.reduced ? "reduced" : "full",
     requestedParticipants: config.participants,
     requestedRedemptions: config.redemptions,
+    securityMetrics: adminResult.marco12?.securityMetrics ?? null,
     operations: metrics.summaries(),
     httpStatusCounts: metrics.statusSummary(),
     thresholds,
@@ -1216,6 +1534,10 @@ export async function runLoad(config = getConfig()) {
   };
 
   discardSessionMaterial(participants, credentials);
+  if (adminResult.marco12?.sensitiveValues) {
+    adminResult.marco12.sensitiveValues.fill("");
+    adminResult.marco12.sensitiveValues.length = 0;
+  }
   await writeReport(config, report, sensitiveValues);
   return { report, exitCode: issues.length === 0 ? 0 : 1 };
 }
@@ -1223,8 +1545,15 @@ export async function runLoad(config = getConfig()) {
 async function main() {
   try {
     const result = await runLoad();
+    const marco12Requested = parseBoolean(
+      process.env.LOAD_MARCO12,
+      Boolean(process.env.LOAD_CLAIM_CODE_ACTION_ID),
+    );
+    const defaultReportPath = marco12Requested
+      ? "artifacts/marco-12-load-report.json"
+      : "artifacts/marco-11-load-report.json";
     console.log(
-      `load report written: ${process.env.LOAD_REPORT_PATH ?? "artifacts/marco-11-load-report.json"}`,
+      `load report written: ${process.env.LOAD_REPORT_PATH ?? defaultReportPath}`,
     );
     if (result.exitCode !== 0) process.exitCode = result.exitCode;
   } catch {

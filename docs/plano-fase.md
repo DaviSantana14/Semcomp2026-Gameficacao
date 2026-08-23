@@ -885,6 +885,46 @@ ocioso permanece gerando custo.
 
 ---
 
+### Tarefa 14: Ensaiar escala, alinhar CI e verificar o Marco 12
+
+**Resultado:** o ensaio mantém 150 participantes operando enquanto um
+administrador gera um lote de 500 Claim Codes, baixa CSV/PDF/ZIP e consulta
+métricas agregadas sem persistir códigos, credenciais ou PII no relatório.
+
+**Contrato do ensaio:**
+
+- `thresholds.expectedParticipants` é `150` e `validParticipant429` é `0`.
+- `artifacts.claimCodeCount` é `500`; CSV, PDF e ZIP são baixados e registram
+  somente bytes, status e contagens.
+- Os filtros do CSV aparecem na URL; duas requisições QR simultâneas produzem
+  um download e um `429` com `Retry-After: 30`.
+- `securityMetrics` serializa apenas estado, períodos, limiares e
+  `containsPii: false`; corpos de artefatos e valores de códigos nunca entram
+  no JSON.
+
+**Configuração protegida:**
+
+`LOAD_CLAIM_CODE_ACTION_ID` aponta para uma Action descartável existente e
+`LOAD_CLAIM_CODE_QUANTITY` permanece em `500`. CPF, email e senha do
+administrador entram somente por stdin protegido; nunca são variáveis de
+ambiente, argumentos ou conteúdo do relatório.
+
+**Execução:**
+
+- [x] Executar `node --check scripts/load/marco-9-load.mjs`.
+- [x] Executar os contratos `cpf`, Marco 11 e Marco 12 com `node --test`.
+- [ ] Executar migration/geração Prisma, lint, testes, E2E, builds, typecheck e
+  `git diff --check` conforme o plano do Marco 12.
+- [ ] Executar o ensaio hospedado reduzido com `LOAD_REDUCED=true` e sem
+  versionar `artifacts/`.
+- [ ] Verificar manualmente câmera traseira, permissão, confirmação,
+  cancelamento, fallback manual e encerramento em Android e iPhone via HTTPS.
+- [ ] Marcar o Marco 12 como implementado somente após todos os gates acima.
+
+**Aceite:** o ensaio automatizado passa sem vazamento de valores sensíveis,
+participantes válidos não recebem `429`, exportações/QR respeitam limites e o
+CI valida migration, artefatos e imagens `marco12`.
+
 ## Verificação final do Marco 9
 
 - [ ] Login rejeita origem ausente ou incorreta.

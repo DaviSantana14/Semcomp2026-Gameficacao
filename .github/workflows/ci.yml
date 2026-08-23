@@ -46,6 +46,15 @@ jobs:
           deploy/aws/scripts/capture-metrics.test.mjs
           scripts/load/cpf.test.mjs
           scripts/load/marco-11-load.test.mjs
+          scripts/load/marco-12-load.test.mjs
+
+      - name: Test Marco 12 persistence and artifact contracts
+        run: >-
+          npm --workspace api test -- --runTestsByPath
+          src/common/specs/marco12-schema-migration.spec.ts
+          src/common/specs/download-gate.spec.ts
+          src/claim-codes/specs/claim-code-qr.spec.ts
+          src/claim-codes/specs/claim-code-artifacts.service.spec.ts
 
       - name: Test deployment scripts
         run: npm run test:deployment-scripts
@@ -70,18 +79,18 @@ jobs:
           config --quiet
 
       - name: Build API image
-        run: docker build -f apps/api/Dockerfile -t semcomp-api:marco11 .
+        run: docker build -f apps/api/Dockerfile -t semcomp-api:marco12 .
 
       - name: Verify bcrypt in the final API image
         run: >-
-          docker run --rm --entrypoint node semcomp-api:marco11
+          docker run --rm --entrypoint node semcomp-api:marco12
           -e "require('bcrypt')"
 
       - name: Build web image
         run: >-
           docker build -f apps/web/Dockerfile
           --build-arg NEXT_PUBLIC_API_URL=/api
-          -t semcomp-web:marco11 .
+          -t semcomp-web:marco12 .
 
   build:
     runs-on: ubuntu-latest
