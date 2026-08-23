@@ -60,12 +60,14 @@ function serializeManifest(cards: QrCard[]) {
 function monitorOutput(output: Writable, source: Destroyable) {
   let settled = false;
   let failure: Error | undefined;
+  let sourceDestroyed = false;
   let resolvePromise!: () => void;
   let rejectPromise!: (error: Error) => void;
   const promise = new Promise<void>((resolve, reject) => {
     resolvePromise = resolve;
     rejectPromise = reject;
   });
+  promise.catch(() => undefined);
 
   const cleanup = () => {
     output.removeListener('finish', onFinish);
@@ -88,10 +90,19 @@ function monitorOutput(output: Writable, source: Destroyable) {
   };
   const onFinish = () => finish();
   const onError = (error: Error) => fail(error);
+  const destroySource = () => {
+    if (sourceDestroyed) return;
+    sourceDestroyed = true;
+    const absorbError = () => undefined;
+    const removeAbsorber = () => source.removeListener('error', absorbError);
+    source.once('error', absorbError);
+    source.once('close', removeAbsorber);
+    source.destroy();
+  };
   const onClose = () => {
     if (!output.writableFinished) {
+      destroySource();
       fail(new Error('O stream do artefato foi encerrado antes da conclusão.'));
-      source.destroy();
     }
   };
 
@@ -106,9 +117,9 @@ function monitorOutput(output: Writable, source: Destroyable) {
       if (failure) throw failure;
     },
     abort(error: unknown) {
-      fail(error);
-      source.destroy(error instanceof Error ? error : undefined);
+      destroySource();
       if (!output.destroyed) output.destroy();
+      fail(error);
     },
   };
 }

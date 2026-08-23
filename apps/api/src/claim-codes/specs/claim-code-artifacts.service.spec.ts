@@ -124,4 +124,26 @@ describe('claim-code artifact writers', () => {
     expect(names[MAX_QR_CARDS - 1]).toBe('500-CODE-0500.png');
     expect(names.at(-1)).toBe('manifesto.csv');
   });
+
+  it('aborts PDF generation cleanly when the client closes the output', async () => {
+    const output = new PassThrough();
+    const renderCard = async () => {
+      output.destroy();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      return tinyPng;
+    };
+
+    const result = await Promise.allSettled([
+      writeQrPdf(output, [card(1, 'AAAA-AAAA')], metadata, renderCard),
+    ]);
+
+    const [outcome] = result;
+    expect(outcome.status).toBe('rejected');
+    if (outcome.status === 'rejected') {
+      expect(outcome.reason).toBeInstanceOf(Error);
+      expect((outcome.reason as Error).message).toBe(
+        'O stream do artefato foi encerrado antes da conclusão.',
+      );
+    }
+  });
 });

@@ -80,6 +80,19 @@ describeDisposable('Admin claim-code bulk status (e2e)', () => {
     );
   });
 
+  beforeEach(async () => {
+    const adminSuffix = randomUUID();
+    const admin = await harness.prisma.user.create({
+      data: {
+        name: `Bulk test admin ${adminSuffix}`,
+        cpf: harness.uniqueCpf(adminSuffix, 1),
+        email: `bulk-test-admin-${adminSuffix}@example.test`,
+        role: UserRole.ADMIN,
+      },
+    });
+    adminSession = await harness.login(admin.cpf, admin.email);
+  });
+
   afterEach(async () => {
     await removeAuditFailureTrigger(harness);
   });
@@ -124,13 +137,20 @@ describeDisposable('Admin claim-code bulk status (e2e)', () => {
     });
     expect(
       body.items.map(({ requestedClaimCodeId }) => requestedClaimCodeId),
-    ).toEqual([changed.id, 'missing-code-id', unchanged.id, used.id]);
-    expect(body.items.map(({ outcome }) => outcome)).toEqual([
-      ClaimCodeBulkOutcome.CHANGED,
-      ClaimCodeBulkOutcome.NOT_FOUND,
-      ClaimCodeBulkOutcome.ALREADY_IN_STATE,
-      ClaimCodeBulkOutcome.ALREADY_USED,
-    ]);
+    ).toEqual([changed.id, 'missing-code-id', unchanged.id, used.id].sort());
+    expect(
+      Object.fromEntries(
+        body.items.map(({ requestedClaimCodeId, outcome }) => [
+          requestedClaimCodeId,
+          outcome,
+        ]),
+      ),
+    ).toEqual({
+      [changed.id]: ClaimCodeBulkOutcome.CHANGED,
+      'missing-code-id': ClaimCodeBulkOutcome.NOT_FOUND,
+      [unchanged.id]: ClaimCodeBulkOutcome.ALREADY_IN_STATE,
+      [used.id]: ClaimCodeBulkOutcome.ALREADY_USED,
+    });
 
     const persisted = await harness.prisma.claimCode.findMany({
       where: { id: { in: [changed.id, unchanged.id, used.id] } },

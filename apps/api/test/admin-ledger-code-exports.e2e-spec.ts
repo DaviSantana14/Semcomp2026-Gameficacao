@@ -64,7 +64,7 @@ describe('Admin global ledgers and exports (e2e)', () => {
     ]);
     const claimCode = await harness.prisma.claimCode.create({
       data: {
-        code: `ABCD-${suffix.slice(0, 4).toUpperCase()}`,
+        code: 'ABCD-EFGH',
         actionId: claimAction.id,
       },
     });

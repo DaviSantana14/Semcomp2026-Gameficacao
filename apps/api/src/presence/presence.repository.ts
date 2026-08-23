@@ -82,6 +82,7 @@ export class PresenceRepository {
           FROM "UserSession" s
           INNER JOIN "User" u ON u."id" = s."userId"
           WHERE u."role" = 'PARTICIPANT'::"UserRole"
+            AND u."isActive" IS TRUE
             AND s."startedAt" >= ${window.dayStart}
             AND s."startedAt" < ${window.nextDayStart}
             AND s."startedAt" <= ${window.now}

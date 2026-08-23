@@ -308,6 +308,7 @@ describe('Admin participants (e2e)', () => {
         reason: 'Reativacao apos teste concorrente do participante',
       })
       .expect(200);
+    firstSession = await harness.login(first.cpf, first.email);
   });
 
   it('records exact redemption methods in filtered participant history', async () => {

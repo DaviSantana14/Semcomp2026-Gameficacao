@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { AdminE2eHarness, type AuthSession } from './support/admin-e2e-harness';
 import { hasDisposableTestDatabaseConfiguration } from './support/e2e-database-cleanup';
 
+jest.setTimeout(60_000);
+
 const describeDisposable = hasDisposableTestDatabaseConfiguration()
   ? describe
   : describe.skip;

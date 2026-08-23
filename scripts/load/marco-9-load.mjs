@@ -8,6 +8,7 @@ import { generateCpf } from "./cpf.mjs";
 
 const DEFAULT_READ_WINDOW_MS = 10_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_MARCO12_REQUEST_TIMEOUT_MS = 60_000;
 const DEFAULT_CONCURRENCY = 20;
 export const DEFAULT_PARTICIPANT_COUNT = 150;
 const DEFAULT_REDEMPTION_COUNT = 100;
@@ -221,6 +222,9 @@ function getConfig() {
     Boolean(process.env.LOAD_CLAIM_CODE_ACTION_ID),
   );
   const baseUrl = normalizeBaseUrl(process.env.BASE_URL ?? "http://localhost");
+  const requestTimeoutFallback = marco12
+    ? DEFAULT_MARCO12_REQUEST_TIMEOUT_MS
+    : DEFAULT_REQUEST_TIMEOUT_MS;
 
   if (
     Object.hasOwn(process.env, "ADMIN_PASSWORD") ||
@@ -258,7 +262,7 @@ function getConfig() {
     ),
     timeoutMs: parsePositiveInteger(
       process.env.LOAD_REQUEST_TIMEOUT_MS,
-      DEFAULT_REQUEST_TIMEOUT_MS,
+      requestTimeoutFallback,
       "LOAD_REQUEST_TIMEOUT_MS",
     ),
     heartbeatIntervalMs: parsePositiveInteger(

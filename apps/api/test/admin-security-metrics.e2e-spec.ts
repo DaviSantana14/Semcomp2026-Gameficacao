@@ -41,7 +41,7 @@ describe('Admin security metrics (e2e)', () => {
         data: {
           name: `Security metrics participant ${suffix}`,
           cpf: harness.uniqueCpf(suffix, 2),
-          email: `security-metrics-participant-${suffix}@example.test`,
+          email: `security-participant-${suffix}@example.test`,
           role: UserRole.PARTICIPANT,
         },
       }),
