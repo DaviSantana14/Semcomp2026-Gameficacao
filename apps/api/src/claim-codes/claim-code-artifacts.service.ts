@@ -10,6 +10,7 @@ import {
   sanitizeQrFileName,
   type QrCard,
 } from './claim-code-qr';
+import { serializeCsv } from '../exports/csv';
 
 export type QrPdfMetadata = {
   actionName: string;
@@ -43,29 +44,17 @@ function orderedCards(cards: QrCard[]) {
     .map((card, index) => ({ ...card, sequence: index + 1 }));
 }
 
-function csvField(value: string) {
-  const safeValue = /^[=+\-@]/.test(value) ? `'${value}` : value;
-  return `"${safeValue.replace(/"/g, '""')}"`;
-}
-
 function serializeManifest(cards: QrCard[]) {
-  const lines = [
-    ['sequencia', 'codigo', 'atividade', 'lote', 'tipo']
-      .map(csvField)
-      .join(';'),
-    ...cards.map((card, index) =>
-      [
-        String(index + 1),
-        card.code,
-        card.actionName,
-        card.batchId ?? '',
-        card.kind,
-      ]
-        .map(csvField)
-        .join(';'),
-    ),
-  ];
-  return `\uFEFF${lines.join('\r\n')}\r\n`;
+  return serializeCsv(
+    ['sequencia', 'codigo', 'atividade', 'lote', 'tipo'],
+    cards.map((card, index) => [
+      index + 1,
+      card.code,
+      card.actionName,
+      card.batchId,
+      card.kind,
+    ]),
+  ).toString('utf8');
 }
 
 function monitorOutput(output: Writable, source: Destroyable) {

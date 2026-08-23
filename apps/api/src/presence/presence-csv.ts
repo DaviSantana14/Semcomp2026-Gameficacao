@@ -1,4 +1,7 @@
 import { formatOperationalDateTime } from '../common/operational-time';
+import { escapeCsvField } from '../exports/csv';
+
+export { escapeCsvField } from '../exports/csv';
 
 export type PresenceGeneralExportRow = {
   onlineNow: number;
@@ -82,16 +85,6 @@ export function serializePresenceCsv(
   );
 
   return `\ufeff${rows.join('\r\n')}\r\n`;
-}
-
-export function escapeCsvField(
-  value: string | number | null | undefined,
-): string {
-  const text = value === null || value === undefined ? '' : String(value);
-  if (/[;"\r\n]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
 }
 
 function formatDateOnly(value: Date | string): string {

@@ -38,6 +38,28 @@ export interface ParticipantPageFilter {
   isActive?: boolean;
 }
 
+export type ParticipantFilter = {
+  search?: string;
+  isActive?: boolean;
+};
+
+export function buildParticipantWhere(
+  filter: ParticipantFilter,
+): Prisma.UserWhereInput {
+  const where: Prisma.UserWhereInput = { role: UserRole.PARTICIPANT };
+  if (filter.isActive !== undefined) where.isActive = filter.isActive;
+
+  const search = filter.search?.trim();
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { cpf: { contains: search } },
+    ];
+  }
+  return where;
+}
+
 export interface ParticipantEventPageFilter {
   page: number;
   limit: number;
@@ -74,15 +96,7 @@ export class AdminParticipantsRepository {
   }
 
   async findParticipantPage(filter: ParticipantPageFilter) {
-    const where: Prisma.UserWhereInput = { role: UserRole.PARTICIPANT };
-    if (filter.isActive !== undefined) where.isActive = filter.isActive;
-    if (filter.search) {
-      where.OR = [
-        { name: { contains: filter.search, mode: 'insensitive' } },
-        { email: { contains: filter.search, mode: 'insensitive' } },
-        { cpf: { contains: filter.search } },
-      ];
-    }
+    const where = buildParticipantWhere(filter);
     const [total, rows] = await Promise.all([
       this.client.user.count({ where }),
       this.client.user.findMany({

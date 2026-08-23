@@ -1,8 +1,12 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 
-export type DownloadKind = 'qr';
+export type DownloadKind = 'qr' | 'csv';
 
-const activeDownloads = new Set<DownloadKind>();
+const DOWNLOAD_CAPACITY: Record<DownloadKind, number> = {
+  qr: 1,
+  csv: 2,
+};
+const activeDownloads = new Map<DownloadKind, number>();
 
 export class DownloadCapacityError extends HttpException {
   readonly retryAfterSeconds: number;
@@ -20,15 +24,21 @@ export class DownloadCapacityError extends HttpException {
 @Injectable()
 export class DownloadGate {
   async run<T>(kind: DownloadKind, work: () => T | PromiseLike<T>): Promise<T> {
-    if (activeDownloads.has(kind)) {
+    const active = activeDownloads.get(kind) ?? 0;
+    if (active >= DOWNLOAD_CAPACITY[kind]) {
       throw new DownloadCapacityError();
     }
 
-    activeDownloads.add(kind);
+    activeDownloads.set(kind, active + 1);
     try {
       return await work();
     } finally {
-      activeDownloads.delete(kind);
+      const remaining = (activeDownloads.get(kind) ?? 1) - 1;
+      if (remaining > 0) {
+        activeDownloads.set(kind, remaining);
+      } else {
+        activeDownloads.delete(kind);
+      }
     }
   }
 }

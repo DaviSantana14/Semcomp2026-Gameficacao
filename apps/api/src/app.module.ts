@@ -15,11 +15,14 @@ import { RequestIdMiddleware } from './common/request-id.middleware';
 import { RewardsModule } from './rewards/rewards.module';
 import { SecurityModule } from './security/security.module';
 import { UsersModule } from './users/users.module';
+import { ExportsModule } from './exports/exports.module';
 
 @Module({
   imports: [
     PrismaModule,
     ScheduleModule.forRoot(),
+    // Static export paths must be registered before AdminController's :id route.
+    ExportsModule,
     AdminModule,
     UsersModule,
     AuthModule,

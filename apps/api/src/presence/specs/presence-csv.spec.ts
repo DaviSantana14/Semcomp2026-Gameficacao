@@ -77,4 +77,16 @@ describe('serializePresenceCsv', () => {
     expect(csv.match(/^GERAL;/gm)).toHaveLength(1);
     expect(csv.match(/^DIARIO;/gm)).toBeNull();
   });
+
+  it('defends formula-like aggregate text fields', () => {
+    const csv = serializePresenceCsv(
+      {
+        ...general,
+        lastCollectedAt: '=1+1',
+      },
+      [],
+    );
+
+    expect(csv).toContain("'=1+1");
+  });
 });

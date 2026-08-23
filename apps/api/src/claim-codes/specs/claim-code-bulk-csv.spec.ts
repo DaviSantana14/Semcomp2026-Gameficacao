@@ -42,4 +42,16 @@ describe('serializeClaimCodeBulkCsv', () => {
 
     expect(csv).toContain('"code;""2";AB*****GH;ALREADY_IN_STATE\r\n');
   });
+
+  it('defends report text beginning with tab or carriage return', () => {
+    const csv = serializeClaimCodeBulkCsv([
+      {
+        requestedClaimCodeId: '\t=1+1',
+        maskedCode: '\r@unsafe',
+        outcome: ClaimCodeBulkOutcome.NOT_FOUND,
+      },
+    ]);
+
+    expect(csv).toContain('\'\t=1+1;"\'\r@unsafe";NOT_FOUND\r\n');
+  });
 });
