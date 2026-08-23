@@ -135,6 +135,13 @@ export class ActionsRepository {
     });
   }
 
+  findReusableCodeQr(id: string) {
+    return this.client.action.findUnique({
+      where: { id },
+      select: { id: true, name: true, code: true },
+    });
+  }
+
   async updateAction(id: string, input: ActionUpdateInput) {
     try {
       return await this.client.action.update({

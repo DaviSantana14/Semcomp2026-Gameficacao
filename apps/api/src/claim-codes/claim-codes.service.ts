@@ -19,6 +19,7 @@ import { AdminOperationContext } from '../common/request-context';
 import { maskClaimCode } from '../common/claim-code-mask';
 import { paginate } from '../common/dto/pagination-response.dto';
 import { generateClaimCode } from '../common/event-code';
+import type { QrCard } from './claim-code-qr';
 import {
   ClaimCodeBatchRecordWithCounts,
   ClaimCodesRepository,
@@ -165,6 +166,25 @@ export class ClaimCodesService {
       throw new NotFoundException('Lote de códigos não encontrado.');
     }
     return codes;
+  }
+
+  async getBatchQrArtifact(id: string) {
+    const artifact = await this.repository.findBatchQrArtifact(id);
+    if (!artifact) {
+      throw new NotFoundException('Lote de códigos não encontrado.');
+    }
+
+    const cards: QrCard[] = artifact.codes.map((code, index) => ({
+      sequence: index + 1,
+      code,
+      actionName: artifact.actionName,
+      kind: 'Uso único',
+      batchId: artifact.id,
+    }));
+    return {
+      cards,
+      metadata: { actionName: artifact.actionName, batchId: artifact.id },
+    };
   }
 
   async findAll(query: ClaimCodesQueryDto) {

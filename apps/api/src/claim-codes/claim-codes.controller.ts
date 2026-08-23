@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   Res,
+  Optional,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -38,6 +39,9 @@ import {
   getAdminOperationContext,
   type AuthenticatedRequest,
 } from '../common/request-context';
+import { DownloadCapacityError } from '../common/download-gate';
+import { sanitizeQrFileName } from './claim-code-qr';
+import { ClaimCodeArtifactsService } from './claim-code-artifacts.service';
 import { ClaimCodesService } from './claim-codes.service';
 import { serializeClaimCodeBatchText } from './claim-code-batch-text';
 import { ClaimCodeBatchesQueryDto } from './dto/claim-code-batches-query.dto';
@@ -59,7 +63,10 @@ import { UpdateClaimCodeStatusDto } from './dto/update-claim-code-status.dto';
 @Controller('admin')
 @UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
 export class ClaimCodesController {
-  constructor(private readonly claimCodesService: ClaimCodesService) {}
+  constructor(
+    private readonly claimCodesService: ClaimCodesService,
+    @Optional() private readonly artifacts?: ClaimCodeArtifactsService,
+  ) {}
 
   @Get('claim-codes')
   @Roles(UserRole.ADMIN)
@@ -105,6 +112,51 @@ export class ClaimCodesController {
     response.send(serializeClaimCodeBatchText(codes));
   }
 
+  @Get('claim-code-batches/:id/qr.pdf')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Baixar PDF QR de um lote (admin)' })
+  @ApiProduces('application/pdf')
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async downloadBatchQrPdf(@Param('id') id: string, @Res() response: Response) {
+    const artifact = await this.claimCodesService.getBatchQrArtifact(id);
+    try {
+      await this.requireArtifacts().writeQrPdf(
+        response,
+        artifact.cards,
+        artifact.metadata,
+        () => {
+          this.setDownloadHeaders(
+            response,
+            'application/pdf',
+            `codigos-${sanitizeQrFileName(id)}-qr.pdf`,
+          );
+        },
+      );
+    } catch (error) {
+      this.rethrowDownloadCapacity(response, error);
+    }
+  }
+
+  @Get('claim-code-batches/:id/qr-images.zip')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Baixar ZIP de imagens QR de um lote (admin)' })
+  @ApiProduces('application/zip')
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async downloadBatchQrZip(@Param('id') id: string, @Res() response: Response) {
+    const artifact = await this.claimCodesService.getBatchQrArtifact(id);
+    try {
+      await this.requireArtifacts().writeQrZip(response, artifact.cards, () => {
+        this.setDownloadHeaders(
+          response,
+          'application/zip',
+          `codigos-${sanitizeQrFileName(id)}-qr-images.zip`,
+        );
+      });
+    } catch (error) {
+      this.rethrowDownloadCapacity(response, error);
+    }
+  }
+
   @Patch('claim-codes/:id/status')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Ativar ou desativar código de uso único (admin)' })
@@ -146,5 +198,32 @@ export class ClaimCodesController {
       dto,
       getAdminOperationContext(request),
     );
+  }
+
+  private requireArtifacts() {
+    if (!this.artifacts) {
+      throw new Error('O gerador de artefatos QR não foi configurado.');
+    }
+    return this.artifacts;
+  }
+
+  private setDownloadHeaders(
+    response: Response,
+    contentType: string,
+    filename: string,
+  ) {
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+  }
+
+  private rethrowDownloadCapacity(response: Response, error: unknown): never {
+    if (error instanceof DownloadCapacityError) {
+      response.setHeader('Retry-After', String(error.retryAfterSeconds));
+    }
+    throw error;
   }
 }

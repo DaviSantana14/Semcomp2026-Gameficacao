@@ -304,6 +304,29 @@ describe('ClaimCodesRepository', () => {
       select: { code: true },
     });
 
+    prisma.claimCodeBatch.findUnique.mockResolvedValueOnce({
+      id: 'batch-1',
+      action: { name: 'Credenciamento' },
+    });
+    prisma.claimCode.findMany.mockResolvedValueOnce([
+      { code: 'BBBB-BBBB' },
+      { code: 'AAAA-AAAA' },
+    ]);
+    await expect(repository.findBatchQrArtifact('batch-1')).resolves.toEqual({
+      id: 'batch-1',
+      actionName: 'Credenciamento',
+      codes: ['BBBB-BBBB', 'AAAA-AAAA'],
+    });
+    expect(prisma.claimCodeBatch.findUnique).toHaveBeenLastCalledWith({
+      where: { id: 'batch-1' },
+      select: { id: true, action: { select: { name: true } } },
+    });
+    expect(prisma.claimCode.findMany).toHaveBeenLastCalledWith({
+      where: { batchId: 'batch-1' },
+      orderBy: { code: 'asc' },
+      select: { code: true },
+    });
+
     prisma.claimCodeBatch.findUnique.mockResolvedValueOnce(null);
     await expect(repository.findBatch('legacy-code-id')).resolves.toBeNull();
     await expect(

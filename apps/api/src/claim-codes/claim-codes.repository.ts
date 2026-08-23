@@ -168,6 +168,25 @@ export class ClaimCodesRepository {
     return rows.map(({ code }) => code);
   }
 
+  async findBatchQrArtifact(id: string) {
+    const batch = await this.client.claimCodeBatch.findUnique({
+      where: { id },
+      select: { id: true, action: { select: { name: true } } },
+    });
+    if (!batch) return null;
+
+    const rows = await this.client.claimCode.findMany({
+      where: { batchId: id },
+      orderBy: { code: 'asc' },
+      select: { code: true },
+    });
+    return {
+      id: batch.id,
+      actionName: batch.action.name,
+      codes: rows.map(({ code }) => code),
+    };
+  }
+
   async findClaimCodePage(filter: ClaimCodePageFilter) {
     const where: Prisma.ClaimCodeWhereInput = {};
     if (filter.actionId) where.actionId = filter.actionId;
