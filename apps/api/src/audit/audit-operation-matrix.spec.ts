@@ -139,6 +139,24 @@ const operationMatrix: Array<{
   {
     input: {
       actor,
+      operation: AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+      entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+      entityId: 'bulk-1',
+      reason: 'Desativacao preventiva do lote selecionado',
+      after: {
+        targetIsActive: false,
+        selectedCount: 4,
+        changedCount: 2,
+        unchangedCount: 1,
+        usedCount: 1,
+        notFoundCount: 0,
+      },
+    },
+    expected: { participantId: null },
+  },
+  {
+    input: {
+      actor,
       operation: AuditOperation.REWARD_CREATED,
       entityType: AuditEntityType.REWARD,
       entityId: reward.id,

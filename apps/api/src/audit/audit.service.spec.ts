@@ -283,6 +283,65 @@ describe(AuditService.name, () => {
     );
   });
 
+  it('accepts only aggregate facts for bulk status audit snapshots', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+      entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+      entityId: 'bulk-1',
+      reason: 'Desativacao preventiva do lote selecionado',
+      after: {
+        targetIsActive: false,
+        selectedCount: 4,
+        changedCount: 2,
+        unchangedCount: 1,
+        usedCount: 1,
+        notFoundCount: 0,
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        after: {
+          targetIsActive: false,
+          selectedCount: 4,
+          changedCount: 2,
+          unchangedCount: 1,
+          usedCount: 1,
+          notFoundCount: 0,
+        },
+      }),
+    );
+
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-2',
+        },
+        operation: AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+        entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+        entityId: 'bulk-2',
+        reason: 'Desativacao preventiva do lote selecionado',
+        after: {
+          targetIsActive: false,
+          selectedCount: 1,
+          changedCount: 1,
+          unchangedCount: 0,
+          usedCount: 0,
+          notFoundCount: 0,
+          selectedIds: ['claim-1'],
+          maskedCode: 'AB****YZ',
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it.each([
     ActionRedemptionMethod.DIRECT,
     ActionRedemptionMethod.REUSABLE_CODE,

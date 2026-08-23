@@ -144,6 +144,8 @@ class BoundTransactionAuditWriter implements TransactionAuditWriter {
       }
       case AuditEntityType.CLAIM_CODE_BATCH:
         return `Lote de códigos ${data.entityId}`;
+      case AuditEntityType.CLAIM_CODE_BULK_OPERATION:
+        return `Operação em lote ${data.entityId}`;
       case AuditEntityType.CLAIM_CODE: {
         const maskedCode =
           this.readMaskedCode(data.after) ?? this.readMaskedCode(data.before);

@@ -23,6 +23,8 @@ model User {
   pointEventsAsActor       PointEvent[]       @relation("PointEventActor")
   deliveredRedemptions     RewardRedemption[] @relation("RewardRedemptionDeliveredBy")
   cancelledRedemptions     RewardRedemption[] @relation("RewardRedemptionCancelledBy")
+  claimCodeBatchesCreated  ClaimCodeBatch[]   @relation("ClaimCodeBatchCreatedBy")
+  claimCodeBulkOperations  ClaimCodeBulkOperation[] @relation("ClaimCodeBulkOperationActor")
   usedClaimCodes           ClaimCode[]
   sessions                 UserSession[]
   createdAt                DateTime           @default(now())

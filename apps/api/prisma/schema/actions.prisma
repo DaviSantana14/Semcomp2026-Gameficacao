@@ -27,6 +27,13 @@ enum ActionRedemptionMethod {
   LEGACY_UNKNOWN
 }
 
+enum ClaimCodeBulkOutcome {
+  CHANGED
+  ALREADY_IN_STATE
+  ALREADY_USED
+  NOT_FOUND
+}
+
 model Action {
   id           String       @id @default(cuid())
   name         String
@@ -38,26 +45,80 @@ model Action {
   isCodeActive Boolean      @default(false)
   pointEvents  PointEvent[]
   claimCodes   ClaimCode[]
+  claimCodeBatches ClaimCodeBatch[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
 
 model ClaimCode {
-  id         String      @id @default(cuid())
-  code       String      @unique
-  actionId   String
-  isUsed     Boolean     @default(false)
-  isActive   Boolean     @default(true)
-  usedById   String?
-  usedAt     DateTime?
-  action     Action      @relation(fields: [actionId], references: [id], onDelete: Restrict)
-  usedBy     User?       @relation(fields: [usedById], references: [id], onDelete: Restrict)
-  createdAt  DateTime    @default(now())
-  pointEvent PointEvent?
+  id                 String      @id @default(cuid())
+  code               String      @unique
+  actionId           String
+  isUsed             Boolean     @default(false)
+  isActive           Boolean     @default(true)
+  usedById           String?
+  usedAt             DateTime?
+  batchId            String?
+  action             Action      @relation(fields: [actionId], references: [id], onDelete: Restrict)
+  usedBy             User?       @relation(fields: [usedById], references: [id], onDelete: Restrict)
+  batch              ClaimCodeBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  bulkOperationItems ClaimCodeBulkOperationItem[]
+  createdAt          DateTime    @default(now())
+  pointEvent         PointEvent?
 
   @@index([actionId])
   @@index([usedById])
   @@index([actionId, isUsed, isActive, createdAt])
+  @@index([batchId, createdAt])
+}
+
+model ClaimCodeBatch {
+  id                String      @id @default(uuid())
+  actionId          String
+  createdByAdminId  String
+  requestedQuantity Int
+  createdQuantity   Int
+  reason            String
+  requestId         String      @unique
+  action            Action      @relation(fields: [actionId], references: [id], onDelete: Restrict)
+  createdByAdmin    User        @relation("ClaimCodeBatchCreatedBy", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  claimCodes        ClaimCode[]
+  createdAt         DateTime    @default(now())
+
+  @@index([actionId, createdAt])
+  @@index([createdByAdminId, createdAt])
+}
+
+model ClaimCodeBulkOperation {
+  id             String                       @id @default(uuid())
+  actorAdminId   String
+  targetIsActive Boolean
+  reason         String
+  requestId      String                       @unique
+  selectedCount  Int
+  changedCount   Int
+  unchangedCount Int
+  usedCount      Int
+  notFoundCount  Int
+  actorAdmin     User                         @relation("ClaimCodeBulkOperationActor", fields: [actorAdminId], references: [id], onDelete: Restrict)
+  items          ClaimCodeBulkOperationItem[]
+  createdAt      DateTime                     @default(now())
+
+  @@index([actorAdminId, createdAt])
+  @@index([createdAt])
+}
+
+model ClaimCodeBulkOperationItem {
+  operationId          String
+  requestedClaimCodeId String
+  claimCodeId          String?
+  maskedCode           String?
+  outcome              ClaimCodeBulkOutcome
+  operation            ClaimCodeBulkOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  claimCode            ClaimCode?             @relation(fields: [claimCodeId], references: [id], onDelete: Restrict)
+
+  @@id([operationId, requestedClaimCodeId])
+  @@index([claimCodeId])
 }
 
 model PointEvent {

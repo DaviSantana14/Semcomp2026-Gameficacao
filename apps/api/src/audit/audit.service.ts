@@ -51,6 +51,15 @@ export interface ClaimCodeBatchSnapshot {
   actionId: string;
 }
 
+export interface ClaimCodeBulkAuditSnapshot {
+  targetIsActive: boolean;
+  selectedCount: number;
+  changedCount: number;
+  unchangedCount: number;
+  usedCount: number;
+  notFoundCount: number;
+}
+
 export interface ClaimCodeSnapshotSource {
   id: string;
   isActive: boolean;
@@ -233,6 +242,11 @@ export type RecordAuditEventInput =
       ForbiddenParticipant,
       BatchMetadata
     >
+  | CreatedEvent<
+      typeof AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+      typeof AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+      ClaimCodeBulkAuditSnapshot
+    >
   | ChangedEvent<
       typeof AuditOperation.CLAIM_CODE_STATUS_CHANGED,
       typeof AuditEntityType.CLAIM_CODE,
@@ -369,6 +383,16 @@ const claimCodeBatchRule: ObjectRule = {
     createdQuantity: 'number',
     redemptionMethod: 'claimCodeRedemptionMethod',
     actionId: 'string',
+  },
+};
+const claimCodeBulkAuditRule: ObjectRule = {
+  required: {
+    targetIsActive: 'boolean',
+    selectedCount: 'number',
+    changedCount: 'number',
+    unchangedCount: 'number',
+    usedCount: 'number',
+    notFoundCount: 'number',
   },
 };
 const claimCodeRule: ObjectRule = {
@@ -524,6 +548,11 @@ const operationRules = {
     participant: 'forbidden',
     after: claimCodeBatchRule,
     metadata: batchMetadataRule,
+  },
+  [AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED]: {
+    entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+    participant: 'forbidden',
+    after: claimCodeBulkAuditRule,
   },
   [AuditOperation.CLAIM_CODE_STATUS_CHANGED]: {
     entityType: AuditEntityType.CLAIM_CODE,
@@ -699,6 +728,7 @@ export class AuditService {
       [AuditEntityType.PARTICIPANT]: 'Participante',
       [AuditEntityType.ACTION]: 'Atividade',
       [AuditEntityType.CLAIM_CODE_BATCH]: 'Lote de códigos',
+      [AuditEntityType.CLAIM_CODE_BULK_OPERATION]: 'Operação em lote',
       [AuditEntityType.CLAIM_CODE]: 'Código',
       [AuditEntityType.REWARD]: 'Recompensa',
       [AuditEntityType.REWARD_REDEMPTION]: 'Resgate',
@@ -800,6 +830,15 @@ export class AuditService {
           'createdQuantity',
           'redemptionMethod',
           'actionId',
+        ]);
+      case AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED:
+        return pickScalarFields(value, [
+          'targetIsActive',
+          'selectedCount',
+          'changedCount',
+          'unchangedCount',
+          'usedCount',
+          'notFoundCount',
         ]);
       case AuditOperation.CLAIM_CODE_STATUS_CHANGED:
         return pickScalarFields(value, [
