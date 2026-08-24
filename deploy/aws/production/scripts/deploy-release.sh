@@ -126,6 +126,12 @@ web_image="$(json_field webImage "$manifest_file")"
 [[ "$manifest_bucket" == "$release_bucket" ]] || fail 'manifest bucket does not match the production stack bucket.'
 validate_image "$api_image" 'semcomp-production/api'
 validate_image "$web_image" 'semcomp-production/web'
+api_registry="${api_image%%/*}"
+web_registry="${web_image%%/*}"
+[[ "$api_registry" == "$web_registry" ]] || fail 'manifest images must use the same ECR registry'
+aws ecr get-login-password --region "$aws_region" \
+  | docker login --username AWS --password-stdin "$api_registry" >/dev/null 2>&1 \
+  || fail 'Unable to authenticate Docker to the production ECR registry.'
 
 umask 077
 install -d -m 0750 "$shared_dir"

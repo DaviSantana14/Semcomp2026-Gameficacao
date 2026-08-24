@@ -419,6 +419,8 @@ deploy_env="$(<"$deploy_root/shared/production.env")"
 assert_contains 'BACKUP_BUCKET=semcomp-production-artifacts' "$deploy_env" 'env omitted backup bucket'
 assert_contains 'NGINX_CONFIG_FILE=/opt/semcomp/shared/nginx/active.conf' "$deploy_env" 'env omitted active Nginx'
 assert_contains 'migrate' "$(<"$DOCKER_CALLS")" 'deploy omitted migration service'
+assert_contains 'login --username AWS --password-stdin 123456789012.dkr.ecr.sa-east-1.amazonaws.com' \
+  "$(<"$DOCKER_CALLS")" 'deploy did not authenticate Docker to the manifest ECR registry'
 assert_contains '/api/health' "$(<"$CURL_CALLS")" 'deploy omitted health check'
 assert_contains 'enable --now semcomp-certbot-renew.timer semcomp-backup.timer' \
   "$(<"$SYSTEMCTL_CALLS")" 'deploy did not start timers'
@@ -515,6 +517,8 @@ bash "$rollback_script" >/dev/null
 [[ -f "$rollback_root/backup.marker" ]] || fail 'rollback did not create a pre-rollback backup'
 assert_contains "$rollback_root/releases/$rollback_target_sha" "$(<"$DOCKER_CALLS")" \
   'rollback did not start the target release'
+assert_contains 'login --username AWS --password-stdin 123456789012.dkr.ecr.sa-east-1.amazonaws.com' \
+  "$(<"$DOCKER_CALLS")" 'rollback did not authenticate Docker to the manifest ECR registry'
 rollback_env_source="$(<"$rollback_root/shared/production.env")"
 assert_contains 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' \
   "$rollback_env_source" 'rollback env did not use target API digest'
