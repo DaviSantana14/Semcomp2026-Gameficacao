@@ -71,7 +71,11 @@ export class AuthController {
     const { accessToken, csrfToken, user } =
       await this.authService.register(registerDto);
 
-    response.cookie('access_token', accessToken, getAuthCookieOptions(true));
+    response.cookie(
+      'access_token',
+      accessToken,
+      getAuthCookieOptions(true, user.role),
+    );
 
     return { csrfToken, user };
   }
@@ -98,7 +102,11 @@ export class AuthController {
     const { accessToken, csrfToken, user } =
       await this.authService.login(loginDto);
 
-    response.cookie('access_token', accessToken, getAuthCookieOptions(true));
+    response.cookie(
+      'access_token',
+      accessToken,
+      getAuthCookieOptions(true, user.role),
+    );
 
     return { csrfToken, user };
   }
@@ -120,7 +128,11 @@ export class AuthController {
     const { accessToken, csrfToken, user } =
       await this.authService.adminLogin(loginDto);
 
-    response.cookie('access_token', accessToken, getAuthCookieOptions(true));
+    response.cookie(
+      'access_token',
+      accessToken,
+      getAuthCookieOptions(true, user.role),
+    );
 
     return { csrfToken, user };
   }

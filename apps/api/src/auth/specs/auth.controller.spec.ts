@@ -184,7 +184,10 @@ describe('AuthController', () => {
     expect(cookieMock).toHaveBeenCalledWith(
       'access_token',
       'jwt-token',
-      expect.objectContaining({ httpOnly: true }),
+      expect.objectContaining({
+        httpOnly: true,
+        maxAge: 4 * 60 * 60 * 1000,
+      }),
     );
   });
 

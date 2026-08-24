@@ -1,0 +1,579 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Single-host production infrastructure for Semcomp gamification
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: m7i-flex.large
+    AllowedValues:
+      - m7i-flex.large
+    Description: Approved production EC2 capacity
+    ConstraintDescription: must be m7i-flex.large
+
+  BudgetEmail:
+    Type: String
+    MinLength: 3
+    MaxLength: 254
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    Description: Email address for monthly AWS Budget alerts
+    ConstraintDescription: must be a valid email address
+
+Resources:
+  ProductionVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.91.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+        - Key: Environment
+          Value: production
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-igw'
+        - Key: Environment
+          Value: production
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref ProductionVpc
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.91.0.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref ProductionVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-subnet'
+        - Key: Environment
+          Value: production
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ProductionVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-routes'
+        - Key: Environment
+          Value: production
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+
+  ProductionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTPS and ACME HTTP for the production edge
+      VpcId: !Ref ProductionVpc
+      SecurityGroupIngress:
+        - Description: Public HTTP for redirects and ACME HTTP-01
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - Description: Public HTTPS application traffic
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - Description: Outbound package, SSM, registry, and backup access
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-edge'
+        - Key: Environment
+          Value: production
+
+  ProductionElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-eip'
+        - Key: Environment
+          Value: production
+
+  DockerDataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      AvailabilityZone: !GetAtt PublicSubnet.AvailabilityZone
+      Encrypted: true
+      Size: 50
+      VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-docker-data'
+        - Key: Environment
+          Value: production
+
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-staging-backups
+            Status: Enabled
+            Prefix: backups/.staging/
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: expire-production-backups
+            Status: Enabled
+            Prefix: backups/production/
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: expire-production-releases
+            Status: Enabled
+            Prefix: releases/
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-artifacts'
+        - Key: Environment
+          Value: production
+
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  ApiRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: !Sub '${AWS::StackName}/api'
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-api'
+        - Key: Environment
+          Value: production
+
+  WebRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: !Sub '${AWS::StackName}/web'
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-web'
+        - Key: Environment
+          Value: production
+
+  ProductionInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: production-parameter-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadProductionParameters
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/semcomp/production/*'
+        - PolicyName: production-ecr-pull
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AuthenticateToEcr
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: PullProductionImages
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource:
+                  - !GetAtt ApiRepository.Arn
+                  - !GetAtt WebRepository.Arn
+        - PolicyName: production-artifact-prefixes
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListOperationalPrefixes
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt BackupBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - backups/*
+                      - releases/*
+              - Sid: ManageOperationalObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${BackupBucket.Arn}/backups/*'
+                  - !Sub '${BackupBucket.Arn}/releases/*'
+        - PolicyName: production-metrics-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadInstanceMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: production
+
+  ProductionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ProductionInstanceRole
+
+  ProductionInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: DefaultPublicRoute
+    Properties:
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/noble/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref ProductionInstanceProfile
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 1
+        HttpTokens: required
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref ProductionSecurityGroup
+          SubnetId: !Ref PublicSubnet
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeSize: 30
+            VolumeType: gp3
+      PropagateTagsToVolumeOnCreation: true
+      UserData:
+        Fn::Base64: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          export DEBIAN_FRONTEND=noninteractive
+
+          # Keep package installation from starting Docker before the data volume is mounted.
+          systemctl mask docker.service docker.socket containerd.service 2>/dev/null || true
+
+          root_source="$(findmnt -no SOURCE /)"
+          root_parent="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
+          if [ -n "$root_parent" ]; then
+            root_disk="/dev/$root_parent"
+          else
+            root_disk="$(readlink -f "$root_source")"
+          fi
+
+          data_device=""
+          for attempt in $(seq 1 60); do
+            udevadm settle || true
+            data_device="$(lsblk -dpno NAME,TYPE | awk -v root="$root_disk" '$2 == "disk" && $1 != root { print $1; exit }')"
+            if [ -n "$data_device" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$data_device" ]; then
+            printf 'The Docker data volume was not attached in time\n' >&2
+            exit 1
+          fi
+
+          install -d -m 0711 /var/lib/docker
+          if ! blkid "$data_device" >/dev/null 2>&1; then
+            mkfs.ext4 -F "$data_device"
+          fi
+          data_uuid="$(blkid -s UUID -o value "$data_device")"
+          if ! grep -qE "^UUID=${data_uuid}[[:space:]]+/var/lib/docker[[:space:]]" /etc/fstab; then
+            printf 'UUID=%s /var/lib/docker ext4 defaults,nofail 0 2\n' \
+              "$data_uuid" >> /etc/fstab
+          fi
+          mount /var/lib/docker
+          findmnt -no FSTYPE /var/lib/docker | grep -qx ext4
+
+          apt-get update
+          apt-get install -y ca-certificates curl gnupg snapd
+
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+            -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+
+          docker_arch="$(dpkg --print-architecture)"
+          ubuntu_codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
+          cat > /etc/apt/sources.list.d/docker.sources <<EOF
+          Types: deb
+          URIs: https://download.docker.com/linux/ubuntu
+          Suites: $ubuntu_codename
+          Components: stable
+          Architectures: $docker_arch
+          Signed-By: /etc/apt/keyrings/docker.asc
+          EOF
+
+          apt-get update
+          apt-get install -y \
+            docker-ce \
+            docker-ce-cli \
+            containerd.io \
+            docker-buildx-plugin \
+            docker-compose-plugin
+
+          systemctl daemon-reload
+          systemctl unmask docker.service docker.socket containerd.service || true
+          systemctl enable --now docker
+          usermod -aG docker ubuntu
+
+          if systemctl cat snap.amazon-ssm-agent.amazon-ssm-agent.service \
+            > /dev/null 2>&1; then
+            systemctl enable --now \
+              snap.amazon-ssm-agent.amazon-ssm-agent.service
+          elif systemctl cat amazon-ssm-agent.service > /dev/null 2>&1; then
+            systemctl enable --now amazon-ssm-agent.service
+          elif command -v snap > /dev/null 2>&1; then
+            systemctl enable --now snapd.socket 2>/dev/null || true
+            snap install amazon-ssm-agent --classic
+            systemctl enable --now \
+              snap.amazon-ssm-agent.amazon-ssm-agent.service
+          else
+            printf 'amazon-ssm-agent is unavailable\n' >&2
+            exit 1
+          fi
+
+          install -d -m 0750 -o root -g docker \
+            /opt/semcomp \
+            /opt/semcomp/releases \
+            /opt/semcomp/shared \
+            /opt/semcomp/shared/nginx
+
+          cat > /etc/systemd/system/semcomp-certbot-renew.service <<'UNIT'
+          [Unit]
+          Description=Renew the Semcomp production certificate
+          ConditionPathExists=/opt/semcomp/current/deploy/aws/production/scripts/renew-certificate.sh
+          After=docker.service
+
+          [Service]
+          Type=oneshot
+          WorkingDirectory=/opt/semcomp/current
+          ExecStart=/opt/semcomp/current/deploy/aws/production/scripts/renew-certificate.sh
+          UNIT
+
+          cat > /etc/systemd/system/semcomp-certbot-renew.timer <<'UNIT'
+          [Unit]
+          Description=Semcomp production certificate renewal timer
+
+          [Timer]
+          OnCalendar=*-*-* 03:17:00 UTC
+          Persistent=true
+          Unit=semcomp-certbot-renew.service
+
+          [Install]
+          WantedBy=timers.target
+          UNIT
+
+          cat > /etc/systemd/system/semcomp-backup.service <<'UNIT'
+          [Unit]
+          Description=Create the Semcomp production PostgreSQL backup
+          ConditionPathExists=/opt/semcomp/current/deploy/aws/production/scripts/backup-postgres.sh
+          After=docker.service
+
+          [Service]
+          Type=oneshot
+          WorkingDirectory=/opt/semcomp/current
+          ExecStart=/opt/semcomp/current/deploy/aws/production/scripts/backup-postgres.sh
+          UNIT
+
+          cat > /etc/systemd/system/semcomp-backup.timer <<'UNIT'
+          [Unit]
+          Description=Semcomp production backup timer
+
+          [Timer]
+          OnCalendar=*-*-* 04:17:00 UTC
+          Persistent=true
+          Unit=semcomp-backup.service
+
+          [Install]
+          WantedBy=timers.target
+          UNIT
+
+          systemctl daemon-reload
+          systemctl disable --now semcomp-certbot-renew.timer 2>/dev/null || true
+          systemctl disable --now semcomp-backup.timer 2>/dev/null || true
+
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-host'
+        - Key: Environment
+          Value: production
+
+  DockerDataVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/sdf
+      InstanceId: !Ref ProductionInstance
+      VolumeId: !Ref DockerDataVolume
+
+  ProductionElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    DependsOn: ProductionInstance
+    Properties:
+      AllocationId: !GetAtt ProductionElasticIp.AllocationId
+      InstanceId: !Ref ProductionInstance
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-monthly-cost'
+        BudgetLimit:
+          Amount: 80
+          Unit: USD
+        BudgetType: COST
+        CostTypes:
+          IncludeCredit: false
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref BudgetEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 75
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref BudgetEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 90
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref BudgetEmail
+              SubscriptionType: EMAIL
+
+Outputs:
+  InstanceId:
+    Description: Production EC2 instance managed through Systems Manager
+    Value: !Ref ProductionInstance
+
+  ProductionElasticIp:
+    Description: Stable public IPv4 address for the production edge
+    Value: !Ref ProductionElasticIp
+
+  BackupBucketName:
+    Description: Private S3 bucket for production backups and release artifacts
+    Value: !Ref BackupBucket
+
+  ApiRepositoryUri:
+    Description: Immutable ECR repository URI for the API image
+    Value: !GetAtt ApiRepository.RepositoryUri
+
+  WebRepositoryUri:
+    Description: Immutable ECR repository URI for the web image
+    Value: !GetAtt WebRepository.RepositoryUri

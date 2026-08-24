@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
+import { SESSION_JWT_TTL, type SessionRole } from '../common/session-duration';
 import { AdminPasswordService } from './admin-password.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { LoginDto } from './dto/login.dto';
@@ -58,7 +59,7 @@ export class AuthService {
       throw error;
     }
 
-    const draft = createSessionDraft(new Date());
+    const draft = createSessionDraft(new Date(), 'PARTICIPANT');
 
     try {
       const user = await this.sessionsService.registerParticipant(draft, {
@@ -209,11 +210,8 @@ export class AuthService {
     return result;
   }
 
-  private async startAuthenticatedSession(
-    userId: string,
-    role: 'PARTICIPANT' | 'ADMIN',
-  ) {
-    const draft = createSessionDraft(new Date());
+  private async startAuthenticatedSession(userId: string, role: SessionRole) {
+    const draft = createSessionDraft(new Date(), role);
 
     try {
       const user = await this.sessionsService.start(userId, role, draft);
@@ -237,7 +235,7 @@ export class AuthService {
     return {
       accessToken: await this.jwtService.signAsync(
         { sub: user.id, csrfToken, jti: draft.id },
-        { expiresIn: '8h' },
+        { expiresIn: SESSION_JWT_TTL[user.role] },
       ),
       csrfToken,
       user: toUserResponseDto(user),

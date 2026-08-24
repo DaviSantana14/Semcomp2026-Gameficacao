@@ -173,11 +173,13 @@ describe(AuthService.name, () => {
       },
     });
 
+    const clockBeforeLogin = Date.now();
     const result = await service.adminLogin({
       cpf: admin.cpf,
       email: admin.email,
       password: 'correct-password',
     });
+    const clockAfterLogin = Date.now();
 
     expect(result.user.role).toBe(UserRole.ADMIN);
     expect(deps.sessionsService.start).toHaveBeenCalledTimes(1);
@@ -185,13 +187,18 @@ describe(AuthService.name, () => {
       .start.mock.calls[0] as [
       string,
       string,
-      { id: unknown; expiresAt: Date },
+      { id: unknown; startedAt: Date; expiresAt: Date },
     ];
 
     expect(startedUserId).toBe(admin.id);
     expect(startedRole).toBe('ADMIN');
     expect(typeof startedDraft.id).toBe('string');
-    expect(startedDraft.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(startedDraft.expiresAt.getTime()).toBeGreaterThanOrEqual(
+      clockBeforeLogin + 4 * 60 * 60 * 1000,
+    );
+    expect(startedDraft.expiresAt.getTime()).toBeLessThanOrEqual(
+      clockAfterLogin + 4 * 60 * 60 * 1000,
+    );
 
     expect(deps.jwtService.signAsync).toHaveBeenCalledTimes(1);
     const [payload, signOptions] = deps.jwtService.signAsync.mock.calls[0] as [
@@ -202,7 +209,7 @@ describe(AuthService.name, () => {
     expect(payload.sub).toBe(admin.id);
     expect(payload.csrfToken).toBe(result.csrfToken);
     expect(typeof payload.jti).toBe('string');
-    expect(signOptions).toEqual({ expiresIn: '8h' });
+    expect(signOptions).toEqual({ expiresIn: '4h' });
   });
 
   it('authenticates participants by email only and never queries by CPF', async () => {
@@ -239,6 +246,10 @@ describe(AuthService.name, () => {
       participant.id,
       'PARTICIPANT',
       expect.anything(),
+    );
+    expect(deps.jwtService.signAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: participant.id }),
+      { expiresIn: '8h' },
     );
   });
 
