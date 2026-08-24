@@ -76,7 +76,8 @@ logout_session() {
   [[ -s "$cookie_jar" && -n "$csrf_token" ]] || return 0
   logout_status="$(curl --silent --show-error --request POST --output /dev/null \
     --write-out '%{http_code}' --max-time "$curl_timeout" --cookie "$cookie_jar" \
-    --header "X-CSRF-Token: $csrf_token" "$base_url/api/auth/logout" 2>/dev/null)" \
+    --header "Origin: $base_url" --header "X-CSRF-Token: $csrf_token" \
+    "$base_url/api/auth/logout" 2>/dev/null)" \
     || return 1
   [[ "$logout_status" == '204' ]]
 }
@@ -291,7 +292,8 @@ participant_payload="$(printf '{"email":"%s","password":"%s"}' \
 if ! participant_login_status="$(printf '%s' "$participant_payload" | curl --silent --show-error \
   --request POST --output "$participant_response" --dump-header "$participant_headers" \
   --write-out '%{http_code}' --max-time "$curl_timeout" --cookie-jar "$participant_jar" \
-  --header 'Content-Type: application/json' --data-binary @- "$base_url/api/auth/login")"; then
+  --header "Origin: $base_url" --header 'Content-Type: application/json' \
+  --data-binary @- "$base_url/api/auth/login")"; then
   fail 'Participant login request failed.'
 fi
 [[ "$participant_login_status" == '200' ]] || fail 'Participant login did not return HTTP 200.'
@@ -302,7 +304,8 @@ participant_authenticated=1
 
 participant_heartbeat_status="$(curl --silent --show-error --request POST --output /dev/null \
   --write-out '%{http_code}' --max-time "$curl_timeout" --cookie "$participant_jar" \
-  --header "X-CSRF-Token: $participant_csrf" "$base_url/api/auth/heartbeat")" \
+  --header "Origin: $base_url" --header "X-CSRF-Token: $participant_csrf" \
+  "$base_url/api/auth/heartbeat")" \
   || fail 'Participant heartbeat request failed.'
 [[ "$participant_heartbeat_status" == '204' ]] || fail 'Participant heartbeat did not return HTTP 204.'
 logout_session "$participant_jar" "$participant_csrf" \
@@ -315,7 +318,8 @@ admin_payload="$(printf '{"cpf":"%s","email":"%s","password":"%s"}' \
 if ! admin_login_status="$(printf '%s' "$admin_payload" | curl --silent --show-error \
   --request POST --output "$admin_response" --dump-header "$admin_headers" \
   --write-out '%{http_code}' --max-time "$curl_timeout" --cookie-jar "$admin_jar" \
-  --header 'Content-Type: application/json' --data-binary @- "$base_url/api/auth/admin/login")"; then
+  --header "Origin: $base_url" --header 'Content-Type: application/json' \
+  --data-binary @- "$base_url/api/auth/admin/login")"; then
   fail 'Administrator login request failed.'
 fi
 [[ "$admin_login_status" == '200' ]] || fail 'Administrator login did not return HTTP 200.'

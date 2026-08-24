@@ -421,6 +421,11 @@ assert_not_contains 'admin-csrf' "$output" 'successful smoke printed the admin C
 logout_calls="$(grep -c '/api/auth/logout' "$CURL_CALLS" || true)"
 [[ "$logout_calls" == '2' ]] || fail 'successful smoke did not logout both authenticated sessions'
 assert_not_contains '/auth/register' "$(<"$CURL_CALLS")" 'successful smoke called participant registration'
+for protected_path in /auth/login /auth/admin/login /auth/heartbeat /auth/logout; do
+  protected_calls="$(grep "$protected_path" "$CURL_CALLS" || true)"
+  assert_contains 'Origin: https://gameficacao.semcomp.com.br' "$protected_calls" \
+    "smoke omitted the trusted browser origin for $protected_path"
+done
 assert_contains 'logs' "$(<"$DOCKER_CALLS")" 'successful smoke did not scan production logs'
 for port in 22 3000 3001 5432; do
   assert_contains " $port" "$(<"$NC_CALLS")" "successful smoke did not check private port $port"
