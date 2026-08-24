@@ -116,6 +116,7 @@ jobs:
       DB_PASSWORD: semcomp_ci
       DB_SCHEMA: public
       JWT_SECRET: semcomp-ci-not-a-real-secret
+      RATE_LIMIT_KEY_SECRET: semcomp-ci-not-a-real-rate-limit-secret
       FRONTEND_URL: http://localhost:3000
 
     steps:
