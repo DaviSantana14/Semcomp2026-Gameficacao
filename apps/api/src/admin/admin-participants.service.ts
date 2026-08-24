@@ -1,9 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { paginate } from '../common/dto/pagination-response.dto';
 import {
   AdminParticipantsRepository,
-  ParticipantEventPageFilter,
+  type ParticipantEventPageFilter,
+  type PointEventRecord,
 } from './admin-participants.repository';
+import {
+  AdminPointEventKindFilter,
+  AdminPointEventMethodFilter,
+  AdminPointEventSourceFilter,
+  AdminPointEventsQueryDto,
+} from './dto/admin-point-events-query.dto';
+import { PointEventReferenceType } from './dto/admin-point-event-response.dto';
 import { AdminParticipantEventsQueryDto } from './dto/admin-participant-events-query.dto';
 import {
   AdminParticipantRedemptionsQueryDto,
@@ -20,7 +32,15 @@ import {
   AuditOperation,
 } from '../audit/audit.repository';
 import { AuditService } from '../audit/audit.service';
+import { ParticipantPasswordService } from '../auth/participant-password.service';
+import {
+  createParticipantTemporaryPassword,
+  PARTICIPANT_TEMPORARY_PASSWORD_TTL_MS,
+} from '../auth/participant-temporary-password';
 import { AdminOperationContext } from '../common/request-context';
+import { maskClaimCode } from '../common/claim-code-mask';
+import { parseOperationalDateRange } from '../common/operational-date-range';
+import { mapPointEventOrigin } from '../common/point-event-origin';
 
 type KnownPointEventSource = NonNullable<ParticipantEventPageFilter['source']>;
 type KnownActionRedemptionMethod =
@@ -34,6 +54,7 @@ export class AdminParticipantsService {
   constructor(
     private readonly repository: AdminParticipantsRepository,
     private readonly audit: AuditService,
+    private readonly participantPasswords: ParticipantPasswordService,
   ) {}
 
   async findAll(query: AdminParticipantsQueryDto) {
@@ -54,6 +75,108 @@ export class AdminParticipantsService {
     );
   }
 
+  async findGlobalPointEvents(query: AdminPointEventsQueryDto) {
+    const { from, to } = parseOperationalDateRange(query);
+    const page = await this.repository.findPointEventPage({
+      page: query.page,
+      limit: query.limit,
+      search: query.search?.trim() || undefined,
+      source:
+        query.source && query.source !== AdminPointEventSourceFilter.ALL
+          ? (query.source.toUpperCase() as KnownPointEventSource)
+          : undefined,
+      kind:
+        query.kind && query.kind !== AdminPointEventKindFilter.ALL
+          ? (query.kind.toUpperCase() as 'CREDIT' | 'DEBIT')
+          : undefined,
+      method:
+        query.method && query.method !== AdminPointEventMethodFilter.ALL
+          ? (query.method.toUpperCase() as KnownActionRedemptionMethod)
+          : undefined,
+      from,
+      to,
+    });
+    return paginate(
+      page.rows.map(mapGlobalPointEvent),
+      page.total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  async resetPassword(
+    id: string,
+    dto: { reason: string; replacePending: boolean },
+    context: AdminOperationContext,
+  ) {
+    const temporaryPassword = createParticipantTemporaryPassword();
+    const passwordHash =
+      await this.participantPasswords.hash(temporaryPassword);
+
+    const expiresAt = await this.repository.withTransaction(
+      async (repository) => {
+        const current = await repository.lockParticipantPasswordReset(id);
+        if (!current) {
+          throw new NotFoundException('Participante não encontrado.');
+        }
+
+        const changedAt = new Date();
+        const expiresAt = new Date(
+          changedAt.getTime() + PARTICIPANT_TEMPORARY_PASSWORD_TTL_MS,
+        );
+        const pendingResetIsValid =
+          current.passwordResetRequired === true &&
+          current.passwordResetExpiresAt !== null &&
+          current.passwordResetExpiresAt.getTime() > changedAt.getTime();
+        if (pendingResetIsValid && !dto.replacePending) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'PASSWORD_RESET_PENDING',
+            message: 'Já existe uma troca obrigatória de senha pendente.',
+          });
+        }
+
+        const updated = await repository.updateParticipantPasswordReset(id, {
+          passwordHash,
+          passwordChangedAt: changedAt,
+          passwordResetRequired: true,
+          passwordResetExpiresAt: expiresAt,
+        });
+        const sessionsRevoked = await repository.revokeOpenSessions(
+          id,
+          changedAt,
+        );
+
+        await this.audit.record(repository.auditWriter!, {
+          actor: { actorType: AuditActorType.ADMIN, ...context },
+          operation: AuditOperation.PARTICIPANT_PASSWORD_RESET,
+          entityType: AuditEntityType.PARTICIPANT,
+          entityId: id,
+          participantId: id,
+          reason: dto.reason,
+          before: {
+            id: current.id,
+            passwordResetRequired: current.passwordResetRequired,
+            passwordResetExpiresAt: current.passwordResetExpiresAt,
+          },
+          after: {
+            id: updated.id,
+            passwordResetRequired: updated.passwordResetRequired,
+            passwordResetExpiresAt: updated.passwordResetExpiresAt,
+          },
+          metadata: { sessionsRevoked },
+        });
+
+        return expiresAt;
+      },
+    );
+
+    return {
+      temporaryPassword,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
   async updateStatus(
     id: string,
     dto: UpdateParticipantStatusDto,
@@ -70,6 +193,9 @@ export class AdminParticipantsService {
         id,
         dto.isActive,
       );
+      if (!dto.isActive) {
+        await repository.revokeOpenSessions(id, new Date());
+      }
       await this.audit.record(repository.auditWriter!, {
         actor: { actorType: AuditActorType.ADMIN, ...context },
         operation: AuditOperation.PARTICIPANT_STATUS_CHANGED,
@@ -140,11 +266,11 @@ export class AdminParticipantsService {
           reversalOfPointEventId: reversedEventId,
           reversalPointEventId: reversal?.id ?? null,
           isAudited: auditEventId !== null,
-          origin:
-            auditEvent?.operation ===
-            AuditOperation.RECONCILIATION_ADJUSTMENT_CONFIRMED
-              ? ('RECONCILIATION_COMPENSATION' as const)
-              : mapPointEventOrigin(row.source, row.redemptionMethod),
+          origin: mapPointEventOrigin(
+            row.source,
+            row.redemptionMethod,
+            auditEvent?.operation,
+          ),
           createdAt: row.createdAt.toISOString(),
         };
       }),
@@ -194,47 +320,69 @@ export class AdminParticipantsService {
   }
 }
 
-function mapPointEventOrigin(
-  source: KnownPointEventSource,
-  redemptionMethod: KnownActionRedemptionMethod | null,
+function mapGlobalPointEvent(row: PointEventRecord) {
+  const action = row.action
+    ? { id: row.action.id, name: row.action.name }
+    : null;
+  const reward = row.rewardRedemption?.reward ?? null;
+  const claimCode = row.claimCode
+    ? { id: row.claimCode.id, code: maskClaimCode(row.claimCode.code) }
+    : null;
+  const rawCode = row.claimCode?.code ?? row.action?.code ?? null;
+
+  return {
+    id: row.id,
+    participant: row.user,
+    points: row.points,
+    xpDelta: row.xpDelta,
+    kind: row.kind,
+    source: row.source,
+    redemptionMethod: row.redemptionMethod,
+    origin: mapPointEventOrigin(
+      row.source,
+      row.redemptionMethod,
+      row.auditEvent?.operation,
+    ),
+    isAudited: row.auditEventId !== null,
+    action,
+    claimCode,
+    code: rawCode ? maskClaimCode(rawCode) : null,
+    reward,
+    reference: mapPointEventReference(row, action, reward),
+    actor: row.actorAdmin,
+    auditOperation: row.auditEvent?.operation ?? null,
+    description: row.description,
+    reversalOfPointEventId: row.reversedEventId,
+    reversalPointEventId: row.reversal?.id ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapPointEventReference(
+  row: PointEventRecord,
+  action: { id: string; name: string } | null,
+  reward: { id: string; name: string } | null,
 ) {
-  switch (source) {
-    case 'ACTION_REDEEM':
-      return mapActionRedemptionOrigin(redemptionMethod);
-    case 'REWARD_REDEMPTION':
-      return 'REWARD' as const;
-    case 'ADMIN_GRANT':
-    case 'ADMIN_ADJUST':
-      return 'ADMIN' as const;
-    default:
-      return unknownPointEventSource(source);
+  const actionName = action?.name.trim();
+  if (actionName) {
+    return { type: PointEventReferenceType.ACTION, label: actionName };
   }
-}
-
-function mapActionRedemptionOrigin(method: KnownActionRedemptionMethod | null) {
-  switch (method) {
-    case 'CLAIM_CODE':
-      return 'UNIQUE_CODE' as const;
-    case 'REUSABLE_CODE':
-      return 'REUSABLE_CODE' as const;
-    case 'DIRECT':
-      return 'DIRECT_ACTION' as const;
-    case 'LEGACY_UNKNOWN':
-    case null:
-      return 'LEGACY_UNKNOWN' as const;
-    default:
-      return unknownActionRedemptionMethod(method);
+  const rewardName = reward?.name.trim();
+  if (rewardName) {
+    return { type: PointEventReferenceType.REWARD, label: rewardName };
   }
-}
-
-function unknownPointEventSource(source: never) {
-  void source;
-  return 'LEGACY_UNKNOWN' as const;
-}
-
-function unknownActionRedemptionMethod(method: never) {
-  void method;
-  return 'LEGACY_UNKNOWN' as const;
+  const auditOperation = row.auditEvent?.operation;
+  if (auditOperation) {
+    return { type: PointEventReferenceType.AUDIT, label: auditOperation };
+  }
+  const description = row.description?.trim();
+  if (description) {
+    return { type: PointEventReferenceType.DESCRIPTION, label: description };
+  }
+  return {
+    type: PointEventReferenceType.POINT_EVENT,
+    label: 'Evento de pontos',
+  };
 }
 
 function mapParticipant<
@@ -245,8 +393,21 @@ function mapParticipant<
   },
 >(row: T) {
   const { _count, ...participant } = row;
+  const passwordResetRequired =
+    'passwordResetRequired' in row &&
+    typeof row.passwordResetRequired === 'boolean'
+      ? row.passwordResetRequired
+      : false;
+  const passwordResetExpiresAt =
+    'passwordResetExpiresAt' in row &&
+    row.passwordResetExpiresAt instanceof Date
+      ? row.passwordResetExpiresAt.toISOString()
+      : null;
+
   return {
     ...participant,
+    passwordResetRequired,
+    passwordResetExpiresAt,
     actionRedemptionsCount: _count.pointEvents,
     pendingRewardRedemptionsCount: _count.rewardRedemptions,
     lastLoginAt:

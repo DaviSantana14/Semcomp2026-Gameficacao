@@ -30,6 +30,7 @@ import {
 } from '../audit/audit.repository';
 import { AuditService } from '../audit/audit.service';
 import { AdminOperationContext } from '../common/request-context';
+import type { QrCard } from '../claim-codes/claim-code-qr';
 
 @Injectable()
 export class ActionsService {
@@ -258,12 +259,35 @@ export class ActionsService {
         id: row.id,
         points: row.points,
         createdAt: row.createdAt.toISOString(),
-        participant: row.user,
+        participant: { id: row.user.id, name: row.user.name },
       })),
       page.total,
       query.page,
       query.limit,
     );
+  }
+
+  async getReusableCodeQrArtifact(actionId: string) {
+    const action = await this.repository.findReusableCodeQr(actionId);
+    if (!action?.code) {
+      throw new NotFoundException(
+        'Atividade pontuável não possui código reutilizável.',
+      );
+    }
+
+    const cards: QrCard[] = [
+      {
+        sequence: 1,
+        code: action.code,
+        actionName: action.name,
+        kind: 'Reutilizável',
+        batchId: null,
+      },
+    ];
+    return {
+      cards,
+      metadata: { actionName: action.name, batchId: null },
+    };
   }
 
   async redeemByCode(code: string, userId: string) {

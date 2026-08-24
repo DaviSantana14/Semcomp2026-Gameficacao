@@ -18,6 +18,7 @@ describe(RewardsService.name, () => {
   beforeEach(async () => {
     const repositoryMock = {
       withTransaction: jest.fn(),
+      findRedemptionPage: jest.fn().mockResolvedValue({ rows: [], total: 0 }),
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -69,6 +70,24 @@ describe(RewardsService.name, () => {
     ).rejects.toEqual(
       new ConflictException('Apenas resgates pendentes podem mudar de status.'),
     );
+  });
+
+  it('normalizes reward filters the same way as the export query', async () => {
+    await service.findRedemptions({
+      page: 1,
+      limit: 20,
+      rewardId: ' reward-1 ',
+      search: ' Ada ',
+      status: 'all',
+    } as never);
+
+    expect(repository.findRedemptionPage).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      rewardId: 'reward-1',
+      search: 'Ada',
+      status: undefined,
+    });
   });
 
   it('does not write or audit an effective no-op update', async () => {

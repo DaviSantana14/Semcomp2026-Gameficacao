@@ -51,6 +51,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `actions-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -96,9 +97,9 @@ describeDisposable('Admin actions and codes (e2e)', () => {
     legacyActionId = actions[1].id;
     actionIds.push(...actions.map(({ id }) => id));
 
-    adminSession = await harness.login(users[0].cpf, users[0].email);
-    firstSession = await harness.login(users[1].cpf, users[1].email);
-    secondSession = await harness.login(users[2].cpf, users[2].email);
+    adminSession = await harness.loginLegacy(users[0].cpf, users[0].email);
+    firstSession = await harness.loginLegacy(users[1].cpf, users[1].email);
+    secondSession = await harness.loginLegacy(users[2].cpf, users[2].email);
   });
 
   afterAll(async () => {

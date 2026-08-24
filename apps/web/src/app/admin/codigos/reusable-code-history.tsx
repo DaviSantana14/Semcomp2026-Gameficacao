@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
 } from "@/features/actions/actions.service";
 import type { AdminReusableCode } from "@/features/actions/actions.types";
 import { ApiError } from "@/lib/http/api-error";
+import { downloadFile } from "@/lib/http/download";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
@@ -34,6 +36,10 @@ export function ReusableCodeHistory() {
   const [toggleIntent, setToggleIntent] = useState<AdminReusableCode | null>(
     null,
   );
+  const [pendingDownloads, setPendingDownloads] = useState<Set<string>>(
+    new Set(),
+  );
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const listRef = useRef<HTMLElement>(null);
   const usesTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const selectedOriginIdRef = useRef<string | null>(null);
@@ -83,6 +89,33 @@ export function ReusableCodeHistory() {
       selectedOriginIdRef.current = null;
     });
   };
+  async function downloadArtifact(
+    actionId: string,
+    kind: "png" | "pdf",
+  ) {
+    const paths = {
+      png: `/admin/reusable-codes/${actionId}/qr.png`,
+      pdf: `/admin/reusable-codes/${actionId}/qr.pdf`,
+    } as const;
+    const key = `${actionId}:${kind}`;
+    setDownloadError(null);
+    setPendingDownloads((current) => new Set(current).add(key));
+    try {
+      await downloadFile(paths[kind]);
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível baixar o QR.",
+      );
+    } finally {
+      setPendingDownloads((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
   return (
     <section
       aria-labelledby="reusable-code-history-title"
@@ -107,6 +140,11 @@ export function ReusableCodeHistory() {
           }}
         />
       </AdminPanel>
+      {downloadError ? (
+        <p aria-live="polite" className="text-sm text-destructive" role="alert">
+          {downloadError}
+        </p>
+      ) : null}
       {query.isPending ? (
         <p role="status">Carregando códigos...</p>
       ) : query.error ? (
@@ -139,6 +177,26 @@ export function ReusableCodeHistory() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 md:justify-end">
+                  <Button
+                    disabled={pendingDownloads.has(`${c.id}:png`)}
+                    variant="outline"
+                    onClick={() => void downloadArtifact(c.id, "png")}
+                  >
+                    <Download aria-hidden="true" />
+                    {pendingDownloads.has(`${c.id}:png`)
+                      ? "Baixando..."
+                      : "Baixar PNG"}
+                  </Button>
+                  <Button
+                    disabled={pendingDownloads.has(`${c.id}:pdf`)}
+                    variant="outline"
+                    onClick={() => void downloadArtifact(c.id, "pdf")}
+                  >
+                    <Download aria-hidden="true" />
+                    {pendingDownloads.has(`${c.id}:pdf`)
+                      ? "Baixando..."
+                      : "Baixar PDF"}
+                  </Button>
                   <Button
                     variant="outline"
                     onClick={(event) => {

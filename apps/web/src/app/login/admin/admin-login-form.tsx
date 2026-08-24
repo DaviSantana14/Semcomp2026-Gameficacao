@@ -18,6 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { adminLogin } from "@/features/auth/auth.service";
+import { firstAdminRoute } from "@/features/auth/admin-profile-routes";
+import { adminPasswordSchema } from "@/features/auth/auth.validation";
 import { ApiError } from "@/lib/http/api-error";
 
 const adminLoginSchema = z.object({
@@ -29,17 +31,7 @@ const adminLoginSchema = z.object({
       "Informe um CPF com 11 dígitos.",
     ),
   email: z.string().email("Informe um e-mail válido."),
-  password: z
-    .string()
-    .refine(
-      (value) =>
-        Array.from(value).length >= 12 && Array.from(value).length <= 64,
-      "A senha deve ter entre 12 e 64 caracteres.",
-    )
-    .refine(
-      (value) => new TextEncoder().encode(value).length <= 72,
-      "A senha deve ter no máximo 72 bytes em UTF-8.",
-    ),
+  password: adminPasswordSchema,
 });
 
 type AdminLoginFormValues = z.infer<typeof adminLoginSchema>;
@@ -57,13 +49,17 @@ export function AdminLoginForm() {
 
   async function onSubmit(values: AdminLoginFormValues) {
     try {
-      await adminLogin({
+      const response = await adminLogin({
         cpf: values.cpf,
         email: values.email.trim().toLowerCase(),
         password: values.password,
       });
       toast.success("Login administrativo realizado.");
-      router.replace("/admin");
+      router.replace(
+        response.user.adminProfile
+          ? firstAdminRoute(response.user.adminProfile)
+          : "/admin",
+      );
     } catch (error) {
       toast.error(
         error instanceof ApiError
@@ -152,6 +148,15 @@ export function AdminLoginForm() {
               href="/login"
             >
               Acessar a jornada
+            </Link>
+          </p>
+          <p className="text-center text-sm text-muted-foreground">
+            Primeiro acesso?{" "}
+            <Link
+              className="font-semibold text-primary hover:underline"
+              href="/ativar-admin"
+            >
+              Ativar acesso
             </Link>
           </p>
         </form>

@@ -18,7 +18,7 @@ x-api-environment: &api-environment
   SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
 
 x-api-image: &api-image
-  image: semcomp-api:marco9
+  image: semcomp-api:marco11
   build:
     context: ../..
     dockerfile: apps/api/Dockerfile
@@ -147,7 +147,7 @@ services:
       - edge
 
   web:
-    image: semcomp-web:marco9
+    image: semcomp-web:marco11
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile

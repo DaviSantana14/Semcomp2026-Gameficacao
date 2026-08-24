@@ -1,0 +1,35 @@
+enum SessionEndReason {
+  LOGOUT
+  EXPIRED
+  REVOKED
+}
+
+model UserSession {
+  id         String            @id
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  startedAt  DateTime
+  lastSeenAt DateTime
+  expiresAt  DateTime
+  endedAt    DateTime?
+  endReason  SessionEndReason?
+
+  @@index([userId, lastSeenAt])
+  @@index([endedAt, expiresAt])
+  @@index([lastSeenAt])
+  @@index([startedAt])
+}
+
+model PresenceDailySummary {
+  operationalDate                         DateTime @id @db.Date
+  lastObservedOnlineParticipants          Int
+  registeredParticipantsAtLastObservation Int
+  lastCollectedAt                         DateTime
+  peakOnlineParticipants                  Int
+  peakAt                                  DateTime?
+  registeredParticipantsAtPeak            Int
+  uniqueParticipantLogins                 Int
+  newParticipantRegistrations             Int
+  createdAt                               DateTime @default(now())
+  updatedAt                               DateTime @updatedAt
+}

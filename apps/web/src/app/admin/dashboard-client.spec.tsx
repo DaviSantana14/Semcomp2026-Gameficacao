@@ -1,14 +1,34 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAdminDashboard } from "@/features/dashboard/dashboard.service";
+import { fetchSecurityMetricsOverview } from "@/features/security/security-metrics.service";
+import {
+  fetchPresenceHistory,
+  fetchPresenceOverview,
+} from "@/features/presence/presence.service";
 import { renderWithQueryClient } from "@/test/render";
 import { DashboardClient } from "./dashboard-client";
 
 vi.mock("@/features/dashboard/dashboard.service", () => ({
   fetchAdminDashboard: vi.fn(),
 }));
+vi.mock("@/features/security/security-metrics.service", () => ({
+  fetchSecurityMetricsOverview: vi.fn(),
+}));
+vi.mock("@/features/presence/presence.service", () => ({
+  downloadPresenceCsv: vi.fn(),
+  fetchPresenceHistory: vi.fn(),
+  fetchPresenceOverview: vi.fn(),
+  getDefaultPresenceRange: vi.fn(() => ({
+    from: "2026-08-16",
+    to: "2026-08-23",
+  })),
+}));
 
 const fetchAdminDashboardMock = vi.mocked(fetchAdminDashboard);
+const fetchSecurityMetricsOverviewMock = vi.mocked(fetchSecurityMetricsOverview);
+const fetchPresenceHistoryMock = vi.mocked(fetchPresenceHistory);
+const fetchPresenceOverviewMock = vi.mocked(fetchPresenceOverview);
 
 describe("DashboardClient", () => {
   beforeEach(() => {
@@ -40,6 +60,51 @@ describe("DashboardClient", () => {
         },
       ],
     });
+    fetchSecurityMetricsOverviewMock.mockResolvedValue({
+      status: "NORMAL",
+      lastFlushedMinute: "2026-08-22T12:00:00.000Z",
+      periods: {
+        fiveMinutes: { unauthorized: 2, forbidden: 1, rateLimited: 0 },
+        oneHour: { unauthorized: 5, forbidden: 2, rateLimited: 1 },
+        twentyFourHours: { unauthorized: 11, forbidden: 4, rateLimited: 2 },
+      },
+      thresholds: {
+        unauthorized: 20,
+        forbidden: 10,
+        rateLimited: 5,
+        windowMinutes: 5,
+      },
+    });
+    fetchPresenceOverviewMock.mockResolvedValue({
+      status: "LIVE",
+      timezone: "America/Sao_Paulo",
+      heartbeatIntervalSeconds: 60,
+      onlineWindowSeconds: 120,
+      lastCollectedAt: "2026-08-22T09:00:00-03:00",
+      onlineNow: 18,
+      registeredParticipants: 842,
+      uniqueParticipantsEverLogged: 719,
+      monitoredDays: 7,
+      today: {
+        operationalDate: "2026-08-22",
+        peakOnlineParticipants: 32,
+        peakAt: "2026-08-22T08:30:00-03:00",
+        registeredParticipantsAtPeak: 790,
+        uniqueParticipantLogins: 410,
+        newParticipantRegistrations: 12,
+      },
+      overallPeak: {
+        operationalDate: "2026-08-20",
+        onlineParticipants: 56,
+        observedAt: "2026-08-20T14:00:00-03:00",
+        registeredParticipantsAtPeak: 801,
+      },
+    });
+    fetchPresenceHistoryMock.mockResolvedValue({
+      period: { from: "2026-08-16", to: "2026-08-23" },
+      timezone: "America/Sao_Paulo",
+      items: [],
+    });
   });
 
   it("apresenta a visão geral operacional com dados reais", async () => {
@@ -57,5 +122,36 @@ describe("DashboardClient", () => {
     expect(
       screen.queryByText("Bom trabalho, operador."),
     ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("Presença dos participantes"),
+    ).toBeInTheDocument();
+  });
+
+  it("mantém os cards operacionais quando a presença falha", async () => {
+    fetchPresenceOverviewMock.mockRejectedValueOnce(
+      new Error("Presença indisponível."),
+    );
+
+    renderWithQueryClient(<DashboardClient />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Presença indisponível.",
+    );
+    expect(screen.getByText("18.400")).toBeInTheDocument();
+    expect(screen.getByText("Kit SEMCOMP 2026")).toBeInTheDocument();
+  });
+
+  it("mantém operação e presença visíveis quando as métricas de segurança falham", async () => {
+    fetchSecurityMetricsOverviewMock.mockRejectedValueOnce(
+      new Error("Segurança indisponível."),
+    );
+
+    renderWithQueryClient(<DashboardClient />);
+
+    expect(await screen.findByText("Segurança indisponível.")).toBeVisible();
+    expect(screen.getByText("18.400")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Presença dos participantes"),
+    ).toBeInTheDocument();
   });
 });

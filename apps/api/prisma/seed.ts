@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import { hash } from 'bcrypt';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   ActionType,
@@ -8,8 +9,10 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { Pool } from 'pg';
+import { BCRYPT_COST } from '../src/auth/password-hash';
 import { buildDatabaseUrl } from '../src/prisma/database-url';
-import { getSeedConfig } from './seed-config';
+import { buildAdminSeedUser } from './seed-admin';
+import { DEMO_PARTICIPANT_PASSWORD, getSeedConfig } from './seed-config';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg(
@@ -57,7 +60,12 @@ async function upsertUser(user: Prisma.UserCreateInput) {
       name: user.name,
       cpf: user.cpf,
       role: user.role,
-      isActive: true,
+      ...(user.adminProfile !== undefined
+        ? { adminProfile: user.adminProfile }
+        : {}),
+      ...(user.passwordHash !== undefined
+        ? { passwordHash: user.passwordHash }
+        : {}),
     },
     create: user,
     select: { id: true },
@@ -87,15 +95,15 @@ async function upsertAction(action: Prisma.ActionCreateInput) {
 async function main() {
   const { admin, mode } = getSeedConfig();
 
-  const adminUser = {
-    ...admin,
-    role: UserRole.ADMIN,
-  } satisfies Prisma.UserCreateInput;
+  const adminUser = await buildAdminSeedUser({ mode, admin });
 
   await upsertUser(adminUser);
 
   if (mode === 'demo') {
-    await upsertUser(sampleParticipant);
+    await upsertUser({
+      ...sampleParticipant,
+      passwordHash: await hash(DEMO_PARTICIPANT_PASSWORD, BCRYPT_COST),
+    });
 
     for (const action of sampleActions) {
       await upsertAction(action);

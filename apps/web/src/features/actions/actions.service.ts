@@ -1,15 +1,24 @@
 import { apiFetch } from "@/lib/http/client";
+import { downloadFile } from "@/lib/http/download";
+import type { AdminExportCount } from "@/features/exports/exports.types";
 import type { PaginatedResponse } from "@/lib/http/pagination.types";
 import { withQuery } from "@/lib/http/query-string";
 import type {
   Action,
   AdminAction,
+  AdminCodeRedemption,
+  AdminCodeRedemptionsFilters,
   AdminActionsFilters,
   AdminClaimCode,
+  BulkUpdateClaimCodesPayload,
+  ClaimCodeBatchSummary,
+  ClaimCodeBulkOperationDetail,
+  ClaimCodeBatchesFilters,
   AdminClaimCodesFilters,
   AdminReusableCode,
   AdminReusableCodesFilters,
   CreateActionPayload,
+  CodeRedemptionsExportFilters,
   GenerateClaimCodesPayload,
   GeneratedClaimCodesResponse,
   RedeemActionResponse,
@@ -36,6 +45,34 @@ export function fetchActions() {
   return apiFetch<Action[]>("/actions");
 }
 
+export function fetchCodeRedemptions(filters: AdminCodeRedemptionsFilters) {
+  return apiFetch<PaginatedResponse<AdminCodeRedemption>>(
+    withQuery("/admin/code-redemptions", filters),
+  );
+}
+
+export function fetchCodeRedemptionsExportCount(
+  filters: CodeRedemptionsExportFilters,
+) {
+  return apiFetch<AdminExportCount>(
+    withQuery("/admin/code-redemptions/export-count", filters),
+  );
+}
+
+export function downloadCodeRedemptionsExport(
+  filters: CodeRedemptionsExportFilters,
+) {
+  return downloadFile(
+    withQuery("/admin/code-redemptions/export.csv", filters),
+  );
+}
+
+export const fetchAdminCodeRedemptions = fetchCodeRedemptions;
+export const fetchAdminCodeRedemptionsExportCount =
+  fetchCodeRedemptionsExportCount;
+export const downloadAdminCodeRedemptionsExport =
+  downloadCodeRedemptionsExport;
+
 export function generateClaimCodes(
   actionId: string,
   payload: GenerateClaimCodesPayload,
@@ -43,6 +80,12 @@ export function generateClaimCodes(
   return apiFetch<GeneratedClaimCodesResponse>(
     `/admin/actions/${actionId}/claim-codes/generate`,
     { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function fetchClaimCodeBatches(filters: ClaimCodeBatchesFilters) {
+  return apiFetch<PaginatedResponse<ClaimCodeBatchSummary>>(
+    withQuery("/admin/claim-code-batches", filters),
   );
 }
 
@@ -73,6 +116,28 @@ export function updateClaimCodeStatus(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function bulkUpdateClaimCodes(payload: BulkUpdateClaimCodesPayload) {
+  return apiFetch<ClaimCodeBulkOperationDetail>(
+    "/admin/claim-codes/bulk-status",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function fetchClaimCodeBulkOperation(operationId: string) {
+  return apiFetch<ClaimCodeBulkOperationDetail>(
+    `/admin/claim-code-bulk-operations/${operationId}`,
+  );
+}
+
+export function downloadClaimCodeBulkReport(operationId: string) {
+  return downloadFile(
+    `/admin/claim-code-bulk-operations/${operationId}/report.csv`,
+  );
 }
 
 export function fetchAdminReusableCodes(filters: AdminReusableCodesFilters) {

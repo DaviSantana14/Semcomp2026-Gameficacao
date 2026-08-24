@@ -10,10 +10,15 @@ import {
 } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import { createHash } from 'crypto';
+import { ADMIN_PROFILES_KEY } from '../auth/admin-profiles.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { RateLimitKey } from './rate-limit-key';
+import {
+  RATE_LIMIT_POLICY_KEY,
+  type RateLimitPolicyName,
+} from './rate-limit-policy.decorator';
 
-type RateLimitPolicy = {
+type ResolvedRateLimitPolicy = {
   name: string;
   limit: number;
   ttl: number;
@@ -32,9 +37,27 @@ export type RateLimitedRequest = {
   user?: RequestUser;
 };
 
-const LOGIN_ROUTE_POLICIES: Record<string, RateLimitPolicy> = {
+const NAMED_RATE_LIMIT_POLICIES: Record<
+  RateLimitPolicyName,
+  ResolvedRateLimitPolicy
+> = {
+  export: { name: 'admin-export', limit: 5, ttl: 60_000 },
+  bulk: { name: 'claim-code-bulk', limit: 2, ttl: 60_000 },
+  activation: {
+    name: 'admin-activation',
+    limit: 5,
+    ttl: 15 * 60 * 1000,
+  },
+};
+
+const LOGIN_ROUTE_POLICIES: Record<string, ResolvedRateLimitPolicy> = {
   '/auth/login': { name: 'participant-login', limit: 5, ttl: 15 * 60 * 1000 },
   '/auth/admin/login': { name: 'admin-login', limit: 5, ttl: 15 * 60 * 1000 },
+  '/auth/admin/activate': {
+    name: 'admin-activation',
+    limit: 5,
+    ttl: 15 * 60 * 1000,
+  },
   '/auth/register': { name: 'register', limit: 3, ttl: 60 * 60 * 1000 },
 };
 
@@ -71,11 +94,11 @@ export class AppThrottlerGuard extends ThrottlerGuard {
 
     if (credentialPolicy) {
       const { cpf, email } = request.body ?? {};
-      if (typeof cpf === 'string' && typeof email === 'string') {
+      if (typeof email === 'string') {
         return `credential:${this.rateLimitKey.forCredential({
-          cpf,
-          email,
           route,
+          email,
+          cpf: typeof cpf === 'string' ? cpf : null,
         })}`;
       }
     }
@@ -115,8 +138,19 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     await super.throwThrottlingException(context, detail);
   }
 
-  private getPolicy(context: ThrottlerRequest['context']): RateLimitPolicy {
+  private getPolicy(
+    context: ThrottlerRequest['context'],
+  ): ResolvedRateLimitPolicy {
     const request = context.switchToHttp().getRequest<RateLimitedRequest>();
+    const namedPolicy = this.reflector.getAllAndOverride<RateLimitPolicyName>(
+      RATE_LIMIT_POLICY_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    if (namedPolicy) {
+      return NAMED_RATE_LIMIT_POLICIES[namedPolicy];
+    }
+
     const route = this.getRoute(request);
     const credentialPolicy = LOGIN_ROUTE_POLICIES[route];
 
@@ -132,6 +166,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
       ROLES_KEY,
       [context.getHandler(), context.getClass()],
     );
+    const requiredAdminProfiles = this.reflector.getAllAndOverride<
+      unknown[] | undefined
+    >(ADMIN_PROFILES_KEY, [context.getHandler(), context.getClass()]);
     const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(
       request.method ?? '',
     );
@@ -140,7 +177,8 @@ export class AppThrottlerGuard extends ThrottlerGuard {
       return { name: 'authenticated-read', limit: 120, ttl: 60 * 1000 };
     }
 
-    return requiredRoles?.includes(UserRole.ADMIN)
+    return requiredAdminProfiles !== undefined ||
+      requiredRoles?.includes(UserRole.ADMIN)
       ? { name: 'admin-mutation', limit: 30, ttl: 60 * 1000 }
       : { name: 'participant-mutation', limit: 10, ttl: 60 * 1000 };
   }

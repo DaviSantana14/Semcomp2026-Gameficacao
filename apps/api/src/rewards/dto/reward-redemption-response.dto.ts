@@ -17,13 +17,9 @@ class RedemptionUserResponseDto {
   @ApiProperty({ example: 'Ada Lovelace' })
   name: string;
 
-  @ApiProperty({ example: 'ada@example.com' })
-  email: string;
-
   constructor(data: RedemptionUserResponseSource) {
     this.id = data.id;
     this.name = data.name;
-    this.email = data.email;
   }
 }
 
@@ -123,7 +119,6 @@ export class RewardRedemptionResponseDto {
 type RedemptionUserResponseSource = {
   id: string;
   name: string;
-  email: string;
 };
 
 export type RewardRedemptionResponseSource = {

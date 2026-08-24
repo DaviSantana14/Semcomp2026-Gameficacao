@@ -18,6 +18,105 @@ describe(AuditService.name, () => {
     service = new AuditService({ findPage: jest.fn() } as never);
   });
 
+  it('keeps operator and participant-reset audit snapshots free of credentials and PII', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.ADMIN_OPERATOR_UPDATED,
+      entityType: AuditEntityType.ADMIN_OPERATOR,
+      entityId: 'operator-1',
+      reason: 'Edicao de operador autorizada',
+      before: {
+        id: 'operator-1',
+        name: 'Operador',
+        adminProfile: 'SHOP',
+        isActive: true,
+        createdAt: new Date('2026-08-23T12:00:00Z'),
+        updatedAt: new Date('2026-08-23T12:00:00Z'),
+      },
+      after: {
+        id: 'operator-1',
+        name: 'Operador novo',
+        adminProfile: 'ACTIVITIES',
+        isActive: true,
+        createdAt: new Date('2026-08-23T12:00:00Z'),
+        updatedAt: new Date('2026-08-23T12:01:00Z'),
+      },
+      metadata: { sessionsRevoked: 1 },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        before: expect.objectContaining({
+          id: 'operator-1',
+          name: 'Operador',
+          updatedAt: '2026-08-23T12:00:00.000Z',
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        after: expect.objectContaining({
+          id: 'operator-1',
+          name: 'Operador novo',
+          adminProfile: 'ACTIVITIES',
+        }),
+        metadata: { sessionsRevoked: 1 },
+      }),
+    );
+    expect(JSON.stringify(create.mock.calls)).not.toContain('passwordHash');
+  });
+
+  it('records only reset state and session count for participant password resets', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.PARTICIPANT_PASSWORD_RESET,
+      entityType: AuditEntityType.PARTICIPANT,
+      entityId: 'participant-1',
+      participantId: 'participant-1',
+      reason: 'Participante solicitou suporte',
+      before: {
+        id: 'participant-1',
+        passwordResetRequired: false,
+        passwordResetExpiresAt: null,
+      },
+      after: {
+        id: 'participant-1',
+        passwordResetRequired: true,
+        passwordResetExpiresAt: new Date('2026-08-24T12:00:00.000Z'),
+      },
+      metadata: {
+        sessionsRevoked: 2,
+        temporaryPassword: 'never-persist-this',
+        passwordHash: 'never-persist-this-either',
+      } as never,
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        before: {
+          id: 'participant-1',
+          passwordResetRequired: false,
+          passwordResetExpiresAt: null,
+        },
+        after: {
+          id: 'participant-1',
+          passwordResetRequired: true,
+          passwordResetExpiresAt: '2026-08-24T12:00:00.000Z',
+        },
+        metadata: { sessionsRevoked: 2 },
+      }),
+    );
+    expect(JSON.stringify(create.mock.calls)).not.toContain(
+      'never-persist-this',
+    );
+  });
+
   it('writes an ADMIN event with a normalized reason and safe action snapshots', async () => {
     await service.record(writer, {
       actor: {
@@ -281,6 +380,65 @@ describe(AuditService.name, () => {
         },
       }),
     );
+  });
+
+  it('accepts only aggregate facts for bulk status audit snapshots', async () => {
+    await service.record(writer, {
+      actor: {
+        actorType: AuditActorType.ADMIN,
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+      operation: AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+      entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+      entityId: 'bulk-1',
+      reason: 'Desativacao preventiva do lote selecionado',
+      after: {
+        targetIsActive: false,
+        selectedCount: 4,
+        changedCount: 2,
+        unchangedCount: 1,
+        usedCount: 1,
+        notFoundCount: 0,
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        after: {
+          targetIsActive: false,
+          selectedCount: 4,
+          changedCount: 2,
+          unchangedCount: 1,
+          usedCount: 1,
+          notFoundCount: 0,
+        },
+      }),
+    );
+
+    await expect(
+      service.record(writer, {
+        actor: {
+          actorType: AuditActorType.ADMIN,
+          actorAdminId: 'admin-1',
+          requestId: 'request-2',
+        },
+        operation: AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+        entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+        entityId: 'bulk-2',
+        reason: 'Desativacao preventiva do lote selecionado',
+        after: {
+          targetIsActive: false,
+          selectedCount: 1,
+          changedCount: 1,
+          unchangedCount: 0,
+          usedCount: 0,
+          notFoundCount: 0,
+          selectedIds: ['claim-1'],
+          maskedCode: 'AB****YZ',
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it.each([

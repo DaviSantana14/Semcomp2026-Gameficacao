@@ -1,4 +1,7 @@
 import { isEmail } from 'class-validator';
+import { validateAdminPassword } from '../src/auth/password-policy';
+
+export const DEMO_PARTICIPANT_PASSWORD = 'semcomp-demo-participante-2026';
 
 export type SeedConfig = {
   mode: 'admin-only' | 'demo';
@@ -6,6 +9,7 @@ export type SeedConfig = {
     name: string;
     cpf: string;
     email: string;
+    password?: string;
   };
 };
 
@@ -20,6 +24,19 @@ function getRequiredValue(
   }
 
   return value.trim();
+}
+
+function getRequiredPassword(environment: NodeJS.ProcessEnv) {
+  const password = environment.SEED_ADMIN_PASSWORD;
+
+  if (password === undefined || password.length === 0) {
+    throw new Error(
+      'Variável de ambiente obrigatória ausente: SEED_ADMIN_PASSWORD.',
+    );
+  }
+
+  validateAdminPassword(password);
+  return password;
 }
 
 export function getSeedConfig(
@@ -53,5 +70,14 @@ export function getSeedConfig(
     throw new Error('SEED_ADMIN_EMAIL deve ser um email válido.');
   }
 
-  return { mode: environment.SEED_MODE, admin: { name, cpf, email } };
+  const admin = { name, cpf, email };
+
+  if (environment.SEED_MODE === 'demo') {
+    return {
+      mode: environment.SEED_MODE,
+      admin: { ...admin, password: getRequiredPassword(environment) },
+    };
+  }
+
+  return { mode: environment.SEED_MODE, admin };
 }

@@ -18,24 +18,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/features/auth/auth.service";
+import { participantPasswordSchema } from "@/features/auth/auth.validation";
 import { ApiError } from "@/lib/http/api-error";
 
 const loginSchema = z.object({
-  cpf: z
-    .string()
-    .transform((value) => normalizeCpf(value))
-    .refine(
-      (value) => /^\d{11}$/.test(value),
-      "Informe um CPF com 11 dígitos.",
-    ),
   email: z.string().email("Informe um e-mail válido."),
+  password: participantPasswordSchema,
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
-
-function normalizeCpf(cpf: string) {
-  return cpf.replace(/\D/g, "");
-}
 
 export function LoginForm() {
   const router = useRouter();
@@ -46,20 +37,26 @@ export function LoginForm() {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      cpf: "",
       email: "",
+      password: "",
     },
   });
 
   async function onSubmit(values: LoginFormValues) {
     try {
       const response = await login({
-        cpf: values.cpf,
         email: values.email.trim().toLowerCase(),
+        password: values.password,
       });
 
       toast.success("Login realizado.");
-      router.replace(response.user.role === "ADMIN" ? "/admin" : "/home");
+      router.replace(
+        response.user.passwordChangeRequired
+          ? "/trocar-senha"
+          : response.user.role === "ADMIN"
+            ? "/admin"
+            : "/home",
+      );
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -74,38 +71,16 @@ export function LoginForm() {
       <CardHeader>
         <CardTitle>Entrar</CardTitle>
         <CardDescription>
-          Use o CPF e o e-mail cadastrados no evento.
+          Use o e-mail e a senha cadastrados no evento.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-5" onSubmit={handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="cpf">CPF</Label>
-            <Input
-              id="cpf"
-              autoComplete="username"
-              inputMode="numeric"
-              placeholder="00000000000"
-              aria-describedby={errors.cpf ? "cpf-error" : undefined}
-              aria-invalid={Boolean(errors.cpf)}
-              {...register("cpf")}
-            />
-            {errors.cpf ? (
-              <p
-                className="text-sm font-medium text-destructive"
-                id="cpf-error"
-                role="alert"
-              >
-                {errors.cpf.message}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-2">
             <Label htmlFor="email">E-mail</Label>
             <Input
               id="email"
-              autoComplete="email"
+              autoComplete="username"
               inputMode="email"
               placeholder="voce@email.com"
               aria-describedby={errors.email ? "email-error" : undefined}
@@ -123,10 +98,35 @@ export function LoginForm() {
             ) : null}
           </div>
 
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="password">Senha</Label>
+            <Input
+              id="password"
+              autoComplete="current-password"
+              type="password"
+              aria-describedby={errors.password ? "password-error" : undefined}
+              aria-invalid={Boolean(errors.password)}
+              {...register("password")}
+            />
+            {errors.password ? (
+              <p
+                className="text-sm font-medium text-destructive"
+                id="password-error"
+                role="alert"
+              >
+                {errors.password.message}
+              </p>
+            ) : null}
+          </div>
+
           <Button className="w-full" disabled={isSubmitting} type="submit">
             <LogIn aria-hidden="true" data-icon="inline-start" />
             {isSubmitting ? "Entrando..." : "Entrar na jornada"}
           </Button>
+
+          <p className="text-center text-sm text-muted-foreground">
+            A recuperação automática de senha não está disponível.
+          </p>
 
           <p className="text-center text-sm text-muted-foreground">
             Ainda não se cadastrou?{" "}

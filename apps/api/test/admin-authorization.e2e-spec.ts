@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ActionType, UserRole } from '@prisma/client';
+import { ActionType } from '@prisma/client';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
@@ -10,16 +10,27 @@ import { generateClaimCode } from '../src/common/event-code';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
   assertDisposableTestDatabase,
+  hasDisposableTestDatabaseConfiguration,
   truncateDisposableTestDatabase,
 } from './support/e2e-database-cleanup';
-import { AuthSession, loginForE2e } from './support/admin-e2e-harness';
+import {
+  AuthSession,
+  createE2eAdmin,
+  createE2eParticipant,
+  E2E_ADMIN_PASSWORD,
+  loginForE2e,
+} from './support/admin-e2e-harness';
+
+const describeDisposable = hasDisposableTestDatabaseConfiguration()
+  ? describe
+  : describe.skip;
 
 type RankingBody = {
   ranking: Array<{ name: string }>;
   me: { name: string } | null;
 };
 
-describe('Player flow authorization matrix (e2e)', () => {
+describeDisposable('Player flow authorization matrix (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let adminSession: AuthSession;
@@ -46,27 +57,30 @@ describe('Player flow authorization matrix (e2e)', () => {
     const suffix = randomUUID();
     reusableCode = `TASK2-${suffix}`.toUpperCase();
     const [admin, participant] = await Promise.all([
-      prisma.user.create({
-        data: {
-          name: 'Task 2 admin',
-          cpf: uniqueCpf(suffix, 1),
-          email: `task2-admin-${suffix}@example.test`,
-          role: UserRole.ADMIN,
-          points: 100,
-          xp: 100,
-        },
+      createE2eAdmin(prisma, {
+        name: 'Task 2 admin',
+        cpf: uniqueCpf(suffix, 1),
+        email: `task2-admin-${suffix}@example.test`,
+        adminProfile: 'GENERAL',
+        isActive: true,
+        password: E2E_ADMIN_PASSWORD,
       }),
-      prisma.user.create({
-        data: {
-          name: 'Task 2 participant',
-          cpf: uniqueCpf(suffix, 2),
-          email: `task2-participant-${suffix}@example.test`,
-          role: UserRole.PARTICIPANT,
-          points: 100,
-          xp: 100,
-        },
+      createE2eParticipant(prisma, {
+        name: 'Task 2 participant',
+        cpf: uniqueCpf(suffix, 2),
+        email: `task2-participant-${suffix}@example.test`,
+        isActive: true,
+        password: 'Task-2-Participant-2026!',
       }),
     ]);
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: { points: 100, xp: 100 },
+    });
+    await prisma.user.update({
+      where: { id: participant.id },
+      data: { points: 100, xp: 100 },
+    });
     participantId = participant.id;
 
     const [directAction, codedAction, reward] = await Promise.all([
@@ -119,12 +133,19 @@ describe('Player flow authorization matrix (e2e)', () => {
     claimCodeId = claimCode.id;
     pendingRedemptionId = pendingRedemption.id;
 
-    adminSession = await loginForE2e(app, prisma, admin.cpf, admin.email);
+    adminSession = await loginForE2e(
+      app,
+      prisma,
+      admin.cpf,
+      admin.email,
+      E2E_ADMIN_PASSWORD,
+    );
     participantSession = await loginForE2e(
       app,
       prisma,
       participant.cpf,
       participant.email,
+      'Task-2-Participant-2026!',
     );
   });
 
@@ -132,8 +153,8 @@ describe('Player flow authorization matrix (e2e)', () => {
     try {
       await truncateDisposableTestDatabase(prisma);
     } finally {
-      await app.close();
-      await prisma.$disconnect();
+      if (app) await app.close();
+      if (prisma) await prisma.$disconnect();
     }
   });
 

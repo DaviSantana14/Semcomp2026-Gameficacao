@@ -19,7 +19,8 @@ export function proxy(request: NextRequest) {
   if (
     (pathname.startsWith("/home") ||
       pathname.startsWith("/ranking") ||
-      pathname.startsWith("/lojinha")) &&
+      pathname.startsWith("/lojinha") ||
+      pathname === "/trocar-senha") &&
     !hasSession
   ) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -31,6 +32,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/login/:path*",
+    "/ativar-admin",
+    "/trocar-senha",
     "/cadastro",
     "/home/:path*",
     "/admin/:path*",

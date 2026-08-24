@@ -1,8 +1,8 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { DECORATORS } from '@nestjs/swagger/dist/constants';
-import { ROLES_KEY } from '../../auth/roles.decorator';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
 import { PaginationMetaDto } from '../../common/dto/pagination-response.dto';
 import { AdminRewardsController } from '../admin-rewards.controller';
 import { AdminRewardsQueryDto } from '../dto/admin-rewards-query.dto';
@@ -11,12 +11,13 @@ import { AdminRewardsPageResponseDto } from '../dto/admin-reward-response.dto';
 import { RedemptionTransitionDto } from '../dto/redemption-transition.dto';
 import { toRewardRedemptionResponseDto } from '../dto/reward-redemption-response.dto';
 import { HttpErrorResponseDto } from '../../common/dto/http-error-response.dto';
+import { parseRedemptionDateRange } from '../dto/admin-redemptions-query.dto';
 
 describe('AdminRewardsController', () => {
   it('guards the whole controller as admin', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, AdminRewardsController)).toEqual([
-      UserRole.ADMIN,
-    ]);
+    expect(
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminRewardsController),
+    ).toEqual([AdminProfile.GENERAL, AdminProfile.SHOP]);
   });
 
   it('delegates catalog and history queries', async () => {
@@ -237,6 +238,27 @@ describe('Admin rewards public query DTOs', () => {
       'cancelled',
     ]);
     expect(readSwaggerMetadata(meta).type).toBe(PaginationMetaDto);
+  });
+});
+
+describe('Admin redemption date range', () => {
+  it('maps date-only bounds to São Paulo midnight with an exclusive end', () => {
+    expect(
+      parseRedemptionDateRange({ from: '2026-08-01', to: '2026-08-03' }),
+    ).toEqual({
+      from: new Date('2026-08-01T03:00:00.000Z'),
+      to: new Date('2026-08-03T03:00:00.000Z'),
+    });
+  });
+
+  it.each([
+    [{ from: '2026-08-01' }, 'missing end'],
+    [{ to: '2026-08-03' }, 'missing start'],
+    [{ from: '2026-08-03', to: '2026-08-03' }, 'empty range'],
+    [{ from: '2026-08-04', to: '2026-08-03' }, 'reversed range'],
+    [{ from: '2026-02-29', to: '2026-03-01' }, 'invalid date'],
+  ])('rejects %s', (range) => {
+    expect(() => parseRedemptionDateRange(range)).toThrow();
   });
 });
 

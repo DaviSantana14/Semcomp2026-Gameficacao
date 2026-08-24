@@ -1,20 +1,31 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, ShieldCheck, ShieldOff, UserRoundSearch } from "lucide-react";
+import {
+  Download,
+  Search,
+  ShieldCheck,
+  ShieldOff,
+  UserRoundSearch,
+} from "lucide-react";
 import Link from "next/link";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  downloadParticipantsExport,
+  fetchParticipantsExportCount,
+} from "@/features/exports/exports.service";
+import {
   fetchAdminParticipants,
   updateParticipantStatus,
 } from "@/features/participants/participants.service";
 import type { AdminParticipant } from "@/features/participants/participants.types";
 import { ApiError } from "@/lib/http/api-error";
+import { AdminExportDialog } from "../_components/admin-export-dialog";
 import { PaginationControls } from "../_components/pagination-controls";
 import { StatusBadge } from "../_components/status-badge";
 import { AdminReasonDialog } from "../_components/admin-reason-dialog";
@@ -41,6 +52,7 @@ export function ParticipantsClient() {
   const [statusIntent, setStatusIntent] = useState<AdminParticipant | null>(
     null,
   );
+  const [exportOpen, setExportOpen] = useState(false);
   const filters = {
     page,
     limit: LIMIT,
@@ -52,6 +64,22 @@ export function ParticipantsClient() {
     queryFn: () => fetchAdminParticipants(filters),
     retry: false,
   });
+  const countExport = useCallback(
+    () =>
+      fetchParticipantsExportCount({
+        search: search || undefined,
+        status: status === "all" ? undefined : status,
+      }),
+    [search, status],
+  );
+  const downloadExport = useCallback(
+    () =>
+      downloadParticipantsExport({
+        search: search || undefined,
+        status: status === "all" ? undefined : status,
+      }),
+    [search, status],
+  );
   const statusMutation = useMutation({
     mutationFn: async ({
       id,
@@ -171,6 +199,16 @@ export function ParticipantsClient() {
             Buscar
           </Button>
         </form>
+        <div className="flex flex-wrap justify-end">
+          <Button
+            aria-label="Exportar participantes"
+            onClick={() => setExportOpen(true)}
+            variant="outline"
+          >
+            <Download aria-hidden="true" />
+            Exportar participantes
+          </Button>
+        </div>
       </AdminPanel>
 
       {participantsQuery.isLoading ? (
@@ -255,6 +293,29 @@ export function ParticipantsClient() {
           ) : null}
         </div>
       )}
+      {exportOpen ? (
+        <AdminExportDialog
+          appliedFilters={[
+            {
+              label: "Busca",
+              value: search || "Todos os participantes",
+            },
+            {
+              label: "Status",
+              value:
+                status === "all"
+                  ? "Todos"
+                  : status === "active"
+                    ? "Ativos"
+                    : "Inativos",
+            },
+          ]}
+          count={countExport}
+          download={downloadExport}
+          onClose={() => setExportOpen(false)}
+          title="Exportar participantes"
+        />
+      ) : null}
       {statusIntent ? (
         <AdminReasonDialog
           confirmLabel={

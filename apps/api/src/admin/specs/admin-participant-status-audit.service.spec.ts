@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AuditOperation } from '../../audit/audit.repository';
 import { AuditService } from '../../audit/audit.service';
+import { ParticipantPasswordService } from '../../auth/participant-password.service';
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 
@@ -45,6 +46,7 @@ describe('participant status audit', () => {
         AdminParticipantsService,
         { provide: AdminParticipantsRepository, useValue: repository },
         { provide: AuditService, useValue: audit },
+        { provide: ParticipantPasswordService, useValue: { hash: jest.fn() } },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);
@@ -56,6 +58,7 @@ describe('participant status audit', () => {
       lockParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: true }),
+      revokeOpenSessions: jest.fn().mockResolvedValue(2),
       updateParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: false }),
@@ -82,6 +85,10 @@ describe('participant status audit', () => {
       'p1',
       false,
     );
+    expect(transaction.revokeOpenSessions).toHaveBeenCalledWith(
+      'p1',
+      expect.any(Date),
+    );
     expect(audit.record).toHaveBeenCalledWith(
       transaction.auditWriter,
       expect.objectContaining({
@@ -99,6 +106,7 @@ describe('participant status audit', () => {
       lockParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: true }),
+      revokeOpenSessions: jest.fn(),
       updateParticipantStatus: jest.fn(),
     };
     repository.withTransaction.mockImplementation(
@@ -126,6 +134,7 @@ describe('participant status audit', () => {
     const transaction = {
       auditWriter: { create: jest.fn() },
       lockParticipantStatus: jest.fn().mockResolvedValue(null),
+      revokeOpenSessions: jest.fn(),
       updateParticipantStatus: jest.fn(),
     };
     repository.withTransaction.mockImplementation(
@@ -151,6 +160,7 @@ describe('participant status audit', () => {
       lockParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: true }),
+      revokeOpenSessions: jest.fn(),
       updateParticipantStatus: jest
         .fn()
         .mockResolvedValue({ id: 'p1', isActive: false }),
@@ -179,6 +189,7 @@ describe('participant status audit', () => {
       lockParticipantStatus: jest.fn(() =>
         Promise.resolve({ ...state.participant }),
       ),
+      revokeOpenSessions: jest.fn(),
       updateParticipantStatus: jest.fn((id: string, isActive: boolean) => {
         state.participant = { id, isActive };
         return Promise.resolve({ ...state.participant });

@@ -6,4 +6,7 @@ export class CsrfTokenResponseDto {
     description: 'Token que deve ser enviado no header X-CSRF-Token.',
   })
   csrfToken: string;
+
+  @ApiProperty({ example: false })
+  passwordChangeRequired: boolean;
 }

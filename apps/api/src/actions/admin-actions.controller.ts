@@ -8,9 +8,11 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  Optional,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import {
   ApiBody,
   ApiBadRequestResponse,
@@ -21,15 +23,21 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CsrfGuard } from '../auth/csrf.guard';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
+import { DownloadCapacityError } from '../common/download-gate';
+import { sanitizeQrFileName } from '../claim-codes/claim-code-qr';
+import { ClaimCodeArtifactsService } from '../claim-codes/claim-code-artifacts.service';
+import { RateLimitPolicy } from '../security/rate-limit-policy.decorator';
+import type { Response } from 'express';
 import { ActionsService } from './actions.service';
 import {
   ActionResponseDto,
@@ -53,12 +61,15 @@ import type { AuthenticatedRequest } from '../common/request-context';
 @ApiTags('Admin Actions')
 @ApiSecurity('access-token-cookie')
 @Controller()
-@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminProfilesGuard)
+@AdminProfiles(AdminProfile.GENERAL, AdminProfile.ACTIVITIES)
 @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
 @ApiForbiddenResponse({ type: HttpErrorResponseDto })
 export class AdminActionsController {
-  constructor(private readonly actions: ActionsService) {}
+  constructor(
+    private readonly actions: ActionsService,
+    @Optional() private readonly artifacts?: ClaimCodeArtifactsService,
+  ) {}
 
   @Post('actions')
   @ApiOperation({ summary: 'Criar uma atividade pontuável (admin)' })
@@ -194,5 +205,87 @@ export class AdminActionsController {
     @Query() query: ReusableCodeRedemptionsQueryDto,
   ) {
     return this.actions.findReusableCodeRedemptions(actionId, query);
+  }
+
+  @Get('admin/reusable-codes/:actionId/qr.png')
+  @RateLimitPolicy('export')
+  @ApiOperation({ summary: 'Baixar PNG QR de um código reutilizável (admin)' })
+  @ApiProduces('image/png')
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async downloadReusableCodeQrPng(
+    @Param('actionId') actionId: string,
+    @Res() response: Response,
+  ) {
+    const artifact = await this.actions.getReusableCodeQrArtifact(actionId);
+    try {
+      await this.requireArtifacts().writeQrPng(
+        response,
+        artifact.cards[0],
+        () => {
+          this.setDownloadHeaders(
+            response,
+            'image/png',
+            `codigo-reutilizavel-${sanitizeQrFileName(actionId)}-qr.png`,
+          );
+        },
+      );
+    } catch (error) {
+      this.rethrowDownloadCapacity(response, error);
+    }
+  }
+
+  @Get('admin/reusable-codes/:actionId/qr.pdf')
+  @RateLimitPolicy('export')
+  @ApiOperation({ summary: 'Baixar PDF QR de um código reutilizável (admin)' })
+  @ApiProduces('application/pdf')
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  async downloadReusableCodeQrPdf(
+    @Param('actionId') actionId: string,
+    @Res() response: Response,
+  ) {
+    const artifact = await this.actions.getReusableCodeQrArtifact(actionId);
+    try {
+      await this.requireArtifacts().writeQrPdf(
+        response,
+        artifact.cards,
+        artifact.metadata,
+        () => {
+          this.setDownloadHeaders(
+            response,
+            'application/pdf',
+            `codigo-reutilizavel-${sanitizeQrFileName(actionId)}-qr.pdf`,
+          );
+        },
+      );
+    } catch (error) {
+      this.rethrowDownloadCapacity(response, error);
+    }
+  }
+
+  private requireArtifacts() {
+    if (!this.artifacts) {
+      throw new Error('O gerador de artefatos QR não foi configurado.');
+    }
+    return this.artifacts;
+  }
+
+  private setDownloadHeaders(
+    response: Response,
+    contentType: string,
+    filename: string,
+  ) {
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+  }
+
+  private rethrowDownloadCapacity(response: Response, error: unknown): never {
+    if (error instanceof DownloadCapacityError) {
+      response.setHeader('Retry-After', String(error.retryAfterSeconds));
+    }
+    throw error;
   }
 }

@@ -4,6 +4,7 @@ import { Home, Medal, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { User } from "@/features/users/users.types";
+import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "../logout-button";
 import { BrandLogo } from "./brand-logo";
@@ -36,6 +37,8 @@ export function ParticipantShell({
   children,
   user,
 }: ParticipantShellProps) {
+  usePresenceHeartbeat();
+
   return (
     <div className="semcomp-atmosphere min-h-dvh lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className="border-b border-border/70 bg-background/70 px-5 py-5 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-r lg:border-b-0 lg:px-6 lg:py-7">

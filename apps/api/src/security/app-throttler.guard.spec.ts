@@ -10,8 +10,14 @@ import {
   AppThrottlerGuard,
   type RateLimitedRequest,
 } from './app-throttler.guard';
+import { RateLimitPolicy } from './rate-limit-policy.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { RateLimitKey } from './rate-limit-key';
+import {
+  AdminProfiles,
+  ADMIN_PROFILES_KEY,
+} from '../auth/admin-profiles.decorator';
+import { AdminProfile } from '@prisma/client';
 
 const throttlerOptions: ThrottlerModuleOptions = [
   { name: 'default', limit: 5, ttl: 60_000 },
@@ -44,6 +50,22 @@ class TestableAppThrottlerGuard extends AppThrottlerGuard {
   }
 }
 
+class NamedPolicyController {
+  @RateLimitPolicy('export')
+  exportFile(this: void) {}
+
+  @RateLimitPolicy('bulk')
+  bulkMutation(this: void) {}
+
+  @RateLimitPolicy('activation')
+  activation(this: void) {}
+}
+
+class ProfileProtectedController {
+  @AdminProfiles(AdminProfile.SHOP)
+  shopMutation(this: void) {}
+}
+
 const emptyStorage: ThrottlerStorage = {
   increment: (): Promise<ThrottlerStorageRecord> =>
     Promise.resolve({
@@ -69,7 +91,6 @@ describe(AppThrottlerGuard.name, () => {
           ip: '203.0.113.10',
           path: '/auth/login',
           body: {
-            cpf: String(10_000_000_000 + index),
             email: `participant-${index}@example.com`,
           },
         }),
@@ -81,6 +102,35 @@ describe(AppThrottlerGuard.name, () => {
       true,
     );
     expect(trackers.join('')).not.toMatch(/participant-\d+@example\.com/);
+  });
+
+  it('includes the normalized CPF in administrator and registration trackers', async () => {
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    const base = {
+      ip: '203.0.113.10',
+      path: '/auth/admin/login',
+      body: { cpf: '529.982.247-25', email: 'admin@example.com' },
+    };
+    const equivalent = {
+      ...base,
+      body: { cpf: '52998224725', email: ' ADMIN@example.com ' },
+    };
+
+    await expect(guard.tracker(base)).resolves.toBe(
+      await guard.tracker(equivalent),
+    );
+    await expect(
+      guard.tracker({
+        ip: '203.0.113.10',
+        path: '/auth/login',
+        body: { email: 'admin@example.com' },
+      }),
+    ).resolves.not.toBe(await guard.tracker(base));
   });
 
   it('uses an authenticated internal ID before falling back to the IP', async () => {
@@ -174,6 +224,54 @@ describe(AppThrottlerGuard.name, () => {
     },
   );
 
+  it('uses the existing admin mutation policy for profile-protected mutations', async () => {
+    const increment = jest
+      .fn<
+        Promise<ThrottlerStorageRecord>,
+        [string, number, number, number, string]
+      >()
+      .mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+    const guard = new AppThrottlerGuard(
+      throttlerOptions,
+      { increment },
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    await guard.onModuleInit();
+
+    const handler = ProfileProtectedController.prototype.shopMutation;
+    await expect(
+      guard.canActivate(
+        contextFor(
+          {
+            path: '/rewards/:id',
+            method: 'PATCH',
+            user: { id: 'shop-admin-1' },
+            response: { header: jest.fn() },
+          },
+          undefined,
+          handler,
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(increment).toHaveBeenCalledWith(
+      expect.any(String),
+      60 * 1000,
+      30,
+      60 * 1000,
+      'default',
+    );
+    expect(Reflect.getMetadata(ADMIN_PROFILES_KEY, handler)).toEqual([
+      AdminProfile.SHOP,
+    ]);
+  });
+
   it('shares one counter across endpoints in the same authenticated limit class', async () => {
     const increment = jest
       .fn<
@@ -222,6 +320,134 @@ describe(AppThrottlerGuard.name, () => {
     );
 
     expect(increment.mock.calls[0]?.[0]).toBe(increment.mock.calls[1]?.[0]);
+  });
+
+  it.each([
+    ['export', NamedPolicyController.prototype.exportFile, 5, 60_000],
+    ['bulk', NamedPolicyController.prototype.bulkMutation, 2, 60_000],
+    ['activation', NamedPolicyController.prototype.activation, 5, 900_000],
+  ] as const)(
+    'applies the named %s policy before the method fallback',
+    async (_policy, handler, limit, ttl) => {
+      const increment = jest
+        .fn<
+          Promise<ThrottlerStorageRecord>,
+          [string, number, number, number, string]
+        >()
+        .mockResolvedValue({
+          totalHits: 1,
+          timeToExpire: 60_000,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        });
+      const guard = new AppThrottlerGuard(
+        throttlerOptions,
+        { increment },
+        new Reflector(),
+        new RateLimitKey('test-rate-limit-secret'),
+      );
+      await guard.onModuleInit();
+
+      await expect(
+        guard.canActivate(
+          contextFor(
+            {
+              ip: '203.0.113.10',
+              path: '/admin/some-route',
+              method: 'GET',
+              user: { id: 'admin-1' },
+              response: { header: jest.fn() },
+            },
+            undefined,
+            handler,
+          ),
+        ),
+      ).resolves.toBe(true);
+
+      expect(increment).toHaveBeenCalledWith(
+        expect.any(String),
+        ttl,
+        limit,
+        ttl,
+        'default',
+      );
+    },
+  );
+
+  it('tracks public activation attempts by the HMAC credential key', async () => {
+    const guard = new TestableAppThrottlerGuard(
+      throttlerOptions,
+      emptyStorage,
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+
+    const first = await guard.tracker({
+      ip: '203.0.113.10',
+      path: '/auth/admin/activate',
+      body: { cpf: '529.982.247-25', email: 'admin@example.com' },
+    });
+    const equivalent = await guard.tracker({
+      ip: '198.51.100.10',
+      path: '/auth/admin/activate',
+      body: { cpf: '52998224725', email: ' ADMIN@example.com ' },
+    });
+
+    expect(first).toBe(equivalent);
+    expect(first).toMatch(/^credential:/);
+    expect(first).not.toContain('admin@example.com');
+  });
+
+  it('shares named export counters without sharing the common admin mutation counter', async () => {
+    const increment = jest
+      .fn<
+        Promise<ThrottlerStorageRecord>,
+        [string, number, number, number, string]
+      >()
+      .mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+    const guard = new AppThrottlerGuard(
+      throttlerOptions,
+      { increment },
+      new Reflector(),
+      new RateLimitKey('test-rate-limit-secret'),
+    );
+    await guard.onModuleInit();
+
+    const request = {
+      ip: '203.0.113.10',
+      method: 'GET',
+      user: { id: 'admin-1' },
+      response: { header: jest.fn() },
+    };
+    await guard.canActivate(
+      contextFor(
+        { ...request, path: '/admin/participants/export.csv' },
+        undefined,
+        NamedPolicyController.prototype.exportFile,
+      ),
+    );
+    await guard.canActivate(
+      contextFor(
+        { ...request, path: '/admin/redemptions/export.csv' },
+        undefined,
+        NamedPolicyController.prototype.exportFile,
+      ),
+    );
+    await guard.canActivate(
+      contextFor(
+        { ...request, path: '/admin/actions' },
+        [UserRole.ADMIN],
+        function adminMutation() {},
+      ),
+    );
+
+    expect(increment.mock.calls[0]?.[0]).toBe(increment.mock.calls[1]?.[0]);
+    expect(increment.mock.calls[1]?.[0]).not.toBe(increment.mock.calls[2]?.[0]);
   });
 
   it('returns 429 with retry and limit headers without exposing the tracker', async () => {

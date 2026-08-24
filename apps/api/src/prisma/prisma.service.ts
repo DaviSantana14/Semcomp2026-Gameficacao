@@ -9,7 +9,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
   constructor() {
     const connectionString = ensureDatabaseUrl();
     const pool = new Pool({ connectionString });
-    const adapter = new PrismaPg(pool);
+    const adapter = new PrismaPg(pool, { disposeExternalPool: true });
 
     super({ adapter });
   }

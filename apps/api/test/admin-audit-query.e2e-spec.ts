@@ -54,6 +54,7 @@ describeDisposable('Admin audit query (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `audit-query-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -120,8 +121,8 @@ describeDisposable('Admin audit query (e2e)', () => {
     });
 
     [adminSession, participantSession] = await Promise.all([
-      harness.login(admin.cpf, admin.email),
-      harness.login(participant.cpf, participant.email),
+      harness.loginLegacy(admin.cpf, admin.email),
+      harness.loginLegacy(participant.cpf, participant.email),
     ]);
   });
 

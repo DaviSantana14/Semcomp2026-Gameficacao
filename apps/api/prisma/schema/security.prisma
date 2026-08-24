@@ -1,0 +1,10 @@
+model SecurityHttpMetricMinute {
+  minuteStart       DateTime @id
+  unauthorizedCount Int      @default(0)
+  forbiddenCount    Int      @default(0)
+  rateLimitedCount  Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([minuteStart])
+}

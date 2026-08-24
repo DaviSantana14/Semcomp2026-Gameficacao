@@ -72,6 +72,7 @@ describeDisposable('Administrative audit transaction rollback (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `rollback-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -85,7 +86,7 @@ describeDisposable('Administrative audit transaction rollback (e2e)', () => {
       }),
     ]);
     participantId = participant.id;
-    adminSession = await harness.login(admin.cpf, admin.email);
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
   });
 
   afterAll(async () => {
@@ -265,6 +266,7 @@ describeDisposable('Reconciliation audit-first rollback (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 3),
           email: `recon-rollback-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -287,7 +289,7 @@ describeDisposable('Reconciliation audit-first rollback (e2e)', () => {
         source: PointEventSource.ADMIN_GRANT,
       },
     });
-    adminSession = await harness.login(admin.cpf, admin.email);
+    adminSession = await harness.loginLegacy(admin.cpf, admin.email);
   });
 
   afterAll(async () => {

@@ -29,16 +29,12 @@ export class UsersService {
     return this.repository.findActiveSummaryById(id);
   }
 
-  findByCpfOrEmail(cpf: string, email: string) {
-    return this.repository.findByCpfOrEmail(cpf, email);
-  }
-
   create(input: CreateUserInput) {
     return this.repository.create(input);
   }
 
-  findActiveByCredentials(cpf: string, email: string) {
-    return this.repository.findActiveByCredentials(cpf, email);
+  findByEmailForAuthentication(email: string) {
+    return this.repository.findByEmailForAuthentication(email);
   }
 
   findByCredentialsWithPasswordHash(cpf: string, email: string) {
@@ -47,9 +43,5 @@ export class UsersService {
 
   setAdminPassword(cpf: string, email: string, passwordHash: string) {
     return this.repository.setAdminPassword(cpf, email, passwordHash);
-  }
-
-  updateLastLoginAt(id: string) {
-    return this.repository.updateLastLoginAt(id);
   }
 }

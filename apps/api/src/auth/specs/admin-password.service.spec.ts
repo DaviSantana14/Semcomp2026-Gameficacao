@@ -1,6 +1,7 @@
 import { UserRole } from '@prisma/client';
 import { compare, hash } from 'bcrypt';
 import { AdminPasswordService } from '../admin-password.service';
+import { DUMMY_PASSWORD, DUMMY_PASSWORD_HASH } from '../password-hash';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -28,11 +29,19 @@ describe(AdminPasswordService.name, () => {
     expect(hashMock).toHaveBeenCalledWith(validPassword, 12);
   });
 
-  it('rejects an over-72-byte password before calling bcrypt', async () => {
-    await expect(
-      service.verify(`${'a'.repeat(55)}${'é'.repeat(9)}`, null),
-    ).resolves.toBe(false);
-    expect(compareMock).not.toHaveBeenCalled();
+  it('performs a single dummy comparison for an over-72-byte password', async () => {
+    const invalidCandidate = `${'a'.repeat(55)}${'é'.repeat(9)}`;
+
+    await expect(service.verify(invalidCandidate, null)).resolves.toBe(false);
+    expect(compareMock).toHaveBeenCalledTimes(1);
+    expect(compareMock).toHaveBeenCalledWith(
+      DUMMY_PASSWORD,
+      DUMMY_PASSWORD_HASH,
+    );
+    expect(compareMock).not.toHaveBeenCalledWith(
+      invalidCandidate,
+      expect.anything(),
+    );
   });
 
   it('accepts an active administrator with the matching password', async () => {

@@ -14,6 +14,9 @@ const userSummarySelect = {
   level: true,
   isActive: true,
   lastLoginAt: true,
+  adminProfile: true,
+  passwordResetRequired: true,
+  passwordResetExpiresAt: true,
   createdAt: true,
 } as const;
 
@@ -50,15 +53,6 @@ export class UsersRepository {
     });
   }
 
-  findByCpfOrEmail(cpf: string, email: string) {
-    return this.prisma.user.findFirst({
-      where: {
-        OR: [{ cpf }, { email }],
-      },
-      select: userSummarySelect,
-    });
-  }
-
   async create(data: { name: string; cpf: string; email: string }) {
     try {
       return await this.prisma.user.create({
@@ -76,15 +70,18 @@ export class UsersRepository {
     }
   }
 
-  findActiveByCredentials(cpf: string, email: string) {
+  findByEmailForAuthentication(email: string) {
     return this.prisma.user.findFirst({
-      where: {
-        cpf,
-        email,
+      where: { email },
+      select: {
+        id: true,
+        role: true,
         isActive: true,
-        role: 'PARTICIPANT',
+        passwordHash: true,
+        adminProfile: true,
+        passwordResetRequired: true,
+        passwordResetExpiresAt: true,
       },
-      select: userSummarySelect,
     });
   }
 
@@ -97,29 +94,43 @@ export class UsersRepository {
 
   async setAdminPassword(cpf: string, email: string, passwordHash: string) {
     return this.prisma.$transaction(async (tx) => {
-      const admin = await tx.user.findFirst({
-        where: { cpf, email, role: 'ADMIN' },
-        select: { id: true },
-      });
+      const admins = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "User"
+        WHERE "cpf" = ${cpf}
+          AND "email" = ${email}
+          AND "role" = 'ADMIN'::"UserRole"
+          AND "adminProfile" = 'GENERAL'::"AdminProfile"
+        FOR UPDATE
+      `);
+      const admin = admins[0];
 
       if (!admin) {
         return false;
       }
 
+      const now = new Date();
       await tx.user.update({
         where: { id: admin.id },
-        data: { passwordHash, passwordChangedAt: new Date() },
+        data: {
+          passwordHash,
+          passwordChangedAt: now,
+          isActive: true,
+          passwordResetRequired: false,
+          passwordResetExpiresAt: null,
+        },
+      });
+
+      await tx.userSession.updateMany({
+        where: {
+          userId: admin.id,
+          endedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { endedAt: now, endReason: 'REVOKED' },
       });
 
       return true;
-    });
-  }
-
-  updateLastLoginAt(id: string) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { lastLoginAt: new Date() },
-      select: userSummarySelect,
     });
   }
 }

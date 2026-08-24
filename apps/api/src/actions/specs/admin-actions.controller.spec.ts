@@ -1,10 +1,10 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { DECORATORS } from '@nestjs/swagger/dist/constants';
-import { ROLES_KEY } from '../../auth/roles.decorator';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
-import { RolesGuard } from '../../auth/roles.guard';
 import { AdminActionsController } from '../admin-actions.controller';
 import { ActionResponseDto } from '../dto/action-response.dto';
 
@@ -22,13 +22,13 @@ describe('AdminActionsController', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('protects every endpoint with authentication, CSRF and admin role', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, AdminActionsController)).toEqual([
-      UserRole.ADMIN,
-    ]);
+  it('protects every endpoint with authentication, CSRF and profile metadata', () => {
+    expect(
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminActionsController),
+    ).toEqual([AdminProfile.GENERAL, AdminProfile.ACTIVITIES]);
     expect(
       Reflect.getMetadata(GUARDS_METADATA, AdminActionsController),
-    ).toEqual([JwtAuthGuard, CsrfGuard, RolesGuard]);
+    ).toEqual([JwtAuthGuard, CsrfGuard, AdminProfilesGuard]);
   });
 
   it('delegates action listing and partial updates', async () => {

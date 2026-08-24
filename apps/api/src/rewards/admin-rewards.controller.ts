@@ -23,11 +23,11 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import { CsrfGuard } from '../auth/csrf.guard';
+import { AdminProfiles } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { HttpErrorResponseDto } from '../common/dto/http-error-response.dto';
 import { AdminRedemptionsPageResponseDto } from './dto/admin-redemption-list-response.dto';
 import { AdminRedemptionsQueryDto } from './dto/admin-redemptions-query.dto';
@@ -51,8 +51,8 @@ import type { AuthenticatedRequest } from '../common/request-context';
 @ApiTags('Admin Rewards')
 @ApiSecurity('access-token-cookie')
 @Controller()
-@UseGuards(JwtAuthGuard, CsrfGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminProfilesGuard)
+@AdminProfiles(AdminProfile.GENERAL, AdminProfile.SHOP)
 @ApiUnauthorizedResponse({ type: HttpErrorResponseDto })
 @ApiForbiddenResponse({ type: HttpErrorResponseDto })
 export class AdminRewardsController {

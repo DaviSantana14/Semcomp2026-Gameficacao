@@ -25,6 +25,45 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Semcomp authentication and presence
+
+- Participants register with name, CPF, email and password. CPF remains a
+  required unique profile field, but participant authentication uses only email
+  and password.
+- Participant passwords accept 8–64 Unicode code points and at most 72 UTF-8
+  bytes, including spaces, with no composition rule or recovery flow.
+- Administrators use CPF, email and password on `/auth/admin/login`. Passwords
+  are handled with asynchronous bcrypt v6 APIs and are never returned by the
+  API.
+- Each JWT `jti` is the exact `UserSession.id`. Participant heartbeats run at
+  60-second intervals, online status uses a 120-second window, and presence is
+  retained as one daily aggregate row in `America/Sao_Paulo`; minute samples
+  are not persisted.
+- Admin presence reads are available at `/admin/presence/overview`,
+  `/admin/presence/history`, and `/admin/presence/export.csv`. The CSV contains
+  only aggregate `GERAL` and filtered `DIARIO` rows.
+
+## Marco 12 scale rehearsal
+
+The API includes on-demand CSV, Claim Code TXT/PDF/ZIP and reusable-code QR
+downloads. A batch, PDF or ZIP contains at most 500 Claim Codes; CSV exports
+allow at most 50,000 rows and 25 MiB. The process permits two CSV generations
+and one QR generation at a time. Per administrator, export starts are limited
+to five per minute and bulk mutations to two per minute.
+
+Security metrics retain only aggregate `401`, `403` and `429` minute buckets
+for 30 days. The dashboard uses five-minute thresholds of 20/10/5 for those
+statuses and never receives request bodies, cookies, tokens, routes or raw QR
+payloads.
+
+To run the load contract against a disposable environment, provide an existing
+action ID through `LOAD_CLAIM_CODE_ACTION_ID`, keep `LOAD_CLAIM_CODE_QUANTITY=500`,
+set `LOAD_MARCO12=true`, and provide the administrator CPF, email and password
+through protected stdin. The generated report is
+`artifacts/marco-12-load-report.json`; it contains aggregate latency/status and
+artifact byte/count data only. Never put the administrator password or generated
+Claim Codes in environment variables, command arguments or logs.
+
 ## Project setup
 
 ```bash

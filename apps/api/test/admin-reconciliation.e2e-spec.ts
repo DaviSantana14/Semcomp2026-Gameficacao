@@ -63,6 +63,7 @@ describe('Admin reconciliation (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `reconciliation-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       createParticipant('No events', 0, 0, 2),
@@ -92,8 +93,8 @@ describe('Admin reconciliation (e2e)', () => {
     });
 
     [adminSession, participantSession] = await Promise.all([
-      harness.login(admin.cpf, admin.email),
-      harness.login(noEvents.cpf, noEvents.email),
+      harness.loginLegacy(admin.cpf, admin.email),
+      harness.loginLegacy(noEvents.cpf, noEvents.email),
     ]);
 
     function createParticipant(

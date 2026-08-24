@@ -1,10 +1,9 @@
-import { UserRole } from '@prisma/client';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { AuditController } from './audit.controller';
+import { ADMIN_PROFILES_KEY } from '../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../auth/admin-profiles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CsrfGuard } from '../auth/csrf.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { ROLES_KEY } from '../auth/roles.decorator';
 
 describe(AuditController.name, () => {
   const service = {
@@ -35,14 +34,14 @@ describe(AuditController.name, () => {
     );
   });
 
-  it('requires JWT, CSRF semantics and the administrator role', () => {
+  it('requires JWT, CSRF semantics and the general profile', () => {
     const guards = Reflect.getMetadata(
       GUARDS_METADATA,
       AuditController,
     ) as unknown[];
-    expect(guards).toEqual([JwtAuthGuard, CsrfGuard, RolesGuard]);
-    expect(Reflect.getMetadata(ROLES_KEY, AuditController)).toEqual([
-      UserRole.ADMIN,
+    expect(guards).toEqual([JwtAuthGuard, CsrfGuard, AdminProfilesGuard]);
+    expect(Reflect.getMetadata(ADMIN_PROFILES_KEY, AuditController)).toEqual([
+      'GENERAL',
     ]);
   });
 

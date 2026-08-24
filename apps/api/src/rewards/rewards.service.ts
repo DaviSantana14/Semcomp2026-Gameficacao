@@ -14,6 +14,7 @@ import {
 import {
   AdminRedemptionsQueryDto,
   AdminRedemptionStatusFilter,
+  parseRedemptionDateRange,
 } from './dto/admin-redemptions-query.dto';
 import {
   AdminRewardsQueryDto,
@@ -104,12 +105,14 @@ export class RewardsService {
   }
 
   async findRedemptions(query: AdminRedemptionsQueryDto) {
+    const dateRange = parseRedemptionDateRange(query);
     const filter: RedemptionPageFilter = {
       page: query.page,
       limit: query.limit,
       search: query.search?.trim(),
-      rewardId: query.rewardId,
+      rewardId: query.rewardId?.trim() || undefined,
       status: mapRedemptionStatus(query.status),
+      ...dateRange,
     };
     const page = await this.repository.findRedemptionPage(filter);
     return paginate(page.rows, page.total, query.page, query.limit);

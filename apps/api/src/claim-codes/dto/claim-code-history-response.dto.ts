@@ -16,7 +16,6 @@ class ClaimCodeActionDto {
 class ClaimCodeUserDto {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty() email!: string;
 }
 
 export class ClaimCodeHistoryResponseDto {

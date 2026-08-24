@@ -1,62 +1,126 @@
-import { createCredentialRateLimitKey } from './rate-limit-key';
+import {
+  createCredentialRateLimitKey,
+  serializeCredentialRateLimitInput,
+} from './rate-limit-key';
 
 describe('createCredentialRateLimitKey', () => {
   const secret = 'test-rate-limit-secret';
 
-  it('creates the same opaque key for equivalent CPF and email formats', () => {
+  it('creates the same opaque v2 key for equivalent participant email formats', () => {
     const masked = createCredentialRateLimitKey(
       {
-        cpf: '123.456.789-01',
-        email: ' Ada@Example.COM ',
         route: '/auth/login',
+        email: ' Ada@Example.COM ',
       },
       secret,
     );
     const normalized = createCredentialRateLimitKey(
       {
-        cpf: '12345678901',
-        email: 'ada@example.com',
         route: '/auth/login',
+        email: 'ada@example.com',
+        cpf: null,
       },
       secret,
     );
 
     expect(masked).toBe(normalized);
     expect(masked).toMatch(/^[a-f0-9]{64}$/);
-    expect(masked).not.toContain('12345678901');
     expect(masked).not.toContain('ada@example.com');
   });
 
-  it('separates routes and identities without exposing PII', () => {
-    const loginKey = createCredentialRateLimitKey(
+  it('includes the normalized CPF for administrator and registration routes', () => {
+    const maskedCpf = createCredentialRateLimitKey(
       {
-        cpf: '12345678901',
-        email: 'ada@example.com',
-        route: '/auth/login',
-      },
-      secret,
-    );
-    const adminLoginKey = createCredentialRateLimitKey(
-      {
-        cpf: '12345678901',
-        email: 'ada@example.com',
         route: '/auth/admin/login',
+        email: 'admin@example.com',
+        cpf: '529.982.247-25',
       },
       secret,
     );
-    const otherIdentityKey = createCredentialRateLimitKey(
+    const normalizedCpf = createCredentialRateLimitKey(
       {
-        cpf: '10987654321',
-        email: 'bea@example.com',
-        route: '/auth/login',
+        route: '/auth/admin/login',
+        email: 'admin@example.com',
+        cpf: '52998224725',
       },
       secret,
     );
 
-    expect(loginKey).not.toBe(adminLoginKey);
-    expect(loginKey).not.toBe(otherIdentityKey);
-    expect([loginKey, adminLoginKey, otherIdentityKey].join('')).not.toMatch(
-      /12345678901|ada@example\.com|10987654321|bea@example\.com/,
+    expect(maskedCpf).toBe(normalizedCpf);
+    expect(maskedCpf).toMatch(/^[a-f0-9]{64}$/);
+    expect(maskedCpf).not.toContain('52998224725');
+  });
+
+  it('separates routes, CPF presence and identities without exposing PII', () => {
+    const participantLogin = createCredentialRateLimitKey(
+      {
+        route: '/auth/login',
+        email: 'ada@example.com',
+      },
+      secret,
+    );
+    const registerWithCpf = createCredentialRateLimitKey(
+      {
+        route: '/auth/register',
+        email: 'ada@example.com',
+        cpf: '52998224725',
+      },
+      secret,
+    );
+    const registerWithoutCpf = createCredentialRateLimitKey(
+      {
+        route: '/auth/register',
+        email: 'ada@example.com',
+      },
+      secret,
+    );
+    const otherIdentityLogin = createCredentialRateLimitKey(
+      {
+        route: '/auth/login',
+        email: 'bea@example.com',
+      },
+      secret,
+    );
+
+    expect(
+      new Set([
+        participantLogin,
+        registerWithCpf,
+        registerWithoutCpf,
+        otherIdentityLogin,
+      ]).size,
+    ).toBe(4);
+    expect(
+      [
+        participantLogin,
+        registerWithCpf,
+        registerWithoutCpf,
+        otherIdentityLogin,
+      ].join(''),
+    ).not.toMatch(/52998224725|ada@example\.com|bea@example\.com/);
+  });
+
+  it('serializes the documented versioned input array', () => {
+    expect(
+      serializeCredentialRateLimitInput({
+        route: '/auth/login',
+        email: ' Ada@Example.COM ',
+      }),
+    ).toBe(JSON.stringify(['v2', '/auth/login', null, 'ada@example.com']));
+
+    expect(
+      serializeCredentialRateLimitInput({
+        route: '/auth/admin/login',
+        email: 'admin@example.com',
+        cpf: '529.982.247-25',
+      }),
+    ).toBe(
+      JSON.stringify([
+        'v2',
+        '/auth/admin/login',
+        '52998224725',
+        'admin@example.com',
+      ]),
     );
   });
 });

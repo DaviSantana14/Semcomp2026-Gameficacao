@@ -7,6 +7,8 @@ export class AdminParticipantResponseDto {
   xp!: number;
   level!: number;
   isActive!: boolean;
+  passwordResetRequired!: boolean;
+  passwordResetExpiresAt!: string | null;
   pointEventsCount!: number;
   rewardRedemptionsCount!: number;
   createdAt!: string;

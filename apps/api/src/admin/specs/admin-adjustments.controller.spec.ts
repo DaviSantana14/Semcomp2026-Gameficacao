@@ -1,9 +1,9 @@
-import { UserRole } from '@prisma/client';
+import { AdminProfile } from '@prisma/client';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { ADMIN_PROFILES_KEY } from '../../auth/admin-profiles.decorator';
+import { AdminProfilesGuard } from '../../auth/admin-profiles.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { ROLES_KEY } from '../../auth/roles.decorator';
-import { RolesGuard } from '../../auth/roles.guard';
 import { AdminAdjustmentsController } from '../admin-adjustments.controller';
 
 describe(AdminAdjustmentsController.name, () => {
@@ -31,13 +31,13 @@ describe(AdminAdjustmentsController.name, () => {
     });
   });
 
-  it('requires JWT, CSRF semantics and the administrator role', () => {
+  it('requires JWT, CSRF semantics and the general profile', () => {
     expect(
       Reflect.getMetadata(GUARDS_METADATA, AdminAdjustmentsController),
-    ).toEqual([JwtAuthGuard, CsrfGuard, RolesGuard]);
-    expect(Reflect.getMetadata(ROLES_KEY, AdminAdjustmentsController)).toEqual([
-      UserRole.ADMIN,
-    ]);
+    ).toEqual([JwtAuthGuard, CsrfGuard, AdminProfilesGuard]);
+    expect(
+      Reflect.getMetadata(ADMIN_PROFILES_KEY, AdminAdjustmentsController),
+    ).toEqual([AdminProfile.GENERAL]);
   });
 
   it('passes the event, DTO and trusted admin context for reversal', async () => {

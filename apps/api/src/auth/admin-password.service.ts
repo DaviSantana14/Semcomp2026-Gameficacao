@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { compare, hash } from 'bcrypt';
+import {
+  DUMMY_PASSWORD,
+  DUMMY_PASSWORD_HASH,
+  comparePassword,
+  hashPassword,
+} from './password-hash';
 import {
   AdminPasswordValidationError,
   validateAdminPassword,
 } from './password-policy';
-
-const BCRYPT_COST = 12;
-const DUMMY_PASSWORD_HASH =
-  '$2b$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
 export type AdminPasswordAuthenticationUser = {
   role: 'PARTICIPANT' | 'ADMIN';
@@ -19,17 +20,20 @@ export type AdminPasswordAuthenticationUser = {
 export class AdminPasswordService {
   async hash(password: string) {
     validateAdminPassword(password);
-    return hash(password, BCRYPT_COST);
+    return hashPassword(password);
   }
 
   async verify(password: string, user: AdminPasswordAuthenticationUser | null) {
+    let candidate = password;
+
     try {
       validateAdminPassword(password);
     } catch (error) {
       if (error instanceof AdminPasswordValidationError) {
-        return false;
+        candidate = DUMMY_PASSWORD;
+      } else {
+        throw error;
       }
-      throw error;
     }
 
     let canAuthenticate = false;
@@ -40,7 +44,7 @@ export class AdminPasswordService {
       passwordHash = user.passwordHash;
     }
 
-    const matches = await compare(password, passwordHash);
+    const matches = await comparePassword(candidate, passwordHash);
 
     return canAuthenticate && matches;
   }

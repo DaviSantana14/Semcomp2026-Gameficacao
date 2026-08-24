@@ -63,6 +63,14 @@ export function fetchAdminRewards(
 
 export function fetchAdminRedemptions(filters: AdminRedemptionsFilters) {
   return apiFetch<PaginatedResponse<AdminRedemption>>(
-    withQuery("/admin/redemptions", filters),
+    withQuery("/admin/redemptions", {
+      page: filters.page,
+      limit: filters.limit,
+      status: filters.status,
+      search: filters.search,
+      rewardId: filters.rewardId,
+      from: filters.from,
+      to: filters.to,
+    }),
   );
 }

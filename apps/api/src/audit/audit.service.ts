@@ -32,6 +32,21 @@ export interface ParticipantStatusSnapshot {
   isActive: boolean;
 }
 
+export interface AdminOperatorAuditSnapshot {
+  id: string;
+  name: string;
+  adminProfile: string;
+  isActive: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface ParticipantPasswordResetAuditSnapshot {
+  id: string;
+  passwordResetRequired: boolean;
+  passwordResetExpiresAt: Date | string | null;
+}
+
 export interface ActionAuditSnapshot {
   id: string;
   name: string;
@@ -49,6 +64,15 @@ export interface ClaimCodeBatchSnapshot {
   createdQuantity: number;
   redemptionMethod: typeof CLAIM_CODE_REDEMPTION_METHOD;
   actionId: string;
+}
+
+export interface ClaimCodeBulkAuditSnapshot {
+  targetIsActive: boolean;
+  selectedCount: number;
+  changedCount: number;
+  unchangedCount: number;
+  usedCount: number;
+  notFoundCount: number;
 }
 
 export interface ClaimCodeSnapshotSource {
@@ -137,6 +161,7 @@ export interface AuditMetadataSource {
   originalPointEventId?: string;
   reversalPointEventId?: string;
   rewardRedemptionId?: string;
+  sessionsRevoked?: number;
 }
 
 interface AuditEventBase<
@@ -204,6 +229,10 @@ type RedemptionCancellationMetadata = {
   metadata?: Pick<AuditMetadataSource, 'rewardRedemptionId' | 'pointEventId'>;
 };
 
+type OperatorMetadata = {
+  metadata?: Pick<AuditMetadataSource, 'sessionsRevoked'>;
+};
+
 export type RecordAuditEventInput =
   | ChangedEvent<
       typeof AuditOperation.PARTICIPANT_STATUS_CHANGED,
@@ -232,6 +261,11 @@ export type RecordAuditEventInput =
       ClaimCodeBatchSnapshot,
       ForbiddenParticipant,
       BatchMetadata
+    >
+  | CreatedEvent<
+      typeof AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED,
+      typeof AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+      ClaimCodeBulkAuditSnapshot
     >
   | ChangedEvent<
       typeof AuditOperation.CLAIM_CODE_STATUS_CHANGED,
@@ -318,6 +352,48 @@ export type RecordAuditEventInput =
       ReconciliationAuditSnapshot,
       RequiredParticipant,
       BalanceMetadata
+    >
+  | CreatedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_CREATED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_UPDATED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_STATUS_CHANGED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_ACTIVATION_RESET,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.ADMIN_OPERATOR_ACTIVATED,
+      typeof AuditEntityType.ADMIN_OPERATOR,
+      AdminOperatorAuditSnapshot,
+      ForbiddenParticipant,
+      OperatorMetadata
+    >
+  | ChangedEvent<
+      typeof AuditOperation.PARTICIPANT_PASSWORD_RESET,
+      typeof AuditEntityType.PARTICIPANT,
+      ParticipantPasswordResetAuditSnapshot,
+      RequiredParticipant,
+      Pick<OperatorMetadata, 'metadata'>
     >;
 
 type FieldKind =
@@ -348,6 +424,27 @@ interface OperationRule {
 const participantStatusRule: ObjectRule = {
   required: { id: 'string', isActive: 'boolean' },
 };
+const adminOperatorRule: ObjectRule = {
+  required: {
+    id: 'string',
+    name: 'string',
+    adminProfile: 'string',
+    isActive: 'boolean',
+    createdAt: 'date',
+    updatedAt: 'date',
+  },
+};
+const participantPasswordResetRule: ObjectRule = {
+  required: {
+    id: 'string',
+    passwordResetRequired: 'boolean',
+    passwordResetExpiresAt: 'nullableDate',
+  },
+};
+const sessionsRevokedMetadataRule: ObjectRule = {
+  required: {},
+  optional: { sessionsRevoked: 'number' },
+};
 const actionRule: ObjectRule = {
   required: {
     id: 'string',
@@ -369,6 +466,16 @@ const claimCodeBatchRule: ObjectRule = {
     createdQuantity: 'number',
     redemptionMethod: 'claimCodeRedemptionMethod',
     actionId: 'string',
+  },
+};
+const claimCodeBulkAuditRule: ObjectRule = {
+  required: {
+    targetIsActive: 'boolean',
+    selectedCount: 'number',
+    changedCount: 'number',
+    unchangedCount: 'number',
+    usedCount: 'number',
+    notFoundCount: 'number',
   },
 };
 const claimCodeRule: ObjectRule = {
@@ -525,6 +632,11 @@ const operationRules = {
     after: claimCodeBatchRule,
     metadata: batchMetadataRule,
   },
+  [AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED]: {
+    entityType: AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+    participant: 'forbidden',
+    after: claimCodeBulkAuditRule,
+  },
   [AuditOperation.CLAIM_CODE_STATUS_CHANGED]: {
     entityType: AuditEntityType.CLAIM_CODE,
     participant: 'optional',
@@ -588,6 +700,46 @@ const operationRules = {
     before: reconciliationBalanceRule,
     after: reconciliationBalanceRule,
     metadata: balanceMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_CREATED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_UPDATED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_STATUS_CHANGED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_ACTIVATION_RESET]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+    metadata: sessionsRevokedMetadataRule,
+  },
+  [AuditOperation.ADMIN_OPERATOR_ACTIVATED]: {
+    entityType: AuditEntityType.ADMIN_OPERATOR,
+    participant: 'forbidden',
+    before: adminOperatorRule,
+    after: adminOperatorRule,
+  },
+  [AuditOperation.PARTICIPANT_PASSWORD_RESET]: {
+    entityType: AuditEntityType.PARTICIPANT,
+    participant: 'required',
+    before: participantPasswordResetRule,
+    after: participantPasswordResetRule,
+    metadata: sessionsRevokedMetadataRule,
   },
 } satisfies Record<AuditOperation, OperationRule>;
 
@@ -699,11 +851,13 @@ export class AuditService {
       [AuditEntityType.PARTICIPANT]: 'Participante',
       [AuditEntityType.ACTION]: 'Atividade',
       [AuditEntityType.CLAIM_CODE_BATCH]: 'Lote de códigos',
+      [AuditEntityType.CLAIM_CODE_BULK_OPERATION]: 'Operação em lote',
       [AuditEntityType.CLAIM_CODE]: 'Código',
       [AuditEntityType.REWARD]: 'Recompensa',
       [AuditEntityType.REWARD_REDEMPTION]: 'Resgate',
       [AuditEntityType.POINT_EVENT]: 'Evento de pontos',
       [AuditEntityType.RECONCILIATION]: 'Reconciliação',
+      [AuditEntityType.ADMIN_OPERATOR]: 'Operador administrativo',
     }[entityType];
   }
 
@@ -801,6 +955,15 @@ export class AuditService {
           'redemptionMethod',
           'actionId',
         ]);
+      case AuditOperation.CLAIM_CODE_BULK_STATUS_CHANGED:
+        return pickScalarFields(value, [
+          'targetIsActive',
+          'selectedCount',
+          'changedCount',
+          'unchangedCount',
+          'usedCount',
+          'notFoundCount',
+        ]);
       case AuditOperation.CLAIM_CODE_STATUS_CHANGED:
         return pickScalarFields(value, [
           'id',
@@ -861,6 +1024,25 @@ export class AuditService {
           'pointEventIds',
           'originalPointEventId',
         ]);
+      case AuditOperation.ADMIN_OPERATOR_CREATED:
+      case AuditOperation.ADMIN_OPERATOR_UPDATED:
+      case AuditOperation.ADMIN_OPERATOR_STATUS_CHANGED:
+      case AuditOperation.ADMIN_OPERATOR_ACTIVATION_RESET:
+      case AuditOperation.ADMIN_OPERATOR_ACTIVATED:
+        return pickScalarFields(value, [
+          'id',
+          'name',
+          'adminProfile',
+          'isActive',
+          'createdAt',
+          'updatedAt',
+        ]);
+      case AuditOperation.PARTICIPANT_PASSWORD_RESET:
+        return pickScalarFields(value, [
+          'id',
+          'passwordResetRequired',
+          'passwordResetExpiresAt',
+        ]);
     }
   }
 
@@ -877,6 +1059,7 @@ export class AuditService {
       'originalPointEventId',
       'reversalPointEventId',
       'rewardRedemptionId',
+      'sessionsRevoked',
     ]);
     if (
       Array.isArray(value.claimCodeIds) &&

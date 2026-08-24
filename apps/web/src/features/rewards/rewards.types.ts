@@ -65,4 +65,6 @@ export type AdminRedemptionsFilters = {
   search?: string;
   rewardId?: string;
   status?: "all" | "pending" | "delivered" | "cancelled";
+  from?: string;
+  to?: string;
 };

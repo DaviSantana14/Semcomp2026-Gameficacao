@@ -16,6 +16,9 @@ const user = {
   level: 1,
   isActive: true,
   lastLoginAt: null,
+  adminProfile: null,
+  passwordResetRequired: false,
+  passwordResetExpiresAt: null,
   createdAt: new Date('2026-07-13T12:00:00.000Z'),
 };
 
@@ -67,5 +70,32 @@ describe(UsersService.name, () => {
     const input = { name: 'Ada', cpf: '123', email: 'ada@example.com' };
     await expect(service.create(input)).resolves.toEqual(user);
     expect(repository.create.mock.calls).toEqual([[input]]);
+  });
+
+  it('exposes the admin profile and maps reset state without leaking internal fields', () => {
+    const response = new UserResponseDto({
+      ...user,
+      role: UserRole.ADMIN,
+      adminProfile: 'SHOP',
+      passwordResetRequired: true,
+      passwordResetExpiresAt: new Date('2026-07-14T12:00:00.000Z'),
+    });
+
+    expect(response).toMatchObject({
+      adminProfile: 'SHOP',
+      passwordChangeRequired: true,
+    });
+    expect(response).not.toHaveProperty('passwordResetRequired');
+    expect(response).not.toHaveProperty('passwordResetExpiresAt');
+  });
+
+  it('returns a null profile and no required password change for participants', () => {
+    const response = new UserResponseDto(user);
+
+    expect(response).toMatchObject({
+      adminProfile: null,
+      passwordChangeRequired: false,
+    });
+    expect(response).not.toHaveProperty('passwordResetRequired');
   });
 });

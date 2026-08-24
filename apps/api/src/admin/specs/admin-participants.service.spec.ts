@@ -9,6 +9,7 @@ import {
 import { AdminParticipantsRepository } from '../admin-participants.repository';
 import { AdminParticipantsService } from '../admin-participants.service';
 import { AuditService } from '../../audit/audit.service';
+import { ParticipantPasswordService } from '../../auth/participant-password.service';
 
 describe(AdminParticipantsService.name, () => {
   const queryRaw = jest.fn();
@@ -20,6 +21,7 @@ describe(AdminParticipantsService.name, () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    userSession: { updateMany: jest.fn() },
     pointEvent: { count: jest.fn(), findMany: jest.fn() },
     claimCode: { count: jest.fn() },
     rewardRedemption: {
@@ -46,6 +48,7 @@ describe(AdminParticipantsService.name, () => {
     prisma.pointEvent.count.mockResolvedValue(0);
     prisma.claimCode.count.mockResolvedValue(0);
     prisma.rewardRedemption.groupBy.mockResolvedValue([]);
+    prisma.userSession.updateMany.mockResolvedValue({ count: 0 });
     const module = await Test.createTestingModule({
       providers: [
         AdminParticipantsService,
@@ -54,6 +57,10 @@ describe(AdminParticipantsService.name, () => {
           useValue: new AdminParticipantsRepository(prisma as never),
         },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        {
+          provide: ParticipantPasswordService,
+          useValue: { hash: jest.fn() },
+        },
       ],
     }).compile();
     service = module.get(AdminParticipantsService);
@@ -161,6 +168,8 @@ describe(AdminParticipantsService.name, () => {
           createdAt: true,
           updatedAt: true,
           lastLoginAt: true,
+          passwordResetRequired: true,
+          passwordResetExpiresAt: true,
           _count: {
             select: {
               pointEvents: {
@@ -233,6 +242,46 @@ describe(AdminParticipantsService.name, () => {
       data: { isActive: false },
       select: { id: true, isActive: true },
     });
+    expect(prisma.userSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'p1',
+        endedAt: null,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        expiresAt: { gt: expect.any(Date) },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      data: { endedAt: expect.any(Date), endReason: 'REVOKED' },
+    });
+  });
+
+  it('does not recreate or revoke sessions when reactivating a participant', async () => {
+    const now = new Date('2026-07-11T12:00:00.000Z');
+    prisma.user.update.mockResolvedValue({ id: 'p1', isActive: true });
+    prisma.user.findFirst
+      .mockResolvedValueOnce({ id: 'p1', isActive: false })
+      .mockResolvedValueOnce({
+        id: 'p1',
+        name: 'Ana',
+        cpf: '1',
+        email: 'ana@example.com',
+        points: 5,
+        xp: 10,
+        level: 2,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        _count: { pointEvents: 0, rewardRedemptions: 0 },
+      });
+
+    await expect(
+      service.updateStatus(
+        'p1',
+        { isActive: true, reason: 'Reativacao operacional confirmada' },
+        { actorAdminId: 'admin-1', requestId: 'request-1' },
+      ),
+    ).resolves.toMatchObject({ id: 'p1', isActive: true });
+
+    expect(prisma.userSession.updateMany).not.toHaveBeenCalled();
   });
 
   it('returns participant detail with counts and rejects admins', async () => {

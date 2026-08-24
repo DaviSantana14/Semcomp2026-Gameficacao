@@ -1,6 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ClaimCodesRepository } from '../claim-codes.repository';
+import {
+  ClaimCodeBatchCreateInput,
+  ClaimCodesRepository,
+} from '../claim-codes.repository';
 import { ClaimCodesService } from '../claim-codes.service';
 import {
   AuditService,
@@ -11,6 +14,8 @@ import {
   AuditEntityType,
   AuditOperation,
 } from '../../audit/audit.repository';
+import { BulkClaimCodeStatusDto } from '../dto/bulk-claim-code-status.dto';
+import { ClaimCodeBulkQueryDto } from '../dto/claim-code-bulk-query.dto';
 
 describe(ClaimCodesService.name, () => {
   let service: ClaimCodesService;
@@ -22,9 +27,30 @@ describe(ClaimCodesService.name, () => {
   beforeEach(async () => {
     const repositoryMock = {
       findActionForCodeBatch: jest.fn(),
+      createBatch: jest
+        .fn()
+        .mockImplementation((input: ClaimCodeBatchCreateInput) => ({
+          ...input,
+          action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+          createdByAdmin: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+          createdAt: new Date('2026-08-22T12:00:00.000Z'),
+        })),
+      findBatches: jest.fn(),
+      findBatch: jest.fn(),
+      getBatchCodes: jest.fn(),
       updateClaimCodeStatus: jest.fn(),
       findClaimCodeById: jest.fn(),
       insertClaimCodes: jest.fn(),
+      lockClaimCodes: jest.fn(),
+      updateClaimCodeStatuses: jest.fn(),
+      createBulkOperation: jest.fn(),
+      findBulkOperations: jest.fn(),
+      findBulkOperation: jest.fn(),
+      findBulkReport: jest.fn(),
       auditWriter: { create: jest.fn() },
       withTransaction: jest.fn(
         (callback: (transactional: ClaimCodesRepository) => unknown) =>
@@ -56,6 +82,295 @@ describe(ClaimCodesService.name, () => {
       ),
     ).rejects.toEqual(
       new NotFoundException('Atividade pontuável não encontrada.'),
+    );
+  });
+
+  it('classifies a mixed bulk status request, persists one report and writes one safe audit', async () => {
+    const bulkRepository = repository as unknown as {
+      lockClaimCodes: jest.Mock;
+      updateClaimCodeStatuses: jest.Mock;
+      createBulkOperation: jest.Mock;
+    };
+    bulkRepository.lockClaimCodes.mockResolvedValue([
+      {
+        id: 'code-1',
+        code: 'ABCD-EFGH',
+        isActive: true,
+        isUsed: false,
+      },
+      {
+        id: 'code-2',
+        code: 'IJKL-MNOP',
+        isActive: false,
+        isUsed: false,
+      },
+      {
+        id: 'code-3',
+        code: 'QRST-UVWX',
+        isActive: true,
+        isUsed: true,
+      },
+    ]);
+    bulkRepository.updateClaimCodeStatuses.mockResolvedValue({ count: 1 });
+    bulkRepository.createBulkOperation.mockResolvedValue({
+      id: 'bulk-1',
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      reason: 'Desativacao preventiva dos codigos selecionados',
+      requestId: 'request-1',
+      selectedCount: 4,
+      changedCount: 1,
+      unchangedCount: 1,
+      usedCount: 1,
+      notFoundCount: 1,
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      actorAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      items: [
+        {
+          requestedClaimCodeId: 'code-1',
+          claimCodeId: 'code-1',
+          maskedCode: 'AB*****GH',
+          outcome: 'CHANGED',
+        },
+        {
+          requestedClaimCodeId: 'code-2',
+          claimCodeId: 'code-2',
+          maskedCode: 'IJ*****OP',
+          outcome: 'ALREADY_IN_STATE',
+        },
+        {
+          requestedClaimCodeId: 'code-3',
+          claimCodeId: 'code-3',
+          maskedCode: 'QR*****WX',
+          outcome: 'ALREADY_USED',
+        },
+        {
+          requestedClaimCodeId: 'code-4',
+          claimCodeId: null,
+          maskedCode: null,
+          outcome: 'NOT_FOUND',
+        },
+      ],
+    });
+
+    const dto: BulkClaimCodeStatusDto = {
+      ids: ['code-3', 'code-1', 'code-4', 'code-2'],
+      isActive: false,
+      reason: 'Desativacao preventiva dos codigos selecionados',
+      confirmation: 'DESATIVAR',
+    };
+
+    const result = await service.bulkUpdateStatus(dto, context);
+
+    expect(result.counts).toEqual({
+      selected: 4,
+      changed: 1,
+      unchanged: 1,
+      used: 1,
+      notFound: 1,
+    });
+    expect(
+      result.items.map(({ requestedClaimCodeId }) => requestedClaimCodeId),
+    ).toEqual(['code-1', 'code-2', 'code-3', 'code-4']);
+    expect(bulkRepository.updateClaimCodeStatuses).toHaveBeenCalledWith(
+      ['code-1'],
+      false,
+    );
+    expect(bulkRepository.createBulkOperation).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.stringify(bulkRepository.createBulkOperation.mock.calls),
+    ).not.toContain('ABCD-EFGH');
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain('ABCD-EFGH');
+  });
+
+  it('maps bulk history and detail dates while keeping report rows masked', async () => {
+    const bulkRepository = repository as unknown as {
+      findBulkOperations: jest.Mock;
+      findBulkOperation: jest.Mock;
+      findBulkReport: jest.Mock;
+    };
+    const row = {
+      id: 'bulk-1',
+      actorAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      targetIsActive: false,
+      reason: 'Desativacao preventiva dos codigos',
+      requestId: 'request-1',
+      selectedCount: 1,
+      changedCount: 1,
+      unchangedCount: 0,
+      usedCount: 0,
+      notFoundCount: 0,
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      items: [
+        {
+          requestedClaimCodeId: 'code-1',
+          claimCodeId: 'code-1',
+          maskedCode: 'AB*****GH',
+          outcome: 'CHANGED',
+        },
+      ],
+    };
+    bulkRepository.findBulkOperations.mockResolvedValue({
+      rows: [row],
+      total: 1,
+    });
+    bulkRepository.findBulkOperation.mockResolvedValue(row);
+    bulkRepository.findBulkReport.mockResolvedValue({
+      id: 'bulk-1',
+      items: row.items,
+    });
+
+    const query: ClaimCodeBulkQueryDto = {
+      page: 1,
+      limit: 20,
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      from: '2026-08-01T00:00:00.000Z',
+      to: '2026-08-31T23:59:59.999Z',
+    };
+    await expect(service.findBulkOperations(query)).resolves.toMatchObject({
+      meta: { total: 1 },
+      items: [
+        {
+          id: 'bulk-1',
+          createdAt: '2026-08-22T12:00:00.000Z',
+          counts: { selected: 1, changed: 1 },
+        },
+      ],
+    });
+    expect(bulkRepository.findBulkOperations).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      actorAdminId: 'admin-1',
+      targetIsActive: false,
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-31T23:59:59.999Z'),
+    });
+    await expect(service.findBulkOperation('bulk-1')).resolves.toMatchObject({
+      id: 'bulk-1',
+      createdAt: '2026-08-22T12:00:00.000Z',
+    });
+    await expect(service.getBulkReport('bulk-1')).resolves.toEqual(row.items);
+
+    bulkRepository.findBulkOperation.mockResolvedValue(null);
+    bulkRepository.findBulkReport.mockResolvedValue(null);
+    await expect(service.findBulkOperation('missing')).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(service.getBulkReport('missing')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('maps filtered batch pages and converts operational records to public summaries', async () => {
+    repository.findBatches.mockResolvedValue({
+      rows: [
+        {
+          id: 'batch-1',
+          actionId: 'action-1',
+          createdByAdminId: 'admin-1',
+          requestedQuantity: 2,
+          createdQuantity: 2,
+          reason: 'Geracao administrativa do lote',
+          requestId: 'request-1',
+          createdAt: new Date('2026-08-22T12:00:00.000Z'),
+          action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+          createdByAdmin: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+          counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await service.findBatches({
+      page: 2,
+      limit: 10,
+      actionId: 'action-1',
+      actorAdminId: 'admin-1',
+      from: '2026-08-01T00:00:00.000Z',
+      to: '2026-08-31T23:59:59.999Z',
+    });
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(repository.findBatches).toHaveBeenCalledWith({
+      page: 2,
+      limit: 10,
+      actionId: 'action-1',
+      actorAdminId: 'admin-1',
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-31T23:59:59.999Z'),
+    });
+    expect(result).toEqual({
+      items: [
+        expect.objectContaining({
+          id: 'batch-1',
+          createdAt: '2026-08-22T12:00:00.000Z',
+          action: { id: 'action-1', name: 'Credenciamento' },
+          createdBy: {
+            id: 'admin-1',
+            name: 'Admin',
+            email: 'admin@example.test',
+          },
+        }),
+      ],
+      meta: { page: 2, limit: 10, total: 1, totalPages: 1 },
+    });
+  });
+
+  it('returns batch details and rejects missing batches and legacy ids', async () => {
+    repository.findBatch.mockResolvedValueOnce({
+      id: 'batch-1',
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+      createdAt: new Date('2026-08-22T12:00:00.000Z'),
+      action: { id: 'action-1', name: 'Credenciamento', isActive: true },
+      createdByAdmin: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+    });
+
+    await expect(service.findBatch('batch-1')).resolves.toMatchObject({
+      id: 'batch-1',
+      createdAt: '2026-08-22T12:00:00.000Z',
+      action: { id: 'action-1', name: 'Credenciamento' },
+    });
+
+    repository.findBatch.mockResolvedValue(null);
+    await expect(service.findBatch('legacy-code-id')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('returns persisted codes for redownload and rejects an unknown batch', async () => {
+    repository.getBatchCodes.mockResolvedValue(['BBBB-BBBB', 'AAAA-AAAA']);
+    await expect(service.getBatchCodes('batch-1')).resolves.toEqual([
+      'BBBB-BBBB',
+      'AAAA-AAAA',
+    ]);
+
+    repository.getBatchCodes.mockResolvedValue(null);
+    await expect(service.getBatchCodes('missing')).rejects.toThrow(
+      NotFoundException,
     );
   });
 
@@ -125,6 +440,7 @@ describe(ClaimCodesService.name, () => {
     repository.findActionForCodeBatch.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
       type: 'CHECKIN',
     } as never);
     repository.insertClaimCodes.mockResolvedValue([
@@ -139,7 +455,47 @@ describe(ClaimCodesService.name, () => {
     );
 
     expect(result.codes).toEqual(['ABCD-EFGH', 'IJKL-MNOP']);
+    expect(result.batch).toMatchObject({
+      action: { id: 'action-1', name: 'Credenciamento' },
+      createdBy: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'admin@example.test',
+      },
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+      counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+    });
+    const batchInput = repository.createBatch.mock.calls[0]?.[0] as
+      | ClaimCodeBatchCreateInput
+      | undefined;
+    expect(batchInput).toBeDefined();
+    if (!batchInput) throw new Error('Expected a persisted batch input.');
+    expect(batchInput).toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      id: expect.any(String),
+      actionId: 'action-1',
+      createdByAdminId: 'admin-1',
+      requestedQuantity: 2,
+      createdQuantity: 2,
+      reason: 'Geracao administrativa do lote',
+      requestId: 'request-1',
+    });
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(repository.insertClaimCodes).toHaveBeenCalledWith(
+      'action-1',
+      batchInput.id,
+      expect.any(Array),
+    );
     expect(audit.record).toHaveBeenCalledTimes(1);
+    const auditInput = (
+      audit.record.mock.calls as unknown as Array<
+        [unknown, { entityId: string }]
+      >
+    )[0]?.[1];
+    expect(auditInput?.entityId).toBe(result.batch.id);
     expect(audit.record).toHaveBeenCalledWith(
       repository.auditWriter,
       expect.objectContaining({
@@ -167,10 +523,12 @@ describe(ClaimCodesService.name, () => {
     repository.findActionForCodeBatch.mockResolvedValue({
       id: 'action-1',
       name: 'Credenciamento',
+      isActive: true,
       type: 'CHECKIN',
     } as never);
     repository.insertClaimCodes.mockResolvedValue(
       Array.from({ length: quantity }, (_, index) => ({
+        id: `code-${index}`,
         code: `CODE-${String(index).padStart(4, '0')}`,
       })),
     );
@@ -267,7 +625,7 @@ describe(ClaimCodesService.name, () => {
     const bothInitialReads = new Promise<void>((resolve) => {
       releaseInitialReads = resolve;
     });
-    repository.findClaimCodeById.mockImplementation(async () => {
+    repository.findClaimCodeById.mockImplementation((async () => {
       initialReads += 1;
       const snapshot = {
         id: 'code-id-1',
@@ -284,13 +642,15 @@ describe(ClaimCodesService.name, () => {
         await bothInitialReads;
       }
       return snapshot;
-    });
-    repository.updateClaimCodeStatus.mockImplementation((...args) => {
+    }) as never);
+    repository.updateClaimCodeStatus.mockImplementation(((
+      ...args: [string, boolean, boolean]
+    ) => {
       const [, nextIsActive, previousIsActive] = args;
       if (isActive !== previousIsActive) return { count: 0 };
       isActive = nextIsActive;
       return { count: 1 };
-    });
+    }) as never);
 
     const results = await Promise.all([
       service.updateStatus(

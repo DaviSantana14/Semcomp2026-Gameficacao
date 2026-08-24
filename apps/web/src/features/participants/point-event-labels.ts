@@ -23,6 +23,18 @@ const POINT_EVENT_ORIGIN_LABELS: Record<
   RECONCILIATION_COMPENSATION: "Compensação de reconciliação",
 };
 
+const POINT_EVENT_KIND_LABELS = {
+  CREDIT: "Crédito",
+  DEBIT: "Débito",
+} as const;
+
+const POINT_EVENT_METHOD_LABELS = {
+  DIRECT: "Registro direto",
+  REUSABLE_CODE: "Código reutilizável",
+  CLAIM_CODE: "Código de uso único",
+  LEGACY_UNKNOWN: "Método histórico desconhecido",
+} as const;
+
 export function getPointEventSourceLabel(
   source: AdminParticipantPointEvent["source"],
 ): string {
@@ -33,6 +45,16 @@ export function getPointEventOriginLabel(
   origin: AdminParticipantPointEvent["origin"],
 ): string {
   return POINT_EVENT_ORIGIN_LABELS[origin];
+}
+
+export function getPointEventKindLabel(kind: "CREDIT" | "DEBIT") {
+  return POINT_EVENT_KIND_LABELS[kind];
+}
+
+export function getPointEventMethodLabel(
+  method: "DIRECT" | "REUSABLE_CODE" | "CLAIM_CODE" | "LEGACY_UNKNOWN" | null,
+) {
+  return method ? POINT_EVENT_METHOD_LABELS[method] : "Não se aplica";
 }
 
 export function formatPointEventDetail(

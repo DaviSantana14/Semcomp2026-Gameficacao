@@ -360,6 +360,27 @@ describe('ActionsRepository', () => {
   });
 
   describe('admin queries', () => {
+    it('loads a reusable-code QR artifact without claim-code persistence', async () => {
+      const { prisma } = createRepository();
+      const repository = new ActionsRepository(prisma as never);
+      prisma.action.findUnique.mockResolvedValue({
+        id: 'action-1',
+        name: 'Check-in',
+        code: 'DIA1',
+      });
+
+      await expect(repository.findReusableCodeQr('action-1')).resolves.toEqual({
+        id: 'action-1',
+        name: 'Check-in',
+        code: 'DIA1',
+      });
+      expect(prisma.action.findUnique).toHaveBeenCalledWith({
+        where: { id: 'action-1' },
+        select: { id: true, name: true, code: true },
+      });
+      expect(prisma.claimCode.findUnique).not.toHaveBeenCalled();
+    });
+
     it('paginates and filters actions while loading counters without N+1', async () => {
       const { repository, prisma } = createRepository();
       prisma.action.count.mockResolvedValue(1);
@@ -528,9 +549,19 @@ describe('ActionsRepository', () => {
         where: reusableWhere,
       });
       expect(prisma.pointEvent.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: reusableWhere }),
+        expect.objectContaining({
+          where: reusableWhere,
+          // Jest's nested asymmetric matcher is intentionally dynamic.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          select: expect.objectContaining({
+            user: { select: { id: true, name: true } },
+          }),
+        }),
       );
-      expect(result.items[0]?.participant.id).toBe('user-1');
+      expect(result.items[0]?.participant).toEqual({
+        id: 'user-1',
+        name: 'Ana',
+      });
     });
   });
 

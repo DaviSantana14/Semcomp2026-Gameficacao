@@ -19,7 +19,7 @@ const rewardSelect = {
 } as const;
 
 const redemptionInclude = {
-  user: { select: { id: true, name: true, email: true, points: true } },
+  user: { select: { id: true, name: true, points: true } },
   reward: { select: rewardSelect },
   pointEvents: {
     select: {
@@ -86,15 +86,54 @@ export interface RewardPageFilter {
   state?: 'active' | 'inactive' | 'out-of-stock';
 }
 
-export interface RedemptionPageFilter {
-  page: number;
-  limit: number;
+export interface RedemptionFilter {
   search?: string;
   rewardId?: string;
   status?: RedemptionState;
+  from?: Date;
+  to?: Date;
+}
+
+export interface RedemptionPageFilter extends RedemptionFilter {
+  page: number;
+  limit: number;
 }
 
 export type RedemptionState = 'PENDING' | 'DELIVERED' | 'CANCELLED';
+
+export function buildRedemptionWhere(
+  filter: RedemptionFilter,
+): Prisma.RewardRedemptionWhereInput {
+  const where: Prisma.RewardRedemptionWhereInput = {
+    ...(filter.status && { status: filter.status }),
+    ...(filter.rewardId && { rewardId: filter.rewardId }),
+    ...(filter.search?.trim() && {
+      user: {
+        OR: [
+          {
+            name: {
+              contains: filter.search.trim(),
+              mode: 'insensitive',
+            },
+          },
+          {
+            email: {
+              contains: filter.search.trim(),
+              mode: 'insensitive',
+            },
+          },
+        ],
+      },
+    }),
+    ...((filter.from || filter.to) && {
+      createdAt: {
+        ...(filter.from && { gte: filter.from }),
+        ...(filter.to && { lt: filter.to }),
+      },
+    }),
+  };
+  return where;
+}
 
 @Injectable()
 export class RewardsRepository {
@@ -182,18 +221,7 @@ export class RewardsRepository {
   }
 
   async findRedemptionPage(filter: RedemptionPageFilter) {
-    const where: Prisma.RewardRedemptionWhereInput = {
-      ...(filter.status && { status: filter.status }),
-      ...(filter.rewardId && { rewardId: filter.rewardId }),
-      ...(filter.search && {
-        user: {
-          OR: [
-            { name: { contains: filter.search, mode: 'insensitive' } },
-            { email: { contains: filter.search, mode: 'insensitive' } },
-          ],
-        },
-      }),
-    };
+    const where = buildRedemptionWhere(filter);
     const [total, rows] = await Promise.all([
       this.client.rewardRedemption.count({ where }),
       this.client.rewardRedemption.findMany({
@@ -213,7 +241,7 @@ export class RewardsRepository {
           deliveredByAdminId: true,
           cancelledAt: true,
           cancelledByAdminId: true,
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true } },
           reward: { select: rewardSelect },
           pointEvents: redemptionInclude.pointEvents,
         },

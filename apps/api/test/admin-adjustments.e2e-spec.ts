@@ -42,6 +42,7 @@ describe('Admin adjustments (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `adjustment-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -63,11 +64,11 @@ describe('Admin adjustments (e2e)', () => {
     const participantCredentials = users.find(
       ({ id }) => id === participant.id,
     )!;
-    adminSession = await harness.login(
+    adminSession = await harness.loginLegacy(
       adminCredentials.cpf,
       adminCredentials.email,
     );
-    participantSession = await harness.login(
+    participantSession = await harness.loginLegacy(
       participantCredentials.cpf,
       participantCredentials.email,
     );

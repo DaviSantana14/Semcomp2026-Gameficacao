@@ -20,6 +20,7 @@ import { ParticipantPointEvents } from "./participant-point-events";
 import { ParticipantRewardHistory } from "./participant-reward-history";
 import { ParticipantReconciliationPanel } from "./participant-reconciliation-panel";
 import { ParticipantAuditTimeline } from "./participant-audit-timeline";
+import { ParticipantPasswordResetCard } from "./participant-password-reset-card";
 import { AdminPageHeader, AdminPanel } from "../../_components/admin-page";
 
 const number = new Intl.NumberFormat("pt-BR");
@@ -135,6 +136,7 @@ export function ParticipantDetailClient({ id }: { id: string }) {
           />
         </AdminPanel>
       </section>
+      <ParticipantPasswordResetCard participant={participant} />
       <ParticipantReconciliationPanel
         balance={{ points: participant.points, xp: participant.xp }}
         participantId={id}

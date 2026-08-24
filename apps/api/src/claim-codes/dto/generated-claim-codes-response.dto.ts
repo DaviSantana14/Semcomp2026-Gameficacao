@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ClaimCodeBatchResponseDto } from './claim-code-batch-response.dto';
 
 class GeneratedClaimCodesActionDto {
   @ApiProperty({ example: 'cm123action' })
@@ -9,6 +10,9 @@ class GeneratedClaimCodesActionDto {
 }
 
 export class GeneratedClaimCodesResponseDto {
+  @ApiProperty({ type: ClaimCodeBatchResponseDto })
+  batch: ClaimCodeBatchResponseDto;
+
   @ApiProperty({ type: GeneratedClaimCodesActionDto })
   action: GeneratedClaimCodesActionDto;
 

@@ -109,6 +109,11 @@ describe(AuditRepository.name, () => {
     [AuditEntityType.PARTICIPANT, 'participant-1', 'Grace Hopper'],
     [AuditEntityType.ACTION, 'action-1', 'Palestra de abertura'],
     [AuditEntityType.CLAIM_CODE_BATCH, 'batch-1', 'Lote de códigos batch-1'],
+    [
+      AuditEntityType.CLAIM_CODE_BULK_OPERATION,
+      'bulk-1',
+      'Operação em lote bulk-1',
+    ],
     [AuditEntityType.CLAIM_CODE, 'claim-1', 'Código AB****YZ'],
     [AuditEntityType.REWARD, 'reward-1', 'Camiseta'],
     [AuditEntityType.REWARD_REDEMPTION, 'redemption-1', 'Resgate de Camiseta'],

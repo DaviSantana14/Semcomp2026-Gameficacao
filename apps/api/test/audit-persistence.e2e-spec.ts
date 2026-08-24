@@ -118,6 +118,7 @@ describe('Audit persistence guarantees (e2e)', () => {
         cpf: suffix.replace(/-/g, '').slice(0, 11),
         email: `${suffix}@example.test`,
         role,
+        adminProfile: role === UserRole.ADMIN ? 'GENERAL' : null,
       },
     });
   }

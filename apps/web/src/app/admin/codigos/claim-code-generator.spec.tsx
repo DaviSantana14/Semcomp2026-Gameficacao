@@ -6,6 +6,7 @@ import {
   generateClaimCodes,
 } from "@/features/actions/actions.service";
 import { ApiError } from "@/lib/http/api-error";
+import { downloadFile } from "@/lib/http/download";
 import { renderWithQueryClient } from "@/test/render";
 import { ClaimCodeGenerator } from "./claim-code-generator";
 
@@ -13,10 +14,12 @@ vi.mock("@/features/actions/actions.service", () => ({
   fetchAdminActions: vi.fn(),
   generateClaimCodes: vi.fn(),
 }));
+vi.mock("@/lib/http/download", () => ({ downloadFile: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const fetchActionsMock = vi.mocked(fetchAdminActions);
 const generateMock = vi.mocked(generateClaimCodes);
+const downloadMock = vi.mocked(downloadFile);
 const actions = [
   {
     id: "action-1",
@@ -49,6 +52,7 @@ const actions = [
 describe("ClaimCodeGenerator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    downloadMock.mockResolvedValue(undefined);
     fetchActionsMock.mockResolvedValue({
       items: actions,
       meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
@@ -105,6 +109,53 @@ describe("ClaimCodeGenerator", () => {
     expect(screen.getByLabelText("Motivo")).toHaveValue("Lote para check-in");
     expect(screen.getByLabelText("Motivo")).toHaveAccessibleDescription(
       "Informe de 10 a 500 caracteres.",
+    );
+  });
+
+  it("mostra o lote persistido e baixa seus artefatos pelo id do lote", async () => {
+    generateMock.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        action: { id: "action-1", name: "Check-in" },
+        createdBy: {
+          id: "admin-1",
+          name: "Admin",
+          email: "admin@example.com",
+        },
+        requestedQuantity: 2,
+        createdQuantity: 2,
+        reason: "Lote para check-in",
+        requestId: "request-1",
+        createdAt: "2026-08-22T12:00:00.000Z",
+        counts: { available: 2, disabled: 0, used: 0, blocked: 0 },
+      },
+      action: { id: "action-1", name: "Check-in" },
+      quantity: 2,
+      codes: ["ABCD-1234", "EFGH-5678"],
+    });
+    const user = userEvent.setup();
+    renderWithQueryClient(<ClaimCodeGenerator />);
+
+    await user.selectOptions(await screen.findByLabelText("Atividade"), "action-1");
+    await user.type(screen.getByLabelText("Motivo"), "Lote para check-in");
+    await user.click(screen.getByRole("button", { name: "Gerar lote" }));
+
+    expect(await screen.findByText("batch-1")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Baixar TXT" }));
+    await user.click(screen.getByRole("button", { name: "Baixar PDF" }));
+    await user.click(screen.getByRole("button", { name: "Baixar PNGs" }));
+
+    expect(downloadMock).toHaveBeenNthCalledWith(
+      1,
+      "/admin/claim-code-batches/batch-1/download.txt",
+    );
+    expect(downloadMock).toHaveBeenNthCalledWith(
+      2,
+      "/admin/claim-code-batches/batch-1/qr.pdf",
+    );
+    expect(downloadMock).toHaveBeenNthCalledWith(
+      3,
+      "/admin/claim-code-batches/batch-1/qr-images.zip",
     );
   });
 });

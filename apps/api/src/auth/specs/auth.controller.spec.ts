@@ -1,5 +1,6 @@
 import type { CookieOptions, Response } from 'express';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { ALLOW_PASSWORD_CHANGE_REQUIRED_KEY } from '../allow-password-change-required.decorator';
 import { AllowedOriginGuard } from '../allowed-origin.guard';
 import { AuthController } from '../auth.controller';
 import { CsrfGuard } from '../csrf.guard';
@@ -8,7 +9,7 @@ import { JwtAuthGuard } from '../jwt-auth.guard';
 const user = {
   id: 'user-1',
   name: 'Ada Lovelace',
-  cpf: '12345678900',
+  cpf: '52998224725',
   email: 'ada@example.com',
   role: 'PARTICIPANT',
   points: 0,
@@ -18,6 +19,18 @@ const user = {
   lastLoginAt: null,
   createdAt: new Date('2026-05-17T12:00:00.000Z'),
 };
+
+const sessionUser = {
+  id: 'user-1',
+  jti: 'session-1',
+  csrfToken: 'csrf-token',
+  role: 'PARTICIPANT' as const,
+  passwordResetRequired: true,
+};
+
+function createController(authService: Record<string, jest.Mock>) {
+  return new AuthController(authService as never);
+}
 
 describe('AuthController', () => {
   it('requires the configured origin for participant login', () => {
@@ -42,33 +55,72 @@ describe('AuthController', () => {
     ]);
   });
 
-  it('requires authentication, CSRF and the configured origin for logout', () => {
-    const logoutHandler = Object.getOwnPropertyDescriptor(
+  it.each(['heartbeat', 'logout'])(
+    'requires authentication, CSRF and the configured origin for %s',
+    (handlerName) => {
+      const handler = Object.getOwnPropertyDescriptor(
+        AuthController.prototype,
+        handlerName,
+      )?.value as object;
+
+      expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toEqual([
+        JwtAuthGuard,
+        CsrfGuard,
+        AllowedOriginGuard,
+      ]);
+    },
+  );
+
+  it('allows the required-password endpoint through the auth, CSRF, and origin guards', () => {
+    const handler = Object.getOwnPropertyDescriptor(
       AuthController.prototype,
-      'logout',
+      'changeRequiredPassword',
     )?.value as object;
 
-    expect(Reflect.getMetadata(GUARDS_METADATA, logoutHandler)).toEqual([
+    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toEqual([
       JwtAuthGuard,
       CsrfGuard,
       AllowedOriginGuard,
     ]);
+    expect(
+      Reflect.getMetadata(ALLOW_PASSWORD_CHANGE_REQUIRED_KEY, handler),
+    ).toBe(true);
   });
 
-  it('delegates register to AuthService', async () => {
+  it('registers in one request that already sets the access token cookie', async () => {
     const authService = {
-      register: jest.fn().mockResolvedValue(user),
+      register: jest.fn().mockResolvedValue({
+        accessToken: 'jwt-token',
+        csrfToken: 'csrf-token',
+        user,
+      }),
       login: jest.fn(),
     };
-    const controller = new AuthController(authService as never);
+    const controller = createController(authService);
+    const cookieMock = jest.fn();
+    const response = { cookie: cookieMock } as unknown as Response;
     const registerDto = {
       name: 'Ada Lovelace',
-      cpf: '12345678900',
+      cpf: '52998224725',
       email: 'ada@example.com',
+      password: 'senha livre',
     };
 
-    await expect(controller.register(registerDto)).resolves.toBe(user);
+    const result = await controller.register(registerDto, response);
+
     expect(authService.register).toHaveBeenCalledWith(registerDto);
+    expect(cookieMock).toHaveBeenCalledWith(
+      'access_token',
+      'jwt-token',
+      expect.objectContaining({
+        httpOnly: true,
+        path: '/',
+        maxAge: 8 * 60 * 60 * 1000,
+      }),
+    );
+    expect(result).toEqual({ csrfToken: 'csrf-token', user });
+    expect(result).not.toHaveProperty('accessToken');
+    expect(authService.login).not.toHaveBeenCalled();
   });
 
   it('sets the access token cookie and does not return accessToken in the login body', async () => {
@@ -80,15 +132,10 @@ describe('AuthController', () => {
         user,
       }),
     };
-    const controller = new AuthController(authService as never);
+    const controller = createController(authService);
     const cookieMock = jest.fn();
-    const response = {
-      cookie: cookieMock,
-    } as unknown as Response;
-    const loginDto = {
-      cpf: '12345678900',
-      email: 'ada@example.com',
-    };
+    const response = { cookie: cookieMock } as unknown as Response;
+    const loginDto = { email: 'ada@example.com', password: 'senha livre' };
 
     const result = await controller.login(loginDto, response);
 
@@ -118,18 +165,13 @@ describe('AuthController', () => {
         user: { ...user, role: 'ADMIN' },
       }),
     };
-    const controller = new AuthController(
-      authService as never,
-    ) as AuthController & {
-      adminLogin: (
-        loginDto: { cpf: string; email: string; password: string },
-        response: Response,
-      ) => Promise<unknown>;
-    };
+    const controller = createController(
+      authService as Record<string, jest.Mock>,
+    );
     const cookieMock = jest.fn();
     const response = { cookie: cookieMock } as unknown as Response;
     const loginDto = {
-      cpf: '12345678900',
+      cpf: '52998224725',
       email: 'admin@example.com',
       password: 'correct-password',
     };
@@ -146,19 +188,81 @@ describe('AuthController', () => {
     );
   });
 
-  it('clears the access token cookie on logout', () => {
+  it('returns the CSRF token of the authenticated session', () => {
+    const authService = { heartbeat: jest.fn(), logout: jest.fn() };
+    const controller = createController(authService);
+    const request = {
+      user: { ...sessionUser },
+    } as never;
+
+    expect(controller.csrf(request)).toEqual({
+      csrfToken: 'csrf-token',
+      passwordChangeRequired: true,
+    });
+  });
+
+  it('completes the required password change before clearing the session cookie', async () => {
     const authService = {
-      register: jest.fn(),
-      login: jest.fn(),
+      changeRequiredPassword: jest.fn().mockResolvedValue({
+        status: 'changed',
+        sessionsRevoked: 1,
+      }),
     };
-    const controller = new AuthController(authService as never);
+    const controller = createController(authService);
+    const clearCookieMock = jest.fn();
+    const response = {
+      clearCookie: clearCookieMock,
+    } as unknown as Response;
+    const dto = { newPassword: 'definitive-password' };
+
+    await expect(
+      controller.changeRequiredPassword(
+        dto,
+        { user: { ...sessionUser } } as never,
+        response,
+      ),
+    ).resolves.toBeUndefined();
+    expect(authService.changeRequiredPassword).toHaveBeenCalledWith(
+      'user-1',
+      'session-1',
+      dto,
+    );
+    expect(clearCookieMock).toHaveBeenCalledWith(
+      'access_token',
+      expect.objectContaining({ httpOnly: true, path: '/' }),
+    );
+    expect(
+      authService.changeRequiredPassword.mock.invocationCallOrder[0],
+    ).toBeLessThan(clearCookieMock.mock.invocationCallOrder[0]);
+  });
+
+  it('heartbeats the current persisted session identified by its jti', async () => {
+    const authService = {
+      heartbeat: jest.fn().mockResolvedValue(true),
+      logout: jest.fn(),
+    };
+    const controller = createController(authService);
+    const request = { user: { ...sessionUser } } as never;
+
+    await expect(controller.heartbeat(request)).resolves.toBe(true);
+    expect(authService.heartbeat).toHaveBeenCalledWith('session-1', 'user-1');
+  });
+
+  it('ends the current persisted session before clearing its cookie on logout', async () => {
+    const authService = {
+      logout: jest.fn().mockResolvedValue(true),
+      heartbeat: jest.fn(),
+    };
+    const controller = createController(authService);
     const clearCookieMock = jest.fn<void, [string, CookieOptions]>();
     const response = {
       clearCookie: clearCookieMock,
     } as unknown as Response;
+    const request = { user: { ...sessionUser } } as never;
 
-    const result = controller.logout(response);
+    const result = await controller.logout(request, response);
 
+    expect(authService.logout).toHaveBeenCalledWith('session-1', 'user-1');
     expect(clearCookieMock).toHaveBeenCalledWith(
       'access_token',
       expect.objectContaining({
@@ -169,5 +273,8 @@ describe('AuthController', () => {
     const clearCookieOptions = clearCookieMock.mock.calls[0]?.[1];
     expect(clearCookieOptions).not.toHaveProperty('maxAge');
     expect(result).toBeUndefined();
+    expect(authService.logout.mock.invocationCallOrder[0]).toBeLessThan(
+      clearCookieMock.mock.invocationCallOrder[0],
+    );
   });
 });

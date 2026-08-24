@@ -51,6 +51,7 @@ describe('Admin dashboard (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `dashboard-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -157,7 +158,7 @@ describe('Admin dashboard (e2e)', () => {
       },
     });
 
-    adminSession = await harness.login(users[0].cpf, users[0].email);
+    adminSession = await harness.loginLegacy(users[0].cpf, users[0].email);
   });
 
   afterAll(async () => {
