@@ -322,7 +322,7 @@ try {
     }
 
     $remoteCommand = @'
-set -euo pipefail
+set -eu
 
 release_sha='__RELEASE_SHA__'
 release_bucket='__BUCKET_NAME__'
@@ -339,7 +339,7 @@ cleanup() {
 trap cleanup EXIT
 
 install -d -m 0750 /opt/semcomp /opt/semcomp/releases /opt/semcomp/shared
-if [[ -e "$release_dir" || -L "$release_dir" ]]; then
+if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
   printf 'release directory already exists\n' >&2
   exit 64
 fi

@@ -136,7 +136,16 @@ case "$args" in
   *'ecr get-login-password'*) printf '%s\n' fake-ecr-password ;;
   *'ecr describe-images'*semcomp-production/api*) printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ;;
   *'ecr describe-images'*) printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ;;
-  *'ssm send-command'*) printf '%s\n' mutation >> "$aws_mutations"; printf '%s\n' 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' ;;
+  *'ssm send-command'*)
+    printf '%s\n' mutation >> "$aws_mutations"
+    for arg in "$@"; do
+      if [[ "$arg" == file://* ]]; then
+        command_path="$(printf '%s' "$arg" | sed 's#^file://##')"
+        cp -- "$(to_posix_path "$command_path")" "$aws_capture_dir/ssm-command.json"
+      fi
+    done
+    printf '%s\n' 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    ;;
   *'ssm get-command-invocation'*) printf 'Success\t0\n' ;;
   *'s3api head-object'*)
     if [[ -v AWS_HEAD_OBJECT_FAIL ]]; then exit 1; fi
@@ -337,6 +346,10 @@ FAKE_CONFIGURED_REGION=sa-east-1 FAKE_ACCOUNT=000000000000 \
   -StackName semcomp-production -RepositoryPath "$publish_repo" >/dev/null
 [[ "$(wc -l < "$CURL_CALLS" | tr -d ' ')" -ge 2 ]] \
   || fail 'publisher did not retry a transient web health failure'
+ssm_command_source="$(<"$AWS_CAPTURE_DIR/ssm-command.json")"
+assert_contains 'set -eu\n' "$ssm_command_source" 'SSM wrapper did not enable POSIX fail-fast mode'
+assert_not_contains 'pipefail' "$ssm_command_source" 'SSM wrapper requires Bash before Bash is invoked'
+assert_not_contains '[[' "$ssm_command_source" 'SSM wrapper contains a Bash-only conditional'
 release_sha="$(git -C "$publish_repo" rev-parse HEAD)"
 docker_source="$(<"$DOCKER_CALLS")"
 docker_source="${docker_source//\\//}"
