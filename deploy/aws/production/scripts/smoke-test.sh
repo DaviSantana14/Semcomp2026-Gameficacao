@@ -231,7 +231,7 @@ if ! docker compose \
 fi
 
 for sensitive_pattern in \
-  '([0-9]{3}[.-]?){3}[0-9]{2}' \
+  '(^|[^0-9])([0-9]{11}|[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2})([^0-9]|$)' \
   '[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}' \
   'Bearer[[:space:]]+[A-Za-z0-9._~+/-]+' \
   '(^|[^[:alnum:]_])(cookie|set-cookie|access_token)[[:space:]]*[:=][[:space:]]*[^[:space:]}]' \

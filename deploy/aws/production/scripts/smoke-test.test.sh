@@ -81,6 +81,8 @@ case "$*" in
   *' logs '*|*' logs')
     if [[ "${LOG_MODE:-clean}" == 'sensitive' ]]; then
       printf '%s\n' 'request email=fake@example.com cpf=123.456.789-00 Cookie: private-cookie password:private-value'
+    elif [[ "${LOG_MODE:-clean}" == 'ip' ]]; then
+      printf '%s\n' '198.51.100.42 - - [24/Aug/2026:12:00:00 +0000] "GET / HTTP/1.1" 200'
     else
       printf '%s\n' 'production logs contain no sensitive values'
     fi
@@ -361,6 +363,10 @@ assert_not_contains 'fake@example.com' "$output" 'log scan printed an email valu
 assert_not_contains '123.456.789-00' "$output" 'log scan printed a CPF value'
 assert_not_contains 'private-cookie' "$output" 'log scan printed a cookie value'
 assert_not_contains 'private-value' "$output" 'log scan printed a secret value'
+
+output="$(run_smoke LOG_MODE=ip 2>&1)"
+assert_contains 'PASS: production logs contain no sensitive values' "$output" \
+  'smoke confused an IPv4 access-log address with a CPF'
 
 : > "$CURL_CALLS"
 output="$(run_smoke SMOKE_SCOPE=edge HEADER_MODE=report-only CSP_EXPECTED_MODE=report-only 2>&1)"
