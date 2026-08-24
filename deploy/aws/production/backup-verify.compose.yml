@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: "no"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=512m
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+      - /var/run/postgresql:rw,noexec,nosuid,size=8m,mode=1777
+    environment:
+      POSTGRES_DB: ${VERIFY_POSTGRES_DB:-semcomp_backup_verify}
+      POSTGRES_USER: ${VERIFY_POSTGRES_USER:-semcomp_backup_verify}
+      POSTGRES_PASSWORD: ${VERIFY_POSTGRES_PASSWORD:-backup-verify-only}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    networks:
+      - backup_verify
+
+  api:
+    image: ${API_IMAGE:-semcomp-api@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+    restart: "no"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${VERIFY_POSTGRES_DB:-semcomp_backup_verify}
+      DB_USER: ${VERIFY_POSTGRES_USER:-semcomp_backup_verify}
+      DB_PASSWORD: ${VERIFY_POSTGRES_PASSWORD:-backup-verify-only}
+      DB_SCHEMA: public
+      NODE_ENV: production
+      NPM_CONFIG_CACHE: /tmp/.npm
+    command:
+      - node
+      - -e
+      - setInterval(() => {}, 2147483647)
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backup_verify
+
+networks:
+  backup_verify:
+    driver: bridge
