@@ -261,9 +261,8 @@ assert_file_equals "$production_dir/nginx-production.conf" "$shared_dir/nginx/ac
   'approved enforcement did not atomically select production configuration'
 enforcement_docker_calls="$(<"$DOCKER_CALLS")"
 assert_contains 'nginx -t' "$enforcement_docker_calls" 'enforcement did not validate Nginx'
-assert_contains 'nginx -s reload' "$enforcement_docker_calls" 'enforcement did not reload Nginx'
-assert_not_contains 'force-recreate' "$enforcement_docker_calls" \
-  'enforcement restarted containers instead of reloading Nginx'
+assert_contains 'up -d --no-deps --no-build --force-recreate nginx' "$enforcement_docker_calls" \
+  'enforcement did not recreate Nginx after replacing the bind-mounted config'
 assert_contains '--head https://gameficacao.semcomp.com.br/' "$(<"$CURL_CALLS")" \
   'enforcement did not confirm the public CSP headers'
 

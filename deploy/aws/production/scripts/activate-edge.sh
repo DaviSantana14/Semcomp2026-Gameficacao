@@ -128,8 +128,8 @@ else
 
   compose exec -T nginx nginx -t >/dev/null \
     || fail 'Nginx validation failed for enforcement configuration.'
-  compose exec -T nginx nginx -s reload >/dev/null \
-    || fail 'Nginx reload failed for enforcement configuration.'
+  compose up -d --no-deps --no-build --force-recreate nginx >/dev/null \
+    || fail 'Unable to recreate the enforcement Nginx edge.'
 
   headers="$(curl --fail --silent --show-error --head "$edge_url" 2>/dev/null)" \
     || fail 'Unable to confirm the public edge response after enforcement.'
