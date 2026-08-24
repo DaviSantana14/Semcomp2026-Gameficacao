@@ -40,4 +40,4 @@ RUN node -e "require('bcrypt')"
 
 USER node
 
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "apps/api/dist/src/main.js"]

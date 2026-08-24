@@ -13,6 +13,10 @@ const environment = readArtifact('production.env.example');
 const maintenance = readArtifact('nginx-maintenance.conf');
 const reportOnly = readArtifact('nginx-report-only.conf');
 const production = readArtifact('nginx-production.conf');
+const apiDockerfile = readFileSync(
+  join(productionDirectory, '../../../apps/api/Dockerfile'),
+  'utf8',
+);
 
 const serviceNames = [
   'postgres',
@@ -95,6 +99,11 @@ test('hardens the API, web, and Nginx containers', () => {
     assert.match(service, /read_only:\s*true/);
     assert.match(service, /no-new-privileges:true/);
   }
+});
+
+test('runs the generated Nest API entrypoint', () => {
+  assert.match(serviceBlock('api'), /apps\/api\/dist\/src\/main\.js/);
+  assert.match(apiDockerfile, /CMD \["node", "apps\/api\/dist\/src\/main\.js"\]/);
 });
 
 test('defines production service dependencies, healthchecks, networks, and volumes', () => {

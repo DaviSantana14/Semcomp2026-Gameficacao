@@ -115,7 +115,7 @@ services:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     command:
       - node
-      - apps/api/dist/main.js
+      - apps/api/dist/src/main.js
     environment:
       <<: *database-environment
       NODE_ENV: production
