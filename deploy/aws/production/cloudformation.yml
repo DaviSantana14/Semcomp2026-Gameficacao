@@ -392,7 +392,18 @@ Resources:
           findmnt -no FSTYPE /var/lib/docker | grep -qx ext4
 
           apt-get update
-          apt-get install -y ca-certificates curl gnupg snapd
+          apt-get install -y ca-certificates curl gnupg snapd unzip
+
+          aws_cli_dir="$(mktemp -d)"
+          curl -fsSL \
+            https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip \
+            -o "$aws_cli_dir/awscliv2.zip"
+          unzip -q "$aws_cli_dir/awscliv2.zip" -d "$aws_cli_dir"
+          "$aws_cli_dir/aws/install" \
+            --install-dir /usr/local/aws-cli \
+            --bin-dir /usr/local/bin
+          rm -rf -- "$aws_cli_dir"
+          aws --version
 
           install -m 0755 -d /etc/apt/keyrings
           curl -fsSL https://download.docker.com/linux/ubuntu/gpg \

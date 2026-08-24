@@ -163,6 +163,10 @@ test("bootstraps Docker on the UUID-mounted data volume and leaves operations ti
   assert.match(userData, /UUID=/);
   assert.match(userData, /docker-ce/);
   assert.match(userData, /docker-compose-plugin/);
+  assert.match(userData, /apt-get install -y[^\n]*\bunzip\b/);
+  assert.match(userData, /https:\/\/awscli\.amazonaws\.com\/awscli-exe-linux-x86_64\.zip/);
+  assert.match(userData, /aws\/install/);
+  assert.match(userData, /aws --version/);
   assert.match(userData, /AmazonSSMManagedInstanceCore|amazon-ssm-agent/);
   assert.match(userData, /\/opt\/semcomp\/shared\/nginx/);
   assert.match(userData, /semcomp-certbot-renew\.timer/);
