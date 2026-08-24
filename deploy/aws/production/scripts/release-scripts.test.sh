@@ -83,7 +83,7 @@ for secret_name in POSTGRES_PASSWORD JWT_SECRET RATE_LIMIT_KEY_SECRET; do
 done
 
 for marker in 'get-parameters-by-path' '/semcomp/production/' '0600' 'BACKUP_BUCKET' \
-  '/opt/semcomp/shared/nginx/active.conf' 'prisma' '/api/health' \
+  '/opt/semcomp/shared/nginx/active.conf' 'prisma' '/nginx-health' \
   'semcomp-certbot-renew.timer' 'semcomp-backup.timer'; do
   assert_contains "$marker" "$deploy_source" "deploy is missing: $marker"
 done
@@ -425,7 +425,7 @@ cmp -s "$deploy_root/shared/nginx/active.conf" \
 assert_contains 'migrate' "$(<"$DOCKER_CALLS")" 'deploy omitted migration service'
 assert_contains 'login --username AWS --password-stdin 123456789012.dkr.ecr.sa-east-1.amazonaws.com' \
   "$(<"$DOCKER_CALLS")" 'deploy did not authenticate Docker to the manifest ECR registry'
-assert_contains '/api/health' "$(<"$CURL_CALLS")" 'deploy omitted health check'
+assert_contains '/nginx-health' "$(<"$CURL_CALLS")" 'deploy omitted maintenance-compatible edge health check'
 assert_contains 'enable --now semcomp-certbot-renew.timer semcomp-backup.timer' \
   "$(<"$SYSTEMCTL_CALLS")" 'deploy did not start timers'
 
