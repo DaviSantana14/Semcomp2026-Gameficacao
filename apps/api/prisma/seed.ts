@@ -4,7 +4,6 @@ import { hash } from 'bcrypt';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   ActionType,
-  AdminProfile,
   PrismaClient,
   UserRole,
   type Prisma,
@@ -12,6 +11,7 @@ import {
 import { Pool } from 'pg';
 import { BCRYPT_COST } from '../src/auth/password-hash';
 import { buildDatabaseUrl } from '../src/prisma/database-url';
+import { buildAdminSeedUser } from './seed-admin';
 import { DEMO_PARTICIPANT_PASSWORD, getSeedConfig } from './seed-config';
 
 const prisma = new PrismaClient({
@@ -95,11 +95,7 @@ async function upsertAction(action: Prisma.ActionCreateInput) {
 async function main() {
   const { admin, mode } = getSeedConfig();
 
-  const adminUser = {
-    ...admin,
-    role: UserRole.ADMIN,
-    adminProfile: AdminProfile.GENERAL,
-  } satisfies Prisma.UserCreateInput;
+  const adminUser = await buildAdminSeedUser({ mode, admin });
 
   await upsertUser(adminUser);
 

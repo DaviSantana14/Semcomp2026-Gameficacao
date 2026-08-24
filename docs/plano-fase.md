@@ -218,8 +218,10 @@ perfil, enquanto administradores usam uma rota separada que também exige senha.
 - `passwordHash` nunca aparece em DTO, cookie, JWT, resposta, log, métrica ou
   evento de auditoria. Consultas comuns usam seleção explícita; somente o fluxo
   interno de autenticação administrativa pode ler o hash.
-- O seed cria ou atualiza a identidade `ADMIN` sem receber senha em claro e sem
-  sobrescrever um hash já definido.
+- O seed de produção (`admin-only`) cria ou atualiza a identidade `ADMIN` sem
+  receber senha em claro e sem sobrescrever um hash já definido. O modo local
+  (`demo`) pode receber `SEED_ADMIN_PASSWORD` pelo `.env` ignorado, validar e
+  armazenar somente o hash para deixar o administrador pronto para o ensaio.
 - O CLI seleciona um administrador existente, recebe a nova senha por `stdin`,
   aplica a mesma política e atualiza hash/data em transação. Saídas são
   genéricas e não revelam CPF, email ou hash.
@@ -410,9 +412,10 @@ ou perda do hash existente.
 - `admin-only` cria ou atualiza somente o administrador.
 - `demo` também cria os participantes e as ações demonstrativas atuais.
 - Nenhuma identidade administrativa fixa permanece no código.
-- O seed não recebe senha nem hash por código, argumento ou ambiente. Ao criar o
-  administrador, `passwordHash` fica nulo; ao atualizá-lo, um hash existente é
-  preservado.
+- O seed `admin-only` não recebe senha nem hash por código, argumento ou
+  ambiente. Ao criar o administrador nesse modo, `passwordHash` fica nulo; ao
+  atualizá-lo, um hash existente é preservado. Somente o seed local `demo`
+  aceita `SEED_ADMIN_PASSWORD`, nunca a configuração de produção.
 - Logs não contêm CPF nem email.
 - O seed usa operações idempotentes.
 

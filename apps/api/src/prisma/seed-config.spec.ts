@@ -6,6 +6,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const seedSource = readFileSync(join(process.cwd(), 'prisma/seed.ts'), 'utf8');
+const seedAdminSource = readFileSync(
+  join(process.cwd(), 'prisma/seed-admin.ts'),
+  'utf8',
+);
 
 describe('getSeedConfig', () => {
   const validEnvironment = {
@@ -42,8 +46,40 @@ describe('getSeedConfig', () => {
     ).toBeLessThanOrEqual(72);
   });
 
+  it('requires the admin password only for the local demo seed', () => {
+    expect(() =>
+      getSeedConfig({ ...validEnvironment, SEED_MODE: 'demo' }),
+    ).toThrow('Variável de ambiente obrigatória ausente: SEED_ADMIN_PASSWORD.');
+
+    expect(
+      getSeedConfig({
+        ...validEnvironment,
+        SEED_MODE: 'demo',
+        SEED_ADMIN_PASSWORD: 'local-demo-password',
+      }),
+    ).toEqual({
+      mode: 'demo',
+      admin: {
+        name: 'Administração Semcomp',
+        cpf: '52998224725',
+        email: 'admin@semcomp.dev',
+        password: 'local-demo-password',
+      },
+    });
+  });
+
+  it('rejects an invalid local demo admin password', () => {
+    expect(() =>
+      getSeedConfig({
+        ...validEnvironment,
+        SEED_MODE: 'demo',
+        SEED_ADMIN_PASSWORD: 'too-short',
+      }),
+    ).toThrow('Invalid administrator password.');
+  });
+
   it('cria o admin inicial como geral sem resetar o estado operacional no rerun', () => {
-    expect(seedSource).toContain('adminProfile: AdminProfile.GENERAL');
+    expect(seedAdminSource).toContain('adminProfile: AdminProfile.GENERAL');
     expect(seedSource).toContain('adminProfile: user.adminProfile');
     expect(seedSource).not.toMatch(
       /update:\s*\{[\s\S]*?role: user\.role,[\s\S]*?isActive:\s*true/,
