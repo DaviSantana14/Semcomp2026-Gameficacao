@@ -90,6 +90,8 @@ release_dir_absolute="$(cd -- "$release_dir" 2>/dev/null && pwd)" || fail 'relea
 [[ "$release_root" == "$release_dir_absolute" ]] || fail 'deploy must run from its extracted release directory.'
 compose_file="$release_root/deploy/aws/production/compose.yml"
 [[ -f "$compose_file" ]] || fail 'production Compose file is missing.'
+maintenance_nginx_config="$release_root/deploy/aws/production/nginx-maintenance.conf"
+[[ -f "$maintenance_nginx_config" ]] || fail 'production maintenance Nginx configuration is missing.'
 
 if [[ -e "$current_link" && ! -L "$current_link" ]]; then
   fail 'current must be a symbolic link when it exists.'
@@ -135,6 +137,14 @@ aws ecr get-login-password --region "$aws_region" \
 
 umask 077
 install -d -m 0750 "$shared_dir"
+install -d -m 0750 "$shared_dir/nginx"
+active_nginx_config="$shared_dir/nginx/active.conf"
+if [[ -e "$active_nginx_config" || -L "$active_nginx_config" ]]; then
+  [[ -f "$active_nginx_config" && ! -L "$active_nginx_config" ]] \
+    || fail 'active Nginx configuration must be a regular file.'
+else
+  install -m 0644 "$maintenance_nginx_config" "$active_nginx_config"
+fi
 candidate_env="$(mktemp "$shared_dir/.production.env.XXXXXXXX")"
 cleanup() {
   local status=$?

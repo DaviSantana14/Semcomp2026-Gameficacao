@@ -383,6 +383,7 @@ make_release_fixture() {
     "$root/releases/$previous/deploy/aws/production/scripts" "$root/shared"
   cp "$deploy_script" "$root/releases/$sha/deploy/aws/production/scripts/deploy-release.sh"
   cp "$script_dir/../compose.yml" "$root/releases/$sha/deploy/aws/production/compose.yml"
+  cp "$script_dir/../nginx-maintenance.conf" "$root/releases/$sha/deploy/aws/production/nginx-maintenance.conf"
   cp "$script_dir/../compose.yml" "$root/releases/$previous/deploy/aws/production/compose.yml"
   ln -s "$root/releases/$previous" "$root/current"
   printf 'COMPOSE_PROJECT_NAME=semcomp-production\n' > "$root/shared/production.env"
@@ -418,6 +419,9 @@ bash "$deploy_root/releases/$deploy_sha/deploy/aws/production/scripts/deploy-rel
 deploy_env="$(<"$deploy_root/shared/production.env")"
 assert_contains 'BACKUP_BUCKET=semcomp-production-artifacts' "$deploy_env" 'env omitted backup bucket'
 assert_contains 'NGINX_CONFIG_FILE=/opt/semcomp/shared/nginx/active.conf' "$deploy_env" 'env omitted active Nginx'
+cmp -s "$deploy_root/shared/nginx/active.conf" \
+  "$deploy_root/releases/$deploy_sha/deploy/aws/production/nginx-maintenance.conf" \
+  || fail 'first deploy did not seed the active Nginx configuration with maintenance mode'
 assert_contains 'migrate' "$(<"$DOCKER_CALLS")" 'deploy omitted migration service'
 assert_contains 'login --username AWS --password-stdin 123456789012.dkr.ecr.sa-east-1.amazonaws.com' \
   "$(<"$DOCKER_CALLS")" 'deploy did not authenticate Docker to the manifest ECR registry'
