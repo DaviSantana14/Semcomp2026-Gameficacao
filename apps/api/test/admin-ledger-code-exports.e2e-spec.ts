@@ -24,6 +24,7 @@ describe('Admin global ledgers and exports (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `ledger-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

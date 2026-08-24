@@ -41,6 +41,7 @@ describeDisposable('Admin claim-code artifacts (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `artifact-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

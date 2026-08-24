@@ -51,6 +51,7 @@ describe('Admin dashboard (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `dashboard-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

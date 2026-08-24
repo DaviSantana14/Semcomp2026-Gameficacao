@@ -35,6 +35,7 @@ describe('Admin security metrics (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `security-metrics-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

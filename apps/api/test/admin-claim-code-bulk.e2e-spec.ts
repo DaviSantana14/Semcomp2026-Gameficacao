@@ -54,6 +54,7 @@ describeDisposable('Admin claim-code bulk status (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `bulk-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({
@@ -88,6 +89,7 @@ describeDisposable('Admin claim-code bulk status (e2e)', () => {
         cpf: harness.uniqueCpf(adminSuffix, 1),
         email: `bulk-test-admin-${adminSuffix}@example.test`,
         role: UserRole.ADMIN,
+        adminProfile: 'GENERAL',
       },
     });
     adminSession = await harness.loginLegacy(admin.cpf, admin.email);

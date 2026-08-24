@@ -57,6 +57,7 @@ describe('Daily presence (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 4),
           email: `presence-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
           createdAt: createdBeforeDay,
         },
       }),

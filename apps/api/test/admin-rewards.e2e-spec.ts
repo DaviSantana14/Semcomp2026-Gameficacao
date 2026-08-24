@@ -27,6 +27,7 @@ describe('Admin rewards (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `rewards-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

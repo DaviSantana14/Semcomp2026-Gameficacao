@@ -51,6 +51,7 @@ describeDisposable('Admin actions and codes (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `actions-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

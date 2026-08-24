@@ -42,6 +42,7 @@ describe('Admin adjustments (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `adjustment-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       harness.prisma.user.create({

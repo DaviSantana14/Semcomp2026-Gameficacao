@@ -63,6 +63,7 @@ describe('Admin reconciliation (e2e)', () => {
           cpf: harness.uniqueCpf(suffix, 1),
           email: `reconciliation-admin-${suffix}@example.test`,
           role: UserRole.ADMIN,
+          adminProfile: 'GENERAL',
         },
       }),
       createParticipant('No events', 0, 0, 2),
