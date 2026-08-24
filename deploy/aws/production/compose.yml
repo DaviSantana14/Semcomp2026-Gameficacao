@@ -249,6 +249,8 @@ services:
     volumes:
       - certbot_etc:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
+      - certbot_work:/var/lib/letsencrypt
+      - certbot_logs:/var/log/letsencrypt
     networks:
       - edge
 
@@ -256,6 +258,8 @@ volumes:
   postgres_data:
   certbot_etc:
   certbot_webroot:
+  certbot_work:
+  certbot_logs:
 
 networks:
   backend:

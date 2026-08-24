@@ -124,9 +124,13 @@ test('defines production service dependencies, healthchecks, networks, and volum
   assert.match(certbot, /profiles:\s*\n\s+- operations/);
   assert.match(certbot, /certbot_etc:\/etc\/letsencrypt/);
   assert.match(certbot, /certbot_webroot:\/var\/www\/certbot/);
+  assert.match(certbot, /certbot_work:\/var\/lib\/letsencrypt/);
+  assert.match(certbot, /certbot_logs:\/var\/log\/letsencrypt/);
 
   assert.match(compose, /^  certbot_etc:\s*$/m);
   assert.match(compose, /^  certbot_webroot:\s*$/m);
+  assert.match(compose, /^  certbot_work:\s*$/m);
+  assert.match(compose, /^  certbot_logs:\s*$/m);
   assert.match(compose, /^  edge:\s*$/m);
 });
 
