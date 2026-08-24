@@ -16,7 +16,7 @@ describe('getAuthCookieOptions', () => {
   it('uses lax and insecure cookies by default outside production', () => {
     process.env.NODE_ENV = 'development';
 
-    expect(getAuthCookieOptions(true)).toMatchObject({
+    expect(getAuthCookieOptions(true, 'PARTICIPANT')).toMatchObject({
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
@@ -26,7 +26,7 @@ describe('getAuthCookieOptions', () => {
   it('uses lax and secure cookies by default in production', () => {
     process.env.NODE_ENV = 'production';
 
-    expect(getAuthCookieOptions(true)).toMatchObject({
+    expect(getAuthCookieOptions(true, 'PARTICIPANT')).toMatchObject({
       httpOnly: true,
       sameSite: 'lax',
       secure: true,
@@ -38,7 +38,7 @@ describe('getAuthCookieOptions', () => {
     process.env.COOKIE_SAME_SITE = 'none';
     process.env.COOKIE_SECURE = 'true';
 
-    expect(getAuthCookieOptions(true)).toMatchObject({
+    expect(getAuthCookieOptions(true, 'PARTICIPANT')).toMatchObject({
       httpOnly: true,
       sameSite: 'none',
       secure: true,
@@ -48,7 +48,7 @@ describe('getAuthCookieOptions', () => {
   it('rejects invalid sameSite env values', () => {
     process.env.COOKIE_SAME_SITE = 'invalid';
 
-    expect(() => getAuthCookieOptions(true)).toThrow(
+    expect(() => getAuthCookieOptions(true, 'PARTICIPANT')).toThrow(
       'Invalid COOKIE_SAME_SITE environment variable. Use lax, strict, or none.',
     );
   });
@@ -57,8 +57,15 @@ describe('getAuthCookieOptions', () => {
     process.env.COOKIE_SAME_SITE = 'none';
     process.env.COOKIE_SECURE = 'false';
 
-    expect(() => getAuthCookieOptions(true)).toThrow(
+    expect(() => getAuthCookieOptions(true, 'PARTICIPANT')).toThrow(
       'COOKIE_SECURE must be true when COOKIE_SAME_SITE is none.',
     );
+  });
+
+  it.each([
+    ['PARTICIPANT', 8 * 60 * 60 * 1000],
+    ['ADMIN', 4 * 60 * 60 * 1000],
+  ] as const)('uses the configured maxAge for %s cookies', (role, maxAge) => {
+    expect(getAuthCookieOptions(true, role)).toMatchObject({ maxAge });
   });
 });

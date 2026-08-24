@@ -33,18 +33,24 @@ const userSummary = {
 };
 
 describe(createSessionDraft.name, () => {
-  it('creates an application-generated session draft with an eight-hour expiry', () => {
-    const draft = createSessionDraft(now);
+  it.each([
+    ['PARTICIPANT', 8 * 60 * 60 * 1000],
+    ['ADMIN', 4 * 60 * 60 * 1000],
+  ] as const)(
+    'creates a %s draft with the configured expiry',
+    (role, duration) => {
+      const draft = createSessionDraft(now, role);
 
-    expect(typeof draft.id).toBe('string');
-    expect(draft.startedAt).toBe(now);
-    expect(draft.lastSeenAt).toBe(now);
-    expect(draft.expiresAt.getTime()).toBe(now.getTime() + 8 * 60 * 60 * 1000);
-  });
+      expect(typeof draft.id).toBe('string');
+      expect(draft.startedAt).toBe(now);
+      expect(draft.lastSeenAt).toBe(now);
+      expect(draft.expiresAt.getTime()).toBe(now.getTime() + duration);
+    },
+  );
 
   it('generates a distinct UUID for every draft so the jti never repeats', () => {
-    const first = createSessionDraft(now);
-    const second = createSessionDraft(now);
+    const first = createSessionDraft(now, 'PARTICIPANT');
+    const second = createSessionDraft(now, 'PARTICIPANT');
 
     expect(first.id).not.toBe(second.id);
     expect(first.id).toMatch(

@@ -1,6 +1,8 @@
 import type { CookieOptions } from 'express';
-
-const COOKIE_MAX_AGE_IN_MS = 8 * 60 * 60 * 1000;
+import {
+  SESSION_DURATION_MS,
+  type SessionRole,
+} from '../common/session-duration';
 
 type SameSiteOption = 'lax' | 'strict' | 'none';
 
@@ -62,10 +64,13 @@ function getAuthCookieBaseOptions(httpOnly: boolean): CookieOptions {
   };
 }
 
-export function getAuthCookieOptions(httpOnly: boolean): CookieOptions {
+export function getAuthCookieOptions(
+  httpOnly: boolean,
+  role: SessionRole,
+): CookieOptions {
   return {
     ...getAuthCookieBaseOptions(httpOnly),
-    maxAge: COOKIE_MAX_AGE_IN_MS,
+    maxAge: SESSION_DURATION_MS[role],
   };
 }
 

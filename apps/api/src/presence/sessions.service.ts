@@ -1,6 +1,10 @@
 import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import {
+  SESSION_DURATION_MS,
+  type SessionRole,
+} from '../common/session-duration';
+import {
   RegisterParticipantInput,
   CompleteParticipantPasswordChangeInput,
   CompleteParticipantPasswordChangeResult,
@@ -11,7 +15,6 @@ import {
   ValidatedSessionIdentity,
 } from './sessions.repository';
 
-export const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
 export const SESSION_RETENTION_DAYS = 30;
 
 export class SessionStartRejectedError extends Error {
@@ -21,12 +24,12 @@ export class SessionStartRejectedError extends Error {
   }
 }
 
-export function createSessionDraft(now: Date): SessionDraft {
+export function createSessionDraft(now: Date, role: SessionRole): SessionDraft {
   return {
     id: randomUUID(),
     startedAt: now,
     lastSeenAt: now,
-    expiresAt: new Date(now.getTime() + SESSION_DURATION_MS),
+    expiresAt: new Date(now.getTime() + SESSION_DURATION_MS[role]),
   };
 }
 
@@ -40,7 +43,7 @@ export class SessionsService {
 
   async start(
     userId: string,
-    role: 'PARTICIPANT' | 'ADMIN',
+    role: SessionRole,
     draft: SessionDraft,
   ): Promise<SessionUserIdentity> {
     const user = await this.repository.startSession(userId, role, draft);
