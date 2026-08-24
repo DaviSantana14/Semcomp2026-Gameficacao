@@ -134,8 +134,20 @@ case "$args" in
   *'cloudformation describe-stacks'*'BackupBucketName'*) printf '%s\n' 'semcomp-production-artifacts' ;;
   *'cloudformation describe-stacks'*'InstanceId'*) printf '%s\n' 'i-0123456789abcdef0' ;;
   *'ecr get-login-password'*) printf '%s\n' fake-ecr-password ;;
-  *'ecr describe-images'*semcomp-production/api*) printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ;;
-  *'ecr describe-images'*) printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ;;
+  *'ecr describe-images'*semcomp-production/api*)
+    if [[ -v FAKE_ECR_IMAGES_EXIST || -e "$(to_posix_path "$ECR_PUBLISHED_FILE")" ]]; then
+      printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    else
+      exit 254
+    fi
+    ;;
+  *'ecr describe-images'*)
+    if [[ -v FAKE_ECR_IMAGES_EXIST || -e "$(to_posix_path "$ECR_PUBLISHED_FILE")" ]]; then
+      printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    else
+      exit 254
+    fi
+    ;;
   *'ssm send-command'*)
     printf '%s\n' mutation >> "$aws_mutations"
     for arg in "$@"; do
@@ -209,6 +221,9 @@ printf '%s\n' "$*" >> "$(to_posix_path "$DOCKER_CALLS")"
 if [[ "$*" == *'login --username AWS'* ]]; then
   cat >/dev/null
 fi
+if [[ "$*" == push\ * ]]; then
+  : > "$(to_posix_path "$ECR_PUBLISHED_FILE")"
+fi
 if [[ "$*" == *'run --rm --no-deps -T api'* && -v DOCKER_STDIN_CAPTURE ]]; then
   cat > "$(to_posix_path "$DOCKER_STDIN_CAPTURE")"
 fi
@@ -262,6 +277,7 @@ export AWS_CALLS="$capture_dir/aws.calls"
 export AWS_MUTATIONS="$capture_dir/aws.mutations"
 export AWS_CAPTURE_DIR="$capture_dir/aws"
 export DOCKER_CALLS="$capture_dir/docker.calls"
+export ECR_PUBLISHED_FILE="$capture_dir/ecr.published"
 export CURL_CALLS="$capture_dir/curl.calls"
 export SYSTEMCTL_CALLS="$capture_dir/systemctl.calls"
 : > "$AWS_CALLS"
@@ -360,6 +376,18 @@ assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-produ
   "$docker_source" 'API was not pushed by full SHA'
 assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web:$release_sha" \
   "$docker_source" 'web was not pushed by full SHA'
+
+: > "$DOCKER_CALLS"
+FAKE_ECR_IMAGES_EXIST=1 FAKE_CONFIGURED_REGION=sa-east-1 FAKE_ACCOUNT=000000000000 \
+  run_pwsh "$publish_script" -ExpectedAccountId 000000000000 -Region sa-east-1 \
+  -StackName semcomp-production -RepositoryPath "$publish_repo" >/dev/null
+docker_source="$(<"$DOCKER_CALLS")"
+assert_contains "pull 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api:$release_sha" \
+  "$docker_source" 'publisher did not pull the existing API image'
+assert_contains "pull 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web:$release_sha" \
+  "$docker_source" 'publisher did not pull the existing web image'
+assert_not_contains ' build ' " $docker_source " 'publisher rebuilt an immutable release'
+assert_not_contains ' push ' " $docker_source " 'publisher tried to overwrite an immutable release'
 manifest_file="$AWS_CAPTURE_DIR/manifest.json"
 [[ -f "$manifest_file" ]] || fail 'manifest was not uploaded'
 manifest_source="$(<"$manifest_file")"

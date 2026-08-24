@@ -156,6 +156,37 @@ function Invoke-DockerOrThrow {
     }
 }
 
+function Get-EcrImageDigest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Repository,
+        [Parameter(Mandatory = $true)]
+        [string]$Tag,
+        [Parameter(Mandatory = $true)]
+        [string]$TargetRegion
+    )
+
+    $output = & aws ecr describe-images `
+        --repository-name $Repository `
+        --image-ids "imageTag=$Tag" `
+        --query 'imageDetails[0].imageDigest' `
+        --output text `
+        --region $TargetRegion 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return ''
+    }
+
+    $digest = (($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($digest) -or $digest -eq 'None') {
+        return ''
+    }
+    if ($digest -notmatch '^sha256:[0-9a-f]{64}$') {
+        throw "ECR returned an invalid image digest for $Repository."
+    }
+
+    return $digest
+}
+
 try {
     $repoPath = Resolve-RepositoryPath -Path $RepositoryPath
 
@@ -213,18 +244,34 @@ try {
 
     $apiTag = "${apiRepositoryUri}:$commitSha"
     $webTag = "${webRepositoryUri}:$commitSha"
+    $apiRepository = $apiRepositoryUri.Substring($apiRepositoryUri.IndexOf('/') + 1)
+    $webRepository = $webRepositoryUri.Substring($webRepositoryUri.IndexOf('/') + 1)
     $apiDockerfile = Join-Path $repoPath 'apps/api/Dockerfile'
     $webDockerfile = Join-Path $repoPath 'apps/web/Dockerfile'
 
-    Invoke-DockerOrThrow -Arguments @(
-        'build', '--file', $apiDockerfile, '--tag', $apiTag, $repoPath
-    ) -Message 'API image build failed.'
+    $apiDigest = Get-EcrImageDigest -Repository $apiRepository -Tag $commitSha -TargetRegion $Region
+    $webDigest = Get-EcrImageDigest -Repository $webRepository -Tag $commitSha -TargetRegion $Region
+    $apiPublished = -not [string]::IsNullOrWhiteSpace($apiDigest)
+    $webPublished = -not [string]::IsNullOrWhiteSpace($webDigest)
+    if ($apiPublished -ne $webPublished) {
+        throw 'ECR contains an incomplete release; API and web images must be published together.'
+    }
 
-    Invoke-DockerOrThrow -Arguments @(
-        'build', '--file', $webDockerfile,
-        '--build-arg', 'NEXT_PUBLIC_API_URL=/api',
-        '--tag', $webTag, $repoPath
-    ) -Message 'Web image build failed.'
+    if ($apiPublished) {
+        Invoke-DockerOrThrow -Arguments @('pull', $apiTag) -Message 'Existing API image pull failed.'
+        Invoke-DockerOrThrow -Arguments @('pull', $webTag) -Message 'Existing web image pull failed.'
+    }
+    else {
+        Invoke-DockerOrThrow -Arguments @(
+            'build', '--file', $apiDockerfile, '--tag', $apiTag, $repoPath
+        ) -Message 'API image build failed.'
+
+        Invoke-DockerOrThrow -Arguments @(
+            'build', '--file', $webDockerfile,
+            '--build-arg', 'NEXT_PUBLIC_API_URL=/api',
+            '--tag', $webTag, $repoPath
+        ) -Message 'Web image build failed.'
+    }
 
     Invoke-DockerOrThrow -Arguments @(
         'run', '--rm', $apiTag, 'node', '-e', 'require("bcrypt")'
@@ -259,27 +306,12 @@ try {
         $null = & docker rm --force $webContainerId 2>$null
     }
 
-    Invoke-DockerOrThrow -Arguments @('push', $apiTag) -Message 'API image push failed.'
-    Invoke-DockerOrThrow -Arguments @('push', $webTag) -Message 'Web image push failed.'
-
-    $apiRepository = $apiRepositoryUri.Substring($apiRepositoryUri.IndexOf('/') + 1)
-    $webRepository = $webRepositoryUri.Substring($webRepositoryUri.IndexOf('/') + 1)
-    $apiDigest = Invoke-AwsText -Arguments @(
-        'ecr', 'describe-images',
-        '--repository-name', $apiRepository,
-        '--image-ids', "imageTag=$commitSha",
-        '--query', 'imageDetails[0].imageDigest',
-        '--output', 'text',
-        '--region', $Region
-    )
-    $webDigest = Invoke-AwsText -Arguments @(
-        'ecr', 'describe-images',
-        '--repository-name', $webRepository,
-        '--image-ids', "imageTag=$commitSha",
-        '--query', 'imageDetails[0].imageDigest',
-        '--output', 'text',
-        '--region', $Region
-    )
+    if (-not $apiPublished) {
+        Invoke-DockerOrThrow -Arguments @('push', $apiTag) -Message 'API image push failed.'
+        Invoke-DockerOrThrow -Arguments @('push', $webTag) -Message 'Web image push failed.'
+        $apiDigest = Get-EcrImageDigest -Repository $apiRepository -Tag $commitSha -TargetRegion $Region
+        $webDigest = Get-EcrImageDigest -Repository $webRepository -Tag $commitSha -TargetRegion $Region
+    }
 
     if ($apiDigest -notmatch '^sha256:[0-9a-f]{64}$' -or $webDigest -notmatch '^sha256:[0-9a-f]{64}$') {
         throw 'ECR did not return immutable image digests.'
