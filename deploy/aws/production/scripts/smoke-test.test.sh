@@ -362,6 +362,12 @@ assert_not_contains '123.456.789-00' "$output" 'log scan printed a CPF value'
 assert_not_contains 'private-cookie' "$output" 'log scan printed a cookie value'
 assert_not_contains 'private-value' "$output" 'log scan printed a secret value'
 
+: > "$CURL_CALLS"
+output="$(run_smoke SMOKE_SCOPE=edge HEADER_MODE=report-only CSP_EXPECTED_MODE=report-only 2>&1)"
+assert_contains 'PASS: edge smoke complete' "$output" 'edge smoke did not complete after infrastructure gates'
+assert_not_contains '/auth/login' "$(<"$CURL_CALLS")" 'edge smoke attempted participant authentication'
+assert_not_contains '/auth/admin/login' "$(<"$CURL_CALLS")" 'edge smoke attempted administrator authentication'
+
 set +e
 output="$(run_smoke COOKIE_MODE=invalid 2>&1)"
 status=$?

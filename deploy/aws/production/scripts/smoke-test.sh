@@ -14,6 +14,7 @@ shared_dir="${SHARED_DIR:-/opt/semcomp/shared}"
 environment_file="${ENV_FILE:-${shared_dir}/production.env}"
 compose_project_name="${COMPOSE_PROJECT_NAME:-semcomp-production}"
 csp_expected_mode="${CSP_EXPECTED_MODE:-enforcement}"
+smoke_scope="${SMOKE_SCOPE:-full}"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -102,6 +103,8 @@ valid_ipv4 "$expected_ip" || fail 'EXPECTED_ELASTIC_IP must be a valid IPv4 addr
 [[ "$compose_project_name" == 'semcomp-production' ]] || fail 'COMPOSE_PROJECT_NAME must be semcomp-production.'
 [[ "$csp_expected_mode" == 'report-only' || "$csp_expected_mode" == 'enforcement' ]] \
   || fail 'CSP_EXPECTED_MODE must be report-only or enforcement.'
+[[ "$smoke_scope" == 'edge' || "$smoke_scope" == 'full' ]] \
+  || fail 'SMOKE_SCOPE must be edge or full.'
 [[ "$curl_timeout" =~ ^[0-9]+$ ]] || fail 'SMOKE_CURL_TIMEOUT_SECONDS must be a non-negative integer.'
 (( 10#$curl_timeout > 0 && 10#$curl_timeout <= 60 )) || fail 'SMOKE_CURL_TIMEOUT_SECONDS must be between 1 and 60.'
 
@@ -238,6 +241,11 @@ for sensitive_pattern in \
   fi
 done
 pass 'production logs contain no sensitive values'
+
+if [[ "$smoke_scope" == 'edge' ]]; then
+  pass 'edge smoke complete'
+  exit 0
+fi
 
 participant_jar="$(mktemp "${TMPDIR:-/tmp}/semcomp-smoke-participant-cookie.XXXXXXXX")"
 register_temp_file "$participant_jar"

@@ -234,6 +234,7 @@ assert_contains 'up -d --no-deps --no-build --force-recreate nginx' "$(<"$DOCKER
   'report-only activation did not recreate only Nginx'
 assert_contains 'nginx -t' "$(<"$DOCKER_CALLS")" 'report-only activation did not validate Nginx'
 assert_contains 'smoke' "$(<"$SMOKE_MARKER")" 'report-only activation skipped browser smoke'
+assert_contains 'SMOKE_SCOPE=edge' "$(<"$activate_script")" 'report-only activation did not limit its initial smoke to edge gates'
 assert_not_contains 'up -d --no-build --force-recreate api' "$(<"$DOCKER_CALLS")" \
   'report-only activation recreated the API'
 assert_not_contains 'up -d --no-build --force-recreate web' "$(<"$DOCKER_CALLS")" \
