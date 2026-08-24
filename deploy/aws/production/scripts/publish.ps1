@@ -240,8 +240,18 @@ try {
             '--connect-timeout', '3', '--max-time', '10',
             'http://127.0.0.1:43100/login'
         )
-        $null = & curl @curlArguments 2>$null
-        if ($LASTEXITCODE -ne 0) {
+        $webHealthDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+        $webHealthy = $false
+        do {
+            $null = & curl @curlArguments 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $webHealthy = $true
+                break
+            }
+            Start-Sleep -Seconds 1
+        } while ([DateTimeOffset]::UtcNow -lt $webHealthDeadline)
+
+        if (-not $webHealthy) {
             throw 'Web image health test failed.'
         }
     }

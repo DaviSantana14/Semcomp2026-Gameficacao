@@ -217,6 +217,13 @@ to_posix_path() {
   if command -v cygpath >/dev/null 2>&1; then cygpath -u -- "$1"; else printf '%s' "$1"; fi
 }
 printf '%s\n' "$*" >> "$(to_posix_path "$CURL_CALLS")"
+if [[ -v CURL_FAIL_ONCE_FILE ]]; then
+  curl_fail_once_file="$(to_posix_path "$CURL_FAIL_ONCE_FILE")"
+  if [[ ! -e "$curl_fail_once_file" ]]; then
+    : > "$curl_fail_once_file"
+    exit 1
+  fi
+fi
 curl_exit_code=0
 if [[ -v CURL_EXIT_CODE ]]; then curl_exit_code="$CURL_EXIT_CODE"; fi
 exit "$curl_exit_code"
@@ -324,9 +331,12 @@ set -e
 assert_contains 'clean' "$output" 'dirty publisher failure omitted clean-worktree requirement'
 rm -f "$publish_repo/dirty.txt"
 : > "$DOCKER_CALLS"
+CURL_FAIL_ONCE_FILE="$capture_dir/curl.fail-once" \
 FAKE_CONFIGURED_REGION=sa-east-1 FAKE_ACCOUNT=000000000000 \
   run_pwsh "$publish_script" -ExpectedAccountId 000000000000 -Region sa-east-1 \
   -StackName semcomp-production -RepositoryPath "$publish_repo" >/dev/null
+[[ "$(wc -l < "$CURL_CALLS" | tr -d ' ')" -ge 2 ]] \
+  || fail 'publisher did not retry a transient web health failure'
 release_sha="$(git -C "$publish_repo" rev-parse HEAD)"
 docker_source="$(<"$DOCKER_CALLS")"
 docker_source="${docker_source//\\//}"
