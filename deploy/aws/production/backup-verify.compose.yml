@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: "no"
+    user: postgres
     read_only: true
     cap_drop:
       - ALL

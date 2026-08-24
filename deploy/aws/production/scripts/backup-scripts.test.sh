@@ -29,6 +29,8 @@ assert_not_contains() {
 for required_file in "$backup_script" "$verify_script" "$compose_file"; do
   [[ -f "$required_file" ]] || fail "missing task 6 artifact: $required_file"
 done
+assert_contains "$(<"$compose_file")" 'user: postgres' \
+  'disposable PostgreSQL must run directly as postgres when all capabilities are dropped'
 
 test_root="$(mktemp -d "/tmp/semcomp-backup-test.XXXXXXXX")"
 trap 'rm -rf -- "$test_root"' EXIT
