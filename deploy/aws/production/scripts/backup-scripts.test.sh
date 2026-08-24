@@ -31,6 +31,8 @@ for required_file in "$backup_script" "$verify_script" "$compose_file"; do
 done
 assert_contains "$(<"$compose_file")" 'user: postgres' \
   'disposable PostgreSQL must run directly as postgres when all capabilities are dropped'
+assert_contains "$(<"$compose_file")" 'uid=70,gid=70,mode=0700' \
+  'disposable PostgreSQL data tmpfs must be owned by the postgres image user'
 
 test_root="$(mktemp -d "/tmp/semcomp-backup-test.XXXXXXXX")"
 trap 'rm -rf -- "$test_root"' EXIT

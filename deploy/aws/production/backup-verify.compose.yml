@@ -9,9 +9,9 @@ services:
     security_opt:
       - no-new-privileges:true
     tmpfs:
-      - /var/lib/postgresql/data:rw,noexec,nosuid,size=512m
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=512m,uid=70,gid=70,mode=0700
       - /tmp:rw,noexec,nosuid,size=32m,mode=1777
-      - /var/run/postgresql:rw,noexec,nosuid,size=8m,mode=1777
+      - /var/run/postgresql:rw,noexec,nosuid,size=8m,uid=70,gid=70,mode=0775
     environment:
       POSTGRES_DB: ${VERIFY_POSTGRES_DB:-semcomp_backup_verify}
       POSTGRES_USER: ${VERIFY_POSTGRES_USER:-semcomp_backup_verify}
