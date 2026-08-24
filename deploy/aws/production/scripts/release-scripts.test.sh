@@ -129,12 +129,12 @@ case "$args" in
       fi
     done
     ;;
-  *'cloudformation describe-stacks'*'ApiRepositoryUri'*) printf '%s\n' '123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-api' ;;
-  *'cloudformation describe-stacks'*'WebRepositoryUri'*) printf '%s\n' '123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-web' ;;
+  *'cloudformation describe-stacks'*'ApiRepositoryUri'*) printf '%s\n' '123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api' ;;
+  *'cloudformation describe-stacks'*'WebRepositoryUri'*) printf '%s\n' '123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web' ;;
   *'cloudformation describe-stacks'*'BackupBucketName'*) printf '%s\n' 'semcomp-production-artifacts' ;;
   *'cloudformation describe-stacks'*'InstanceId'*) printf '%s\n' 'i-0123456789abcdef0' ;;
   *'ecr get-login-password'*) printf '%s\n' fake-ecr-password ;;
-  *'ecr describe-images'*semcomp-api*) printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ;;
+  *'ecr describe-images'*semcomp-production/api*) printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ;;
   *'ecr describe-images'*) printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ;;
   *'ssm send-command'*) printf '%s\n' mutation >> "$aws_mutations"; printf '%s\n' 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' ;;
   *'ssm get-command-invocation'*) printf 'Success\t0\n' ;;
@@ -333,9 +333,9 @@ docker_source="${docker_source//\\//}"
 assert_contains 'apps/api/Dockerfile' "$docker_source" 'API image was not built'
 assert_contains 'apps/web/Dockerfile' "$docker_source" 'web image was not built'
 assert_contains 'NEXT_PUBLIC_API_URL=/api' "$docker_source" 'web build omitted /api'
-assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-api:$release_sha" \
+assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api:$release_sha" \
   "$docker_source" 'API was not pushed by full SHA'
-assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-web:$release_sha" \
+assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web:$release_sha" \
   "$docker_source" 'web was not pushed by full SHA'
 manifest_file="$AWS_CAPTURE_DIR/manifest.json"
 [[ -f "$manifest_file" ]] || fail 'manifest was not uploaded'
@@ -368,8 +368,8 @@ make_release_fixture() {
 {
   "releaseSha": "$sha",
   "bucket": "semcomp-production-artifacts",
-  "apiImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "webImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  "apiImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "webImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 }
 EOF
 }
@@ -429,8 +429,8 @@ cat > "$invalid_root/releases/$invalid_sha/manifest.json" <<EOF
 {
   "releaseSha": "$invalid_sha",
   "bucket": "semcomp-production-artifacts",
-  "apiImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-api:release-tag",
-  "webImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  "apiImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api:release-tag",
+  "webImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 }
 EOF
 : > "$DOCKER_CALLS"
@@ -463,8 +463,8 @@ chmod +x "$rollback_root/releases/$rollback_current_sha/deploy/aws/production/sc
 ln -s "$rollback_root/releases/$rollback_current_sha" "$rollback_root/current"
 cat > "$rollback_root/shared/production.env" <<'EOF'
 COMPOSE_PROJECT_NAME=semcomp-production
-API_IMAGE=123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-WEB_IMAGE=123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+API_IMAGE=123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+WEB_IMAGE=123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 BACKUP_BUCKET=semcomp-production-artifacts
 NGINX_CONFIG_FILE=/opt/semcomp/shared/nginx/active.conf
 EOF
@@ -474,8 +474,8 @@ cat > "$rollback_manifest" <<EOF
 {
   "releaseSha": "$rollback_target_sha",
   "bucket": "semcomp-production-artifacts",
-  "apiImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-api@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "webImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-web@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  "apiImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "webImage": "123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/web@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 }
 EOF
 : > "$DOCKER_CALLS"

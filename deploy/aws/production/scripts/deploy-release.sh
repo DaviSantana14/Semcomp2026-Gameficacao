@@ -124,8 +124,8 @@ api_image="$(json_field apiImage "$manifest_file")"
 web_image="$(json_field webImage "$manifest_file")"
 [[ "$manifest_release_sha" == "$release_sha" ]] || fail 'manifest SHA does not match RELEASE_SHA.'
 [[ "$manifest_bucket" == "$release_bucket" ]] || fail 'manifest bucket does not match the production stack bucket.'
-validate_image "$api_image" 'semcomp-api'
-validate_image "$web_image" 'semcomp-web'
+validate_image "$api_image" 'semcomp-production/api'
+validate_image "$web_image" 'semcomp-production/web'
 
 umask 077
 install -d -m 0750 "$shared_dir"

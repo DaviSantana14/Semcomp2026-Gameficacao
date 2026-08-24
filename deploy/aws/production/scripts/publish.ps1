@@ -195,8 +195,8 @@ try {
     $bucketName = Get-StackOutput -Name 'BackupBucketName' -TargetStack $StackName -TargetRegion $Region
     $instanceId = Get-StackOutput -Name 'InstanceId' -TargetStack $StackName -TargetRegion $Region
 
-    Assert-RepositoryUri -Uri $apiRepositoryUri -ExpectedRepository 'semcomp-api'
-    Assert-RepositoryUri -Uri $webRepositoryUri -ExpectedRepository 'semcomp-web'
+    Assert-RepositoryUri -Uri $apiRepositoryUri -ExpectedRepository "$StackName/api"
+    Assert-RepositoryUri -Uri $webRepositoryUri -ExpectedRepository "$StackName/web"
     if ($bucketName -notmatch '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$') {
         throw 'CloudFormation returned an invalid production bucket name.'
     }
@@ -252,8 +252,8 @@ try {
     Invoke-DockerOrThrow -Arguments @('push', $apiTag) -Message 'API image push failed.'
     Invoke-DockerOrThrow -Arguments @('push', $webTag) -Message 'Web image push failed.'
 
-    $apiRepository = $apiRepositoryUri.Substring($apiRepositoryUri.LastIndexOf('/') + 1)
-    $webRepository = $webRepositoryUri.Substring($webRepositoryUri.LastIndexOf('/') + 1)
+    $apiRepository = $apiRepositoryUri.Substring($apiRepositoryUri.IndexOf('/') + 1)
+    $webRepository = $webRepositoryUri.Substring($webRepositoryUri.IndexOf('/') + 1)
     $apiDigest = Invoke-AwsText -Arguments @(
         'ecr', 'describe-images',
         '--repository-name', $apiRepository,

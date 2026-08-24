@@ -169,8 +169,8 @@ api_image="$(json_field apiImage "$manifest_file")"
 web_image="$(json_field webImage "$manifest_file")"
 [[ "$manifest_release_sha" == "$release_sha" ]] || fail 'rollback manifest SHA does not match RELEASE_SHA.'
 [[ "$manifest_bucket" == "$release_bucket" ]] || fail 'rollback manifest bucket does not match the stack bucket.'
-validate_image "$api_image" 'semcomp-api'
-validate_image "$web_image" 'semcomp-web'
+validate_image "$api_image" 'semcomp-production/api'
+validate_image "$web_image" 'semcomp-production/web'
 
 target_release="$releases_root/$release_sha"
 if [[ ! -d "$target_release" ]]; then
