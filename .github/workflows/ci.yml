@@ -59,6 +59,9 @@ jobs:
       - name: Test deployment scripts
         run: npm run test:deployment-scripts
 
+      - name: Test production deployment contracts
+        run: npm run test:production-deployment
+
       - name: Test authentication and rate-limit contracts
         run: >-
           npm --workspace api test -- --runTestsByPath
@@ -71,6 +74,9 @@ jobs:
       - name: Validate deployment script syntax
         run: bash -n deploy/aws/scripts/*.sh
 
+      - name: Validate production deployment script syntax
+        run: bash -n deploy/aws/production/scripts/*.sh
+
       - name: Validate rehearsal Compose configuration
         run: >-
           docker compose
@@ -78,19 +84,26 @@ jobs:
           -f deploy/aws/compose.yml
           config --quiet
 
+      - name: Validate production Compose configuration
+        run: >-
+          docker compose
+          --env-file deploy/aws/production/production.env.example
+          -f deploy/aws/production/compose.yml
+          config --quiet
+
       - name: Build API image
-        run: docker build -f apps/api/Dockerfile -t semcomp-api:marco12 .
+        run: docker build -f apps/api/Dockerfile -t semcomp-api:${{ github.sha }} .
 
       - name: Verify bcrypt in the final API image
         run: >-
-          docker run --rm --entrypoint node semcomp-api:marco12
+          docker run --rm --entrypoint node semcomp-api:${{ github.sha }}
           -e "require('bcrypt')"
 
       - name: Build web image
         run: >-
           docker build -f apps/web/Dockerfile
           --build-arg NEXT_PUBLIC_API_URL=/api
-          -t semcomp-web:marco12 .
+          -t semcomp-web:${{ github.sha }} .
 
   build:
     runs-on: ubuntu-latest

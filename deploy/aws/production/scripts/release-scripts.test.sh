@@ -3,6 +3,9 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/../../../.." && pwd)"
+package_file="$repo_root/package.json"
+ci_workflow="$repo_root/.github/workflows/ci.yml"
 configure_script="$script_dir/configure-parameters.ps1"
 publish_script="$script_dir/publish.ps1"
 deploy_script="$script_dir/deploy-release.sh"
@@ -25,6 +28,15 @@ assert_contains() {
 assert_not_contains() {
   ! contains "$1" "$2" || fail "$3"
 }
+
+[[ -f "$package_file" ]] || fail "missing repository package manifest: $package_file"
+[[ -f "$ci_workflow" ]] || fail "missing CI workflow: $ci_workflow"
+package_source="$(<"$package_file")"
+ci_source="$(<"$ci_workflow")"
+assert_contains '"test:production-deployment":' "$package_source" \
+  'package.json does not expose test:production-deployment'
+assert_contains 'npm run test:production-deployment' "$ci_source" \
+  'CI does not execute test:production-deployment'
 
 for required_file in "$configure_script" "$publish_script" "$deploy_script" "$rollback_script" "$admin_password_script"; do
   [[ -f "$required_file" ]] || fail "missing production release automation file: $required_file"
