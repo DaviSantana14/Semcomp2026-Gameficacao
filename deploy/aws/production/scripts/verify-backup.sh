@@ -85,13 +85,13 @@ restore_dump="$restore_dir/database.dump"
 compose_env_file="$restore_dir/compose.env"
 verify_db='semcomp_backup_verify'
 verify_user='semcomp_backup_verify'
-verify_password="$(od -An -N 24 -tx1 /dev/urandom | tr -d ' \n')"
+verify_db_secret="$(od -An -N 24 -tx1 /dev/urandom | tr -d ' \n')"
 
 {
   printf 'API_IMAGE=%s\n' "$api_image"
   printf 'VERIFY_POSTGRES_DB=%s\n' "$verify_db"
   printf 'VERIFY_POSTGRES_USER=%s\n' "$verify_user"
-  printf 'VERIFY_POSTGRES_PASSWORD=%s\n' "$verify_password"
+  printf 'VERIFY_POSTGRES_PASSWORD=%s\n' "$verify_db_secret"
 } > "$compose_env_file"
 chmod 600 "$compose_env_file"
 

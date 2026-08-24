@@ -117,7 +117,7 @@ if [[ "$edge_mode" == 'report-only' ]]; then
     || fail 'Nginx validation failed for report-only configuration.'
   compose up -d --no-deps --no-build --force-recreate nginx >/dev/null \
     || fail 'Unable to recreate the report-only Nginx edge.'
-  bash "$smoke_test_script" \
+  CSP_EXPECTED_MODE=report-only bash "$smoke_test_script" \
     || fail 'Browser smoke test failed in report-only mode.'
 
   active_changed=0

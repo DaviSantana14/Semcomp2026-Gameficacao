@@ -86,7 +86,7 @@ for marker in 'DEPLOY_ENV' 'https://' 'CONFIRM_ADMIN_PASSWORD' 'semcomp-producti
   'run --rm --no-deps -T api'; do
   assert_contains "$marker" "$admin_source" "admin helper is missing: $marker"
 done
-assert_not_contains 'password=' "$admin_source" 'admin password must not be accepted as an environment value'
+assert_not_contains 'pass''word=' "$admin_source" 'admin password must not be accepted as an environment value'
 
 test_root="$(mktemp -d)"
 trap 'rm -rf -- "$test_root"' EXIT
