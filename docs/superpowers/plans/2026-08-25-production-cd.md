@@ -249,6 +249,7 @@ test("deploys main only after both CI jobs pass", () => {
 test("serializes deployments without cancelling an active release", () => {
   const job = deployMatch.groups.body;
   assert.match(job, /group: semcomp-production/);
+  assert.match(job, /queue: max/);
   assert.match(job, /cancel-in-progress: false/);
   assert.match(job, /timeout-minutes: 30/);
 });
@@ -258,10 +259,15 @@ test("uses OIDC variables and the immutable publisher", () => {
   assert.match(job, /id-token: write/);
   assert.match(job, /contents: read/);
   assert.match(job, /aws-actions\/configure-aws-credentials@[0-9a-f]{40}/);
+  assert.match(job, /allowed-account-ids:\s*\$\{\{ vars\.AWS_ACCOUNT_ID \}\}/);
   assert.match(job, /vars\.AWS_DEPLOY_ROLE_ARN/);
   assert.match(job, /vars\.AWS_ACCOUNT_ID/);
   assert.match(job, /deploy\/aws\/production\/scripts\/publish\.ps1/);
   assert.doesNotMatch(job, /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/);
+
+  for (const [, action] of job.matchAll(/^\s+uses:\s+([^\s]+)$/gm)) {
+    assert.match(action, /@[0-9a-f]{40}$/);
+  }
 });
 ```
 
@@ -397,7 +403,12 @@ Document these invariants and commands:
 O job `deploy-production` roda somente depois dos jobs `deployment-artifacts`
 e `build` ficarem verdes em um push na `main`. Ele assume a role indicada por
 `AWS_DEPLOY_ROLE_ARN` no ambiente GitHub `production`; não existem access keys
-persistentes no repositório.
+persistentes no repositório. A fila usa `queue: max`, e o ambiente permite
+somente `main`, sem required reviewers ou wait timer.
+
+Quando existe um release ativo, o host cria e verifica
+`backups/production/pre-deploy-<SHA>.dump` antes de executar migrações. Uma
+falha ou objeto vazio aborta o deploy antes da alteração do banco.
 
 Para conferir o release ativo sem exibir segredos:
 
