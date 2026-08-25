@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
+  MessageSquarePlus,
   Search,
   ShieldCheck,
   ShieldOff,
@@ -24,6 +25,9 @@ import {
   updateParticipantStatus,
 } from "@/features/participants/participants.service";
 import type { AdminParticipant } from "@/features/participants/participants.types";
+import { fetchQuestionGrantParticipants } from "@/features/actions/actions.service";
+import type { QuestionGrantParticipant } from "@/features/actions/actions.types";
+import { useMe } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/http/api-error";
 import { AdminExportDialog } from "../_components/admin-export-dialog";
 import { PaginationControls } from "../_components/pagination-controls";
@@ -35,15 +39,20 @@ import {
   AdminSectionHeader,
   adminSelectClassName,
 } from "../_components/admin-page";
+import { QuestionGrantDialog } from "./question-grant-dialog";
 
 const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
 const number = new Intl.NumberFormat("pt-BR");
 const LIMIT = 20;
 
 type StatusFilter = "all" | "active" | "inactive";
+type ParticipantListItem = AdminParticipant | QuestionGrantParticipant;
 
 export function ParticipantsClient() {
   const queryClient = useQueryClient();
+  const { data: user } = useMe();
+  const isActivitiesOperator =
+    user?.role === "ADMIN" && user.adminProfile === "ACTIVITIES";
   const [draftSearch, setDraftSearch] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -52,6 +61,8 @@ export function ParticipantsClient() {
   const [statusIntent, setStatusIntent] = useState<AdminParticipant | null>(
     null,
   );
+  const [questionIntent, setQuestionIntent] =
+    useState<ParticipantListItem | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const filters = {
     page,
@@ -60,8 +71,21 @@ export function ParticipantsClient() {
     status: status === "all" ? undefined : status,
   };
   const participantsQuery = useQuery({
-    queryKey: ["admin", "participants", filters],
-    queryFn: () => fetchAdminParticipants(filters),
+    queryKey: [
+      "admin",
+      "participants",
+      isActivitiesOperator ? "question-grants" : "general",
+      filters,
+    ],
+    queryFn: () =>
+      isActivitiesOperator
+        ? fetchQuestionGrantParticipants({
+            page,
+            limit: LIMIT,
+            search: search || undefined,
+          })
+        : fetchAdminParticipants(filters),
+    enabled: Boolean(user),
     retry: false,
   });
   const countExport = useCallback(
@@ -166,11 +190,17 @@ export function ParticipantsClient() {
           Filtros de participantes
         </h2>
         <form
-          className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem_auto] md:items-end"
+          className={
+            isActivitiesOperator
+              ? "grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+              : "grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem_auto] md:items-end"
+          }
           onSubmit={submitSearch}
         >
           <div className="grid gap-2">
-            <Label htmlFor="participant-search">Nome, e-mail ou CPF</Label>
+            <Label htmlFor="participant-search">
+              {isActivitiesOperator ? "Nome" : "Nome, e-mail ou CPF"}
+            </Label>
             <Input
               autoComplete="off"
               id="participant-search"
@@ -179,39 +209,43 @@ export function ParticipantsClient() {
               value={draftSearch}
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="participant-status">Status</Label>
-            <select
-              className={adminSelectClassName}
-              id="participant-status"
-              onChange={(event) =>
-                changeStatus(event.target.value as StatusFilter)
-              }
-              value={status}
-            >
-              <option value="all">Todos</option>
-              <option value="active">Ativos</option>
-              <option value="inactive">Inativos</option>
-            </select>
-          </div>
+          {!isActivitiesOperator ? (
+            <div className="grid gap-2">
+              <Label htmlFor="participant-status">Status</Label>
+              <select
+                className={adminSelectClassName}
+                id="participant-status"
+                onChange={(event) =>
+                  changeStatus(event.target.value as StatusFilter)
+                }
+                value={status}
+              >
+                <option value="all">Todos</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </select>
+            </div>
+          ) : null}
           <Button className="w-full" type="submit">
             <Search aria-hidden="true" />
             Buscar
           </Button>
         </form>
-        <div className="flex flex-wrap justify-end">
-          <Button
-            aria-label="Exportar participantes"
-            onClick={() => setExportOpen(true)}
-            variant="outline"
-          >
-            <Download aria-hidden="true" />
-            Exportar participantes
-          </Button>
-        </div>
+        {!isActivitiesOperator ? (
+          <div className="flex flex-wrap justify-end">
+            <Button
+              aria-label="Exportar participantes"
+              onClick={() => setExportOpen(true)}
+              variant="outline"
+            >
+              <Download aria-hidden="true" />
+              Exportar participantes
+            </Button>
+          </div>
+        ) : null}
       </AdminPanel>
 
-      {participantsQuery.isLoading ? (
+      {!user || participantsQuery.isLoading ? (
         <ListSkeleton />
       ) : participantsQuery.error ? (
         <ErrorState
@@ -253,10 +287,16 @@ export function ParticipantsClient() {
             <div className="divide-y divide-border/80">
               {data.items.map((participant) => (
                 <ParticipantRow
+                  grantQuestion={() => setQuestionIntent(participant)}
+                  generalMode={!isActivitiesOperator}
                   key={participant.id}
                   participant={participant}
                   pending={pendingIds.has(participant.id)}
-                  toggle={() => setStatusIntent(participant)}
+                  toggle={() => {
+                    if (isFullParticipant(participant)) {
+                      setStatusIntent(participant);
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -332,6 +372,23 @@ export function ParticipantsClient() {
           title="Alterar status do participante"
         />
       ) : null}
+      {questionIntent ? (
+        <QuestionGrantDialog
+          onClose={() => setQuestionIntent(null)}
+          onSuccess={() => {
+            void queryClient.invalidateQueries({
+              queryKey: ["admin", "participants"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["admin", "dashboard"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["admin", "participant", questionIntent.id],
+            });
+          }}
+          participant={questionIntent}
+        />
+      ) : null}
     </div>
   );
 }
@@ -340,77 +397,116 @@ function ParticipantRow({
   participant,
   pending,
   toggle,
+  grantQuestion,
+  generalMode,
 }: {
-  participant: AdminParticipant;
+  participant: ParticipantListItem;
   pending: boolean;
   toggle: () => void;
+  grantQuestion: () => void;
+  generalMode: boolean;
 }) {
   return (
     <article className="grid min-w-0 gap-5 px-4 py-5 transition-colors hover:bg-muted/25 sm:px-5 lg:grid-cols-[minmax(18rem,1.3fr)_minmax(17rem,.8fr)_minmax(15rem,auto)] lg:items-center">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            className="truncate font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            href={`/admin/participantes/${participant.id}`}
-          >
-            {participant.name}
-          </Link>
+          {generalMode ? (
+            <Link
+              className="truncate font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              href={`/admin/participantes/${participant.id}`}
+            >
+              {participant.name}
+            </Link>
+          ) : (
+            <span className="truncate font-semibold text-foreground">
+              {participant.name}
+            </span>
+          )}
           <StatusBadge
             label={participant.isActive ? "Ativo" : "Inativo"}
             status={participant.isActive ? "active" : "inactive"}
           />
         </div>
-        <p className="mt-1 truncate text-sm text-muted-foreground">
-          {participant.email}
-        </p>
-        <p className="mt-1 font-mono text-xs text-muted-foreground">
-          <span>CPF {maskCpf(participant.cpf)}</span> · cadastro{" "}
-          {date.format(new Date(participant.createdAt))}
-        </p>
+        {generalMode && isFullParticipant(participant) ? (
+          <>
+            <p className="mt-1 truncate text-sm text-muted-foreground">
+              {participant.email}
+            </p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              <span>CPF {maskCpf(participant.cpf)}</span> · cadastro{" "}
+              {date.format(new Date(participant.createdAt))}
+            </p>
+          </>
+        ) : null}
       </div>
-      <dl className="grid grid-cols-3 divide-x divide-border/80 rounded-[11px] border border-border/70 bg-background/35 py-2">
+      <dl
+        className={`grid ${generalMode ? "grid-cols-3" : "grid-cols-1"} divide-x divide-border/80 rounded-[11px] border border-border/70 bg-background/35 py-2`}
+      >
         <Counter label="PTS" value={participant.points} />
-        <Counter
-          label="Atividades"
-          value={participant.actionRedemptionsCount}
-        />
-        <Counter
-          label="Pendentes"
-          value={participant.pendingRewardRedemptionsCount}
-        />
+        {generalMode && isFullParticipant(participant) ? (
+          <>
+            <Counter
+              label="Atividades"
+              value={participant.actionRedemptionsCount}
+            />
+            <Counter
+              label="Pendentes"
+              value={participant.pendingRewardRedemptionsCount}
+            />
+          </>
+        ) : null}
       </dl>
-      <div className="grid grid-cols-2 gap-2 lg:flex lg:justify-end">
-        <Link
-          className="inline-flex min-h-11 items-center justify-center rounded-[11px] border border-border bg-card/50 px-4 text-sm font-semibold transition-colors hover:border-secondary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          href={`/admin/participantes/${participant.id}`}
-        >
-          Detalhes
-        </Link>
+      <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap lg:justify-end">
         <Button
-          aria-label={`${participant.isActive ? "Desativar" : "Reativar"} ${participant.name}`}
-          className={
-            participant.isActive
-              ? "border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
-              : undefined
-          }
-          disabled={pending}
-          onClick={toggle}
-          variant={participant.isActive ? "outline" : "primary"}
+          aria-label={`Registrar pergunta para ${participant.name}`}
+          disabled={!participant.isActive || pending}
+          onClick={grantQuestion}
+          variant="primary"
         >
-          {participant.isActive ? (
-            <ShieldOff aria-hidden="true" />
-          ) : (
-            <ShieldCheck aria-hidden="true" />
-          )}
-          {pending
-            ? "Atualizando..."
-            : participant.isActive
-              ? "Desativar"
-              : "Reativar"}
+          <MessageSquarePlus aria-hidden="true" />
+          Registrar pergunta
         </Button>
+        {generalMode ? (
+          <Link
+            className="inline-flex min-h-11 items-center justify-center rounded-[11px] border border-border bg-card/50 px-4 text-sm font-semibold transition-colors hover:border-secondary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={`/admin/participantes/${participant.id}`}
+          >
+            Detalhes
+          </Link>
+        ) : null}
+        {generalMode ? (
+          <Button
+            aria-label={`${participant.isActive ? "Desativar" : "Reativar"} ${participant.name}`}
+            className={
+              participant.isActive
+                ? "border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
+                : undefined
+            }
+            disabled={pending}
+            onClick={toggle}
+            variant={participant.isActive ? "outline" : "primary"}
+          >
+            {participant.isActive ? (
+              <ShieldOff aria-hidden="true" />
+            ) : (
+              <ShieldCheck aria-hidden="true" />
+            )}
+            {pending
+              ? "Atualizando..."
+              : participant.isActive
+                ? "Desativar"
+                : "Reativar"}
+          </Button>
+        ) : null}
       </div>
     </article>
   );
+}
+
+function isFullParticipant(
+  participant: ParticipantListItem,
+): participant is AdminParticipant {
+  return "email" in participant;
 }
 
 function Counter({ label, value }: { label: string; value: number }) {

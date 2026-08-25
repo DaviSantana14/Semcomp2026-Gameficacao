@@ -17,6 +17,8 @@ describe('AdminActionsController', () => {
     update: jest.fn(),
     findReusableCodes: jest.fn(),
     findReusableCodeRedemptions: jest.fn(),
+    grantQuestionAction: jest.fn().mockResolvedValue({}),
+    findQuestionGrantParticipants: jest.fn().mockResolvedValue({}),
   };
   const controller = new AdminActionsController(service as never);
 
@@ -86,5 +88,29 @@ describe('AdminActionsController', () => {
       'action-1',
       query,
     );
+  });
+
+  it('delegates a manual question grant with the authenticated admin context', async () => {
+    const request = { user: { id: 'admin-1' }, requestId: 'request-1' };
+
+    await controller.grantQuestionAction(
+      'question-1',
+      'participant-1',
+      request as never,
+    );
+
+    expect(service.grantQuestionAction).toHaveBeenCalledWith(
+      'question-1',
+      'participant-1',
+      { actorAdminId: 'admin-1', requestId: 'request-1' },
+    );
+  });
+
+  it('delegates the minimal participant search used by question grants', async () => {
+    const query = { page: 1, limit: 20, search: 'Ana' };
+
+    await controller.findQuestionGrantParticipants(query);
+
+    expect(service.findQuestionGrantParticipants).toHaveBeenCalledWith(query);
   });
 });

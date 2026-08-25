@@ -4,6 +4,7 @@ import {
   PointEventKind,
   PointEventSource,
   Prisma,
+  UserRole,
 } from '@prisma/client';
 import { PersistenceUniqueConstraintError } from '../common/persistence-errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -30,6 +31,15 @@ const userProgressSelect = {
   xp: true,
   level: true,
 } as const;
+
+export type QuestionGrantParticipant = {
+  id: string;
+  points: number;
+  xp: number;
+  level: number;
+  role: UserRole;
+  isActive: boolean;
+};
 
 type ActionsDatabase = Pick<
   Prisma.TransactionClient,
@@ -66,6 +76,12 @@ export interface ReusableCodePageFilter {
   search?: string;
   actionId?: string;
   state?: 'active' | 'disabled' | 'blocked';
+}
+
+export interface QuestionGrantParticipantPageFilter {
+  page: number;
+  limit: number;
+  search?: string;
 }
 
 @Injectable()
@@ -128,6 +144,18 @@ export class ActionsRepository {
     return rows[0] ?? null;
   }
 
+  async lockParticipantForQuestionGrant(id: string) {
+    const rows = await this.client.$queryRaw<QuestionGrantParticipant[]>(
+      Prisma.sql`
+        SELECT "id", "points", "xp", "level", "role", "isActive"
+        FROM "User"
+        WHERE "id" = ${id} AND "role" = 'PARTICIPANT'
+        FOR UPDATE
+      `,
+    );
+    return rows[0] ?? null;
+  }
+
   findActionCodeState(id: string) {
     return this.client.action.findUnique({
       where: { id },
@@ -173,6 +201,28 @@ export class ActionsRepository {
         take: filter.limit,
         orderBy: { createdAt: 'desc' },
         select: actionSummarySelect,
+      }),
+    ]);
+    return { rows, total };
+  }
+
+  async findQuestionGrantParticipantPage(
+    filter: QuestionGrantParticipantPageFilter,
+  ) {
+    const where: Prisma.UserWhereInput = {
+      role: UserRole.PARTICIPANT,
+      ...(filter.search && {
+        name: { contains: filter.search, mode: 'insensitive' },
+      }),
+    };
+    const [total, rows] = await Promise.all([
+      this.client.user.count({ where }),
+      this.client.user.findMany({
+        where,
+        skip: (filter.page - 1) * filter.limit,
+        take: filter.limit,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, points: true, isActive: true },
       }),
     ]);
     return { rows, total };
@@ -306,12 +356,15 @@ export class ActionsRepository {
   }
 
   async createActionPointEvent(input: {
+    id?: string;
     userId: string;
     actionId: string;
     points: number;
     xpDelta: number;
     redemptionMethod: 'DIRECT' | 'REUSABLE_CODE' | 'CLAIM_CODE';
     claimCodeId?: string;
+    actorAdminId?: string;
+    auditEventId?: string;
     description: string;
     createdAt: Date;
   }) {

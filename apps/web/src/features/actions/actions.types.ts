@@ -227,3 +227,28 @@ export type RedeemActionResponse = {
   currentLevel: number;
   redeemedAt: string;
 };
+
+export type QuestionGrantParticipant = {
+  id: string;
+  name: string;
+  points: number;
+  isActive: boolean;
+};
+
+export type QuestionGrantParticipantsFilters = {
+  page: number;
+  limit: number;
+  search?: string;
+};
+
+export type AdminQuestionGrantResponse = {
+  action: { id: string; name: string; points: number };
+  participantId: string;
+  pointEventId: string;
+  awardedPoints: number;
+  awardedXp: number;
+  currentPoints: number;
+  currentXp: number;
+  currentLevel: number;
+  grantedAt: string;
+};

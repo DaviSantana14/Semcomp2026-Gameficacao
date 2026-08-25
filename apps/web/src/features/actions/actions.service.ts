@@ -25,6 +25,9 @@ import type {
   ReusableCodeRedemption,
   UpdateActionPayload,
   UpdateClaimCodeStatusPayload,
+  AdminQuestionGrantResponse,
+  QuestionGrantParticipant,
+  QuestionGrantParticipantsFilters,
 } from "./actions.types";
 
 export function redeemActionCode(code: string) {
@@ -92,6 +95,21 @@ export function fetchClaimCodeBatches(filters: ClaimCodeBatchesFilters) {
 export function fetchAdminActions(filters: AdminActionsFilters) {
   return apiFetch<PaginatedResponse<AdminAction>>(
     withQuery("/admin/actions", filters),
+  );
+}
+
+export function fetchQuestionGrantParticipants(
+  filters: QuestionGrantParticipantsFilters,
+) {
+  return apiFetch<PaginatedResponse<QuestionGrantParticipant>>(
+    withQuery("/admin/question-grants/participants", filters),
+  );
+}
+
+export function grantQuestionAction(actionId: string, participantId: string) {
+  return apiFetch<AdminQuestionGrantResponse>(
+    `/admin/actions/${actionId}/participants/${participantId}/grant`,
+    { method: "POST" },
   );
 }
 

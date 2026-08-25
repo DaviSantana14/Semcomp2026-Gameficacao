@@ -130,6 +130,31 @@ describe('ActionsRepository', () => {
 
     expect(sql).toMatch(/FROM "Action"[\s\S]*FOR UPDATE/);
   });
+
+  it('locks only participant users before a manual question grant', async () => {
+    let sql = '';
+    const raw = jest.fn((query: { strings: readonly string[] }) => {
+      sql = query.strings.join('?');
+      return Promise.resolve([
+        {
+          id: 'participant-1',
+          points: 10,
+          xp: 10,
+          level: 1,
+          role: 'PARTICIPANT',
+          isActive: true,
+        },
+      ]);
+    });
+    const repository = new ActionsRepository({ $queryRaw: raw } as never);
+
+    await expect(
+      repository.lockParticipantForQuestionGrant('participant-1'),
+    ).resolves.toMatchObject({ id: 'participant-1', role: 'PARTICIPANT' });
+    expect(sql).toMatch(
+      /FROM "User"[\s\S]*"role" = 'PARTICIPANT'[\s\S]*FOR UPDATE/,
+    );
+  });
   describe('create', () => {
     it('normalizes reusable action codes before creating the action', async () => {
       const { repository, prisma } = createRepository();

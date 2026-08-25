@@ -60,11 +60,7 @@ describe("AdminShell", () => {
   });
 
   it("apresenta a administração como parte da SEMCOMP", () => {
-    render(
-      <AdminShell>
-        <p>Conteúdo</p>
-      </AdminShell>,
-    );
+    render(<AdminShell><p>Conteúdo</p></AdminShell>);
 
     expect(
       screen.getByRole("img", { name: "SEMCOMP 2026" }),
@@ -80,7 +76,11 @@ describe("AdminShell", () => {
   });
 
   it("marca movimentações como a área ativa", () => {
-    render(<AdminShell><p>Conteúdo</p></AdminShell>);
+    render(
+      <AdminShell>
+        <p>Conteúdo</p>
+      </AdminShell>,
+    );
 
     expect(screen.getByRole("link", { name: /Movimentações/ })).toHaveAttribute(
       "aria-current",
@@ -103,7 +103,7 @@ describe("AdminShell", () => {
       ],
     ],
     ["SHOP", ["Lojinha"]],
-    ["ACTIVITIES", ["Atividades", "Códigos"]],
+    ["ACTIVITIES", ["Participantes", "Atividades", "Códigos"]],
   ] as const)("filtra a navegação para o perfil %s", (adminProfile, visible) => {
     useMeMock.mockReturnValue({
       data: {

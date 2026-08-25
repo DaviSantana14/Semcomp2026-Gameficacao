@@ -106,6 +106,11 @@ test('runs the generated Nest API entrypoint', () => {
   assert.match(apiDockerfile, /CMD \["node", "apps\/api\/dist\/src\/main\.js"\]/);
 });
 
+test('installs the font stack required by QR labels in the API runtime', () => {
+  assert.match(apiDockerfile, /fontconfig/);
+  assert.match(apiDockerfile, /fonts-dejavu-core/);
+});
+
 test('defines production service dependencies, healthchecks, networks, and volumes', () => {
   for (const name of ['postgres', 'api', 'web', 'nginx']) {
     assert.match(serviceBlock(name), /healthcheck:/, `${name} needs a healthcheck`);

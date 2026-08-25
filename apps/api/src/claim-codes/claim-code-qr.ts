@@ -32,28 +32,27 @@ export function sanitizeQrFileName(value: string) {
   return sanitized || 'codigo';
 }
 
+export function renderQrCardLabelSvg(card: QrCard): Buffer {
+  const batchLabel = card.batchId === null ? '' : `Lote: ${card.batchId}`;
+  const fontFamily = 'DejaVu Sans';
+  return Buffer.from(
+    `<svg width="1200" height="390" xmlns="http://www.w3.org/2000/svg">
+      <text x="600" y="96" text-anchor="middle" font-family="${fontFamily}" font-size="80" font-weight="700" fill="#111827">${escapeXmlText(card.code)}</text>
+      <text x="600" y="164" text-anchor="middle" font-family="${fontFamily}" font-size="30" font-weight="600" fill="#1f2937">${escapeXmlText(card.actionName)}</text>
+      <text x="600" y="218" text-anchor="middle" font-family="${fontFamily}" font-size="26" fill="#4b5563">${escapeXmlText(card.kind)}</text>
+      <text x="600" y="266" text-anchor="middle" font-family="${fontFamily}" font-size="22" fill="#6b7280">${escapeXmlText(batchLabel)}</text>
+      <text x="600" y="314" text-anchor="middle" font-family="${fontFamily}" font-size="22" fill="#6b7280">Sequência ${card.sequence}</text>
+    </svg>`,
+  );
+}
+
 export async function renderQrCardPng(card: QrCard): Promise<Buffer> {
   const qr = await QRCode.toBuffer(card.code, {
     errorCorrectionLevel: 'H',
     margin: 4,
     width: 900,
   });
-  const batchLabel = card.batchId === null ? '' : `Lote: ${card.batchId}`;
-  const label = Buffer.from(
-    `<svg width="1200" height="390" xmlns="http://www.w3.org/2000/svg">
-      <style>
-        .code { font: 700 58px Arial, sans-serif; fill: #111827; }
-        .action { font: 600 30px Arial, sans-serif; fill: #1f2937; }
-        .kind { font: 26px Arial, sans-serif; fill: #4b5563; }
-        .batch { font: 22px Arial, sans-serif; fill: #6b7280; }
-      </style>
-      <text class="code" x="600" y="72" text-anchor="middle">${escapeXmlText(card.code)}</text>
-      <text class="action" x="600" y="132" text-anchor="middle">${escapeXmlText(card.actionName)}</text>
-      <text class="kind" x="600" y="184" text-anchor="middle">${escapeXmlText(card.kind)}</text>
-      <text class="batch" x="600" y="230" text-anchor="middle">${escapeXmlText(batchLabel)}</text>
-      <text class="batch" x="600" y="278" text-anchor="middle">Sequência ${card.sequence}</text>
-    </svg>`,
-  );
+  const label = renderQrCardLabelSvg(card);
 
   return sharp({
     create: {

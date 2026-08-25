@@ -322,7 +322,7 @@ export type RecordAuditEventInput =
           | 'isActive'
           | 'pointEventId'
         > & { role: string; isActive: boolean; pointEventId: string };
-        metadata?: Pick<AuditMetadataSource, 'pointEventId'>;
+        metadata?: Pick<AuditMetadataSource, 'pointEventId' | 'actionId'>;
       })
   | (AuditEventBase<
       typeof AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED,
@@ -679,7 +679,10 @@ const operationRules = {
     participant: 'required',
     before: balanceBeforeRule,
     after: balanceAdjustedAfterRule,
-    metadata: { required: {}, optional: { pointEventId: 'string' } },
+    metadata: {
+      required: {},
+      optional: { pointEventId: 'string', actionId: 'string' },
+    },
   },
   [AuditOperation.PARTICIPANT_BALANCE_ADJUSTMENT_REVERSED]: {
     entityType: AuditEntityType.POINT_EVENT,

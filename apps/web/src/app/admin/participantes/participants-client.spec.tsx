@@ -12,6 +12,8 @@ import {
 import { ApiError } from "@/lib/http/api-error";
 import { renderWithQueryClient } from "@/test/render";
 import { ParticipantsClient } from "./participants-client";
+import { useMe } from "@/hooks/use-auth";
+import { fetchQuestionGrantParticipants } from "@/features/actions/actions.service";
 
 vi.mock("@/features/participants/participants.service", () => ({
   fetchAdminParticipants: vi.fn(),
@@ -21,12 +23,23 @@ vi.mock("@/features/exports/exports.service", () => ({
   downloadParticipantsExport: vi.fn(),
   fetchParticipantsExportCount: vi.fn(),
 }));
+vi.mock("@/hooks/use-auth", () => ({ useMe: vi.fn() }));
+vi.mock("@/features/actions/actions.service", () => ({
+  fetchQuestionGrantParticipants: vi.fn(),
+}));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("./question-grant-dialog", () => ({
+  QuestionGrantDialog: ({ participant }: { participant: { name: string } }) => (
+    <div role="dialog">Registrar pergunta para {participant.name}</div>
+  ),
+}));
 
 const fetchMock = vi.mocked(fetchAdminParticipants);
 const updateMock = vi.mocked(updateParticipantStatus);
 const exportCountMock = vi.mocked(fetchParticipantsExportCount);
 const exportDownloadMock = vi.mocked(downloadParticipantsExport);
+const useMeMock = vi.mocked(useMe);
+const questionParticipantsMock = vi.mocked(fetchQuestionGrantParticipants);
 const participant = {
   id: "participant-1",
   name: "Ana Silva",
@@ -54,6 +67,24 @@ describe("ParticipantsClient audited status", () => {
     });
     exportCountMock.mockResolvedValue({ count: 1, maxRows: 50_000 });
     exportDownloadMock.mockResolvedValue(undefined);
+    useMeMock.mockReturnValue({
+      data: {
+        id: "admin-1",
+        role: "ADMIN",
+        adminProfile: "GENERAL",
+      },
+    } as ReturnType<typeof useMe>);
+    questionParticipantsMock.mockResolvedValue({
+      items: [
+        {
+          id: participant.id,
+          name: participant.name,
+          points: 100,
+          isActive: true,
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
   });
 
   it("envia contexto e preserva o motivo para retry da mesma pessoa", async () => {
@@ -93,6 +124,60 @@ describe("ParticipantsClient audited status", () => {
     expect(
       await screen.findByRole("region", { name: "Participantes cadastrados" }),
     ).toBeVisible();
+  });
+
+  it("abre o registro manual de pergunta pela linha do participante", async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(<ParticipantsClient />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Registrar pergunta para Ana Silva",
+      }),
+    );
+
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "Registrar pergunta para Ana Silva",
+    );
+  });
+
+  it("mostra somente dados mínimos e registro de pergunta para o perfil de atividades", async () => {
+    useMeMock.mockReturnValue({
+      data: {
+        id: "activities-1",
+        role: "ADMIN",
+        adminProfile: "ACTIVITIES",
+      },
+    } as ReturnType<typeof useMe>);
+    renderWithQueryClient(<ParticipantsClient />);
+
+    expect(await screen.findByText("Ana Silva")).toBeVisible();
+    expect(questionParticipantsMock).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      search: undefined,
+    });
+    expect(screen.queryByText("ana@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByText(/CPF/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Detalhes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Desativar Ana Silva" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Registrar pergunta para Ana Silva" }),
+    ).toBeEnabled();
+  });
+
+  it("aguarda o perfil antes de consultar participantes", async () => {
+    useMeMock.mockReturnValue({ data: undefined } as ReturnType<typeof useMe>);
+
+    renderWithQueryClient(<ParticipantsClient />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(questionParticipantsMock).not.toHaveBeenCalled();
   });
 
   it("does not export a typed search until the participant filter is applied", async () => {

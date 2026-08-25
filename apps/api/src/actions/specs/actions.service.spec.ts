@@ -16,7 +16,13 @@ describe(ActionsService.name, () => {
     const repositoryMock = {
       auditWriter: { create: jest.fn() },
       createAction: jest.fn(),
+      createActionPointEvent: jest.fn(),
       findActionCodeState: jest.fn(),
+      findActionById: jest.fn(),
+      findQuestionGrantParticipantPage: jest.fn(),
+      lockActionById: jest.fn(),
+      lockParticipantForQuestionGrant: jest.fn(),
+      incrementUserProgress: jest.fn(),
       updateAction: jest.fn(),
       withTransaction: jest.fn(),
     };
@@ -92,6 +98,205 @@ describe(ActionsService.name, () => {
         'Já existe uma atividade pontuável com este código.',
       ),
     );
+  });
+
+  it('grants an active question action to an active participant with audit context', async () => {
+    const action = {
+      id: 'question-1',
+      name: 'Pergunta na palestra de IA',
+      description: null,
+      type: ActionType.QUESTION,
+      code: null,
+      points: 30,
+      isActive: true,
+      isCodeActive: false,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+    };
+    const participant = {
+      id: 'participant-1',
+      points: 40,
+      xp: 70,
+      level: 2,
+      role: 'PARTICIPANT',
+      isActive: true,
+    };
+    repository.lockActionById.mockResolvedValue(action);
+    repository.lockParticipantForQuestionGrant.mockResolvedValue(
+      participant as never,
+    );
+    repository.createActionPointEvent.mockResolvedValue({
+      id: 'point-event-1',
+      xpDelta: 30,
+    } as never);
+    repository.incrementUserProgress.mockResolvedValue({
+      id: participant.id,
+      points: 70,
+      xp: 100,
+      level: 2,
+    });
+
+    const result = await service.grantQuestionAction(
+      action.id,
+      participant.id,
+      {
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      action: { id: action.id, name: action.name, points: 30 },
+      participantId: participant.id,
+      awardedPoints: 30,
+      awardedXp: 30,
+      currentPoints: 70,
+      currentXp: 100,
+    });
+
+    expect(audit.record.mock.calls[0]?.[0]).toBe(repository.auditWriter);
+    expect(audit.record.mock.calls[0]?.[1]).toMatchObject({
+      participantId: participant.id,
+      reason: 'Pergunta em palestra registrada manualmente pelo administrador.',
+      before: { points: 40, xp: 70 },
+      after: { points: 70, xp: 100 },
+      metadata: { actionId: action.id },
+    });
+    expect(repository.createActionPointEvent.mock.calls[0]?.[0]).toMatchObject({
+      userId: participant.id,
+      actionId: action.id,
+      points: 30,
+      xpDelta: 30,
+      redemptionMethod: 'DIRECT',
+      actorAdminId: 'admin-1',
+      auditEventId: 'audit-1',
+    });
+    expect(repository.createActionPointEvent.mock.calls[0]?.[0].createdAt).toBe(
+      result.grantedAt,
+    );
+  });
+
+  it('rejects manual grants for non-question actions', async () => {
+    repository.lockActionById.mockResolvedValue({
+      id: 'checkin-1',
+      name: 'Check-in',
+      description: null,
+      type: ActionType.CHECKIN,
+      code: null,
+      points: 10,
+      isActive: true,
+      isCodeActive: false,
+      createdAt: new Date(),
+    });
+
+    await expect(
+      service.grantQuestionAction('checkin-1', 'participant-1', {
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.createActionPointEvent.mock.calls).toHaveLength(0);
+  });
+
+  it('rejects manual grants for inactive participants', async () => {
+    repository.lockActionById.mockResolvedValue({
+      id: 'question-1',
+      name: 'Pergunta',
+      description: null,
+      type: ActionType.QUESTION,
+      code: null,
+      points: 30,
+      isActive: true,
+      isCodeActive: false,
+      createdAt: new Date(),
+    });
+    repository.lockParticipantForQuestionGrant.mockResolvedValue({
+      id: 'participant-1',
+      points: 0,
+      xp: 0,
+      level: 1,
+      role: 'PARTICIPANT',
+      isActive: false,
+    } as never);
+
+    await expect(
+      service.grantQuestionAction('question-1', 'participant-1', {
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.createActionPointEvent.mock.calls).toHaveLength(0);
+  });
+
+  it('maps duplicate action redemptions to a participant-specific conflict', async () => {
+    repository.lockActionById.mockResolvedValue({
+      id: 'question-1',
+      name: 'Pergunta',
+      description: null,
+      type: ActionType.QUESTION,
+      code: null,
+      points: 30,
+      isActive: true,
+      isCodeActive: false,
+      createdAt: new Date(),
+    });
+    repository.lockParticipantForQuestionGrant.mockResolvedValue({
+      id: 'participant-1',
+      points: 0,
+      xp: 0,
+      level: 1,
+      role: 'PARTICIPANT',
+      isActive: true,
+    } as never);
+    repository.createActionPointEvent.mockRejectedValue(
+      new PersistenceUniqueConstraintError(),
+    );
+
+    await expect(
+      service.grantQuestionAction('question-1', 'participant-1', {
+        actorAdminId: 'admin-1',
+        requestId: 'request-1',
+      }),
+    ).rejects.toEqual(
+      new ConflictException(
+        'Este participante já recebeu os pontos desta palestra.',
+      ),
+    );
+    expect(repository.incrementUserProgress.mock.calls).toHaveLength(0);
+  });
+
+  it('returns only minimal participant data for the question-grant search', async () => {
+    repository.findQuestionGrantParticipantPage.mockResolvedValue({
+      rows: [
+        {
+          id: 'participant-1',
+          name: 'Ana Silva',
+          points: 40,
+          isActive: true,
+        },
+      ],
+      total: 1,
+    });
+
+    await expect(
+      service.findQuestionGrantParticipants({
+        page: 1,
+        limit: 20,
+        search: ' Ana ',
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'participant-1',
+          name: 'Ana Silva',
+          points: 40,
+          isActive: true,
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    expect(repository.findQuestionGrantParticipantPage.mock.calls).toEqual([
+      [{ page: 1, limit: 20, search: 'Ana' }],
+    ]);
   });
 
   it('creates an action and its safe audit snapshot in one transaction', async () => {
