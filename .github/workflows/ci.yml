@@ -180,3 +180,40 @@ jobs:
 
       - name: Build web app
         run: npm --workspace web run build
+
+  deploy-production:
+    needs: [deployment-artifacts, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: production
+      url: https://gameficacao.semcomp.com.br
+    concurrency:
+      group: semcomp-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: semcomp-production-${{ github.run_id }}
+          aws-region: sa-east-1
+
+      - name: Publish immutable production release
+        shell: pwsh
+        run: >-
+          ./deploy/aws/production/scripts/publish.ps1
+          -ExpectedAccountId '${{ vars.AWS_ACCOUNT_ID }}'
+          -Region sa-east-1
+          -StackName semcomp-production
+          -RepositoryPath .
