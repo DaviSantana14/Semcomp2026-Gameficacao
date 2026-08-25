@@ -14,14 +14,20 @@ dependerá dos jobs `deployment-artifacts` e `build`. O job usará o ambiente
 GitHub `production`, associado à URL pública, e uma chave de concorrência
 exclusiva que não cancela uma publicação já iniciada.
 
-O GitHub Actions obterá credenciais AWS temporárias por OIDC. A stack
-CloudFormation `semcomp-production` declarará o provedor OIDC do GitHub e uma
-role de publicação cuja relação de confiança aceitará somente o repositório
+O GitHub Actions obterá credenciais AWS temporárias por OIDC. Uma stack
+CloudFormation isolada, `semcomp-production-cd`, declarará somente o provedor
+OIDC do GitHub e uma role de publicação cuja relação de confiança aceitará somente o repositório
 `DaviSantana14/Semcomp2026-Gameficacao` no ambiente `production`. Como o claim
 OIDC de um job com ambiente identifica o ambiente em vez da branch, a `main`
 será exigida tanto pelo gatilho do workflow quanto pela regra de deployment
 branches do ambiente `production`. Não serão armazenadas chaves AWS
 permanentes em GitHub Secrets.
+
+A stack de runtime `semcomp-production` não será atualizada pelo trabalho de
+CD. A stack IAM-only receberá o ID da instância e o nome do bucket existentes
+como parâmetros usados exclusivamente para restringir ARNs na policy. Ela não
+terá recursos EC2, EBS, EIP, S3, ECR ou banco e, portanto, não poderá substituir
+nem excluir esses recursos.
 
 ## Fluxo da publicação
 
@@ -71,7 +77,7 @@ Antes de habilitar o CD serão verificados:
 - suíte completa `test:production-deployment`;
 - resolução do Compose de produção;
 - validade do template CloudFormation;
-- atualização da stack e criação da role OIDC;
+- criação da stack IAM-only `semcomp-production-cd` e da role OIDC;
 - execução real do workflow em um commit da `main`;
 - SHA atual da EC2, health HTTPS e estado do workflow após o deploy.
 
@@ -83,6 +89,7 @@ Antes de habilitar o CD serão verificados:
 - deploy de branches diferentes da `main`;
 - mudanças na aplicação, domínio, banco ou infraestrutura de runtime além da
   autenticação e das permissões necessárias ao CD.
+- atualização da stack de runtime `semcomp-production`.
 
 ## Critérios de aceite
 

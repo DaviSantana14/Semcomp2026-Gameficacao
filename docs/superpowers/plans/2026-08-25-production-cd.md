@@ -4,7 +4,7 @@
 
 **Goal:** Deploy every successful push to `main` automatically to the existing Semcomp production host using GitHub Actions and short-lived AWS OIDC credentials.
 
-**Architecture:** Extend the existing production CloudFormation stack with a GitHub OIDC provider and a least-privilege deployment role. Add a gated deployment job to the existing CI workflow so the already-tested immutable ECR/S3/SSM publication script runs only after both CI jobs pass.
+**Architecture:** Create an IAM-only CloudFormation stack with a GitHub OIDC provider and a least-privilege deployment role, leaving the runtime stack untouched. Add a gated deployment job to the existing CI workflow so the already-tested immutable ECR/S3/SSM publication script runs only after both CI jobs pass.
 
 **Tech Stack:** GitHub Actions, GitHub Environments, AWS IAM OIDC, CloudFormation, ECR, S3, Systems Manager, PowerShell 7, Docker Compose.
 
@@ -21,8 +21,8 @@
 
 ## File Map
 
-- Modify `deploy/aws/production/cloudformation.yml`: own the GitHub OIDC provider, deployment role, least-privilege policy, and role ARN output.
-- Modify `deploy/aws/production/cloudformation.test.mjs`: enforce the OIDC trust boundary and AWS permission boundary.
+- Create `deploy/aws/production/cd-cloudformation.yml`: own only the GitHub OIDC provider, deployment role, least-privilege policy, and role ARN output.
+- Create `deploy/aws/production/cd-cloudformation.test.mjs`: enforce IAM-only isolation, the OIDC trust boundary, and the AWS permission boundary.
 - Create `deploy/aws/production/cd-workflow.test.mjs`: enforce the main/CI/environment/concurrency workflow gates.
 - Modify `.github/workflows/ci.yml`: add the production deployment job.
 - Modify `package.json`: include the CD workflow contract in `test:production-deployment`.
@@ -30,21 +30,21 @@
 
 ---
 
-### Task 1: Add the least-privilege GitHub OIDC deployment role
+### Task 1: Add the isolated least-privilege GitHub OIDC deployment stack
 
 **Files:**
 
-- Modify: `deploy/aws/production/cloudformation.test.mjs`
-- Modify: `deploy/aws/production/cloudformation.yml`
+- Create: `deploy/aws/production/cd-cloudformation.test.mjs`
+- Create: `deploy/aws/production/cd-cloudformation.yml`
 
 **Interfaces:**
 
-- Consumes: existing resources `ApiRepository`, `WebRepository`, `BackupBucket`, `ProductionInstance`, and stack name `semcomp-production`.
+- Consumes: parameters `ReleaseBucketName` and `ProductionInstanceId`, fixed repository names `semcomp-production/api` and `semcomp-production/web`, and runtime stack name `semcomp-production`.
 - Produces: CloudFormation output `GitHubActionsDeployRoleArn` containing the ARN used by `${{ vars.AWS_DEPLOY_ROLE_ARN }}`.
 
 - [ ] **Step 1: Add failing OIDC trust and permission tests**
 
-Append tests that require the exact repository/environment subject and reject broad access:
+Create tests that require exactly two IAM resources, the exact repository/environment subject, and reject broad access or any EC2/EBS/EIP/S3/ECR runtime resource:
 
 ```javascript
 test("trusts only the production GitHub environment through OIDC", () => {
@@ -97,7 +97,7 @@ test("limits the GitHub deployment role to immutable release publication", () =>
 Run:
 
 ```powershell
-node --test deploy/aws/production/cloudformation.test.mjs
+node --test deploy/aws/production/cd-cloudformation.test.mjs
 ```
 
 Expected: FAIL mentioning `resource GitHubActionsOidcProvider must exist`.
@@ -386,7 +386,7 @@ git commit -m "docs: add automatic production deployment runbook"
 
 ---
 
-### Task 4: Configure AWS and the GitHub production environment
+### Task 4: Configure the isolated AWS CD stack and GitHub production environment
 
 **Files:**
 
@@ -422,18 +422,19 @@ before deploying instead of creating a duplicate.
 - [ ] **Step 3: Validate and deploy the updated stack**
 
 ```powershell
-aws cloudformation validate-template --template-body file://deploy/aws/production/cloudformation.yml --region sa-east-1
-aws cloudformation deploy --template-file deploy/aws/production/cloudformation.yml --stack-name semcomp-production --capabilities CAPABILITY_NAMED_IAM --region sa-east-1 --no-fail-on-empty-changeset
+aws cloudformation validate-template --template-body file://deploy/aws/production/cd-cloudformation.yml --region sa-east-1
+aws cloudformation deploy --template-file deploy/aws/production/cd-cloudformation.yml --stack-name semcomp-production-cd --parameter-overrides ProductionInstanceId=i-08e9a8b7956b4cf0e ReleaseBucketName=semcomp-production-backupbucket-xm91ienviuvd --capabilities CAPABILITY_NAMED_IAM --region sa-east-1 --no-fail-on-empty-changeset
 ```
 
-Expected: `Successfully created/updated stack - semcomp-production` without
-replacement of `ProductionInstance`, `DockerDataVolume`, or
-`ProductionElasticIp`.
+Expected: `Successfully created/updated stack - semcomp-production-cd` with
+exactly one OIDC provider and one IAM role. The change set must not contain
+`ProductionInstance`, `DockerDataVolume`, `ProductionElasticIp`, or any other
+runtime resource.
 
 - [ ] **Step 4: Capture and verify the role output**
 
 ```powershell
-$deployRoleArn = aws cloudformation describe-stacks --stack-name semcomp-production --region sa-east-1 --query "Stacks[0].Outputs[?OutputKey=='GitHubActionsDeployRoleArn'].OutputValue | [0]" --output text
+$deployRoleArn = aws cloudformation describe-stacks --stack-name semcomp-production-cd --region sa-east-1 --query "Stacks[0].Outputs[?OutputKey=='GitHubActionsDeployRoleArn'].OutputValue | [0]" --output text
 $accountId = aws sts get-caller-identity --query Account --output text
 $deployRoleArn
 $accountId

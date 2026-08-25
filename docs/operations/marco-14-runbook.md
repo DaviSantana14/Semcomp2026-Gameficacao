@@ -52,6 +52,10 @@ e `build` ficarem verdes em um push na `main`. Ele assume a role indicada por
 `AWS_DEPLOY_ROLE_ARN` no ambiente GitHub `production`; não existem access keys
 persistentes no repositório.
 
+A identidade OIDC pertence à stack IAM-only `semcomp-production-cd`. Essa
+stack não contém recursos de runtime e nunca deve ser usada para atualizar a
+stack `semcomp-production` durante uma configuração ou correção do CD.
+
 Para conferir o release ativo sem exibir segredos:
 
 ```bash

@@ -141,53 +141,6 @@ test("limits the instance role to SSM parameters, ECR pulls, and operational pre
   assert.doesNotMatch(role, /s3:\*/);
 });
 
-test("trusts only the production GitHub environment through OIDC", () => {
-  const provider = resourceBlock("GitHubActionsOidcProvider");
-  const role = resourceBlock("GitHubActionsDeployRole");
-
-  assert.match(provider, /Url: https:\/\/token\.actions\.githubusercontent\.com/);
-  assert.match(provider, /- sts\.amazonaws\.com/);
-  assert.match(role, /sts:AssumeRoleWithWebIdentity/);
-  assert.match(
-    role,
-    /repo:DaviSantana14\/Semcomp2026-Gameficacao:environment:production/,
-  );
-  assert.match(role, /token\.actions\.githubusercontent\.com:aud/);
-  assert.match(role, /token\.actions\.githubusercontent\.com:sub/);
-  assert.doesNotMatch(role, /repo:DaviSantana14\/\*/);
-});
-
-test("limits the GitHub deployment role to immutable release publication", () => {
-  const role = resourceBlock("GitHubActionsDeployRole");
-
-  for (const action of [
-    "cloudformation:DescribeStacks",
-    "ecr:GetAuthorizationToken",
-    "ecr:DescribeImages",
-    "ecr:InitiateLayerUpload",
-    "ecr:UploadLayerPart",
-    "ecr:CompleteLayerUpload",
-    "ecr:PutImage",
-    "s3:PutObject",
-    "ssm:SendCommand",
-    "ssm:GetCommandInvocation",
-  ]) {
-    assert.match(role, new RegExp(action));
-  }
-
-  assert.match(role, /releases\/\*/);
-  assert.match(role, /AWS-RunShellScript/);
-  assert.match(role, /\$\{ProductionInstance\}/);
-  assert.doesNotMatch(role, /ssm:GetParameters?\b/);
-  assert.doesNotMatch(role, /backups\/\*/);
-  assert.doesNotMatch(role, /cloudformation:(?:Update|Create|Delete)/);
-  assert.doesNotMatch(role, /Action:\s+['"]?\*['"]?/);
-  assert.match(
-    outputBlock("GitHubActionsDeployRoleArn"),
-    /!GetAtt GitHubActionsDeployRole\.Arn/,
-  );
-});
-
 test("sets an 80 USD monthly budget with actual 50, 75, and 90 percent alerts", () => {
   const budget = resourceBlock("MonthlyBudget");
 
