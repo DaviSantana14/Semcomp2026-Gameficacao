@@ -235,6 +235,77 @@ Resources:
         - Key: Environment
           Value: production
 
+  GitHubActionsOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      Tags:
+        - Key: Environment
+          Value: production
+
+  GitHubActionsDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-github-deploy'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubActionsOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': repo:DaviSantana14/Semcomp2026-Gameficacao:environment:production
+      Policies:
+        - PolicyName: production-release-publication
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DescribeProductionStack
+                Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*'
+              - Sid: AuthenticateToEcr
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: PublishProductionImages
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource:
+                  - !GetAtt ApiRepository.Arn
+                  - !GetAtt WebRepository.Arn
+              - Sid: PublishReleaseArtifacts
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${BackupBucket.Arn}/releases/*'
+              - Sid: DispatchProductionRelease
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
+                  - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProductionInstance}'
+              - Sid: ObserveProductionRelease
+                Effect: Allow
+                Action: ssm:GetCommandInvocation
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: production
+
   ProductionInstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -588,3 +659,7 @@ Outputs:
   WebRepositoryUri:
     Description: Immutable ECR repository URI for the web image
     Value: !GetAtt WebRepository.RepositoryUri
+
+  GitHubActionsDeployRoleArn:
+    Description: OIDC role assumed by the production GitHub Actions environment
+    Value: !GetAtt GitHubActionsDeployRole.Arn
