@@ -45,6 +45,41 @@ unset expected_eip
 O comando pede CPF, e-mails e senhas sem receber senha por variável de
 ambiente. Um `FAIL` é bloqueante; corrigir a causa antes de repetir.
 
+## Deploy automático da `main`
+
+O job `deploy-production` roda somente depois dos jobs `deployment-artifacts`
+e `build` ficarem verdes em um push na `main`. Ele assume a role indicada por
+`AWS_DEPLOY_ROLE_ARN` no ambiente GitHub `production`; não existem access keys
+persistentes no repositório. A fila `queue: max` serializa até 100 pushes sem
+substituir um deploy pendente por outro.
+
+A identidade OIDC pertence à stack IAM-only `semcomp-production-cd`. Essa
+stack não contém recursos de runtime e nunca deve ser usada para atualizar a
+stack `semcomp-production` durante uma configuração ou correção do CD.
+
+Antes de qualquer migração em uma instalação que já tenha release ativo, o
+host cria e confirma um objeto não vazio em
+`backups/production/pre-deploy-<SHA>.dump`. Se essa etapa falhar, a migração e
+a troca do release são abortadas.
+
+Ao recriar ou reparar o ambiente GitHub `production`, manter somente a branch
+`main`, sem required reviewers e sem wait timer. Se o ID da instância ou o nome
+do bucket mudarem, atualizar os parâmetros da stack IAM-only por change set;
+nunca adicionar os recursos de runtime a ela.
+
+Para conferir o release ativo sem exibir segredos:
+
+```bash
+current_release="$(readlink -f /opt/semcomp/current)"
+printf 'release: %s\n' "${current_release##*/}"
+curl --fail --silent --show-error https://gameficacao.semcomp.com.br/api/health
+unset current_release
+```
+
+Se a CI falhar, não iniciar publicação manual para contornar o gate. Se o job
+de CD falhar, preservar o release atual, consultar a etapa com erro e seguir a
+seção "Falha de release" para qualquer rollback.
+
 ## Diagnóstico e decisões
 
 ### DNS não propagado ou apontando para outro endereço

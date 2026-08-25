@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub Actions OIDC identity and least-privilege production CD role
+
+Parameters:
+  ProductionStackName:
+    Type: String
+    Default: semcomp-production
+    AllowedPattern: '^semcomp-production$'
+    Description: Existing production stack read by the immutable publisher
+
+  ProductionInstanceId:
+    Type: String
+    AllowedPattern: '^i-[0-9a-f]+$'
+    Description: Existing production instance targeted through Systems Manager
+
+  ReleaseBucketName:
+    Type: String
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Existing bucket that stores immutable release artifacts
+
+Resources:
+  GitHubActionsOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      Tags:
+        - Key: Environment
+          Value: production
+
+  GitHubActionsDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: semcomp-production-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubActionsOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': repo:DaviSantana14/Semcomp2026-Gameficacao:environment:production
+      Policies:
+        - PolicyName: production-release-publication
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DescribeProductionStack
+                Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProductionStackName}/*'
+              - Sid: AuthenticateToEcr
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: sa-east-1
+              - Sid: PublishProductionImages
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/semcomp-production/api'
+                  - !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/semcomp-production/web'
+              - Sid: PublishReleaseArtifacts
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ReleaseBucketName}/releases/*'
+              - Sid: DispatchProductionRelease
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
+                  - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProductionInstanceId}'
+              - Sid: ObserveProductionRelease
+                Effect: Allow
+                Action: ssm:GetCommandInvocation
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: sa-east-1
+      Tags:
+        - Key: Environment
+          Value: production
+
+Outputs:
+  GitHubActionsDeployRoleArn:
+    Description: OIDC role assumed by the production GitHub Actions environment
+    Value: !GetAtt GitHubActionsDeployRole.Arn

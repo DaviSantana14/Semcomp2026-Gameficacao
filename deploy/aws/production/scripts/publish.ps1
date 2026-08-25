@@ -60,7 +60,23 @@ function Assert-ExecutionContext {
         throw 'ExpectedAccountId must be a 12-digit AWS account id.'
     }
 
-    $configuredRegion = Invoke-AwsText -Arguments @('configure', 'get', 'region')
+    foreach ($environmentName in @('AWS_REGION', 'AWS_DEFAULT_REGION')) {
+        $environmentRegion = [Environment]::GetEnvironmentVariable($environmentName)
+        if (-not [string]::IsNullOrWhiteSpace($environmentRegion) -and $environmentRegion -ne $requiredRegion) {
+            throw "$environmentName must be $requiredRegion."
+        }
+    }
+
+    $configuredRegionOutput = & aws configure get region 2>$null
+    $configuredRegionExitCode = $LASTEXITCODE
+    if ($configuredRegionExitCode -notin @(0, 1)) {
+        throw 'Unable to inspect the configured AWS region.'
+    }
+    $configuredRegion = if ($configuredRegionExitCode -eq 0) {
+        ($configuredRegionOutput -join [Environment]::NewLine).Trim()
+    } else {
+        ''
+    }
     if ($configuredRegion -and $configuredRegion -ne $requiredRegion) {
         throw "Configured AWS region must be $requiredRegion."
     }

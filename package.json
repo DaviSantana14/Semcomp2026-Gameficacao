@@ -13,7 +13,7 @@
     "dev:web": "npm --workspace web run dev",
     "build": "turbo run build",
     "test:deployment-scripts": "bash deploy/aws/scripts/scripts.test.sh && bash deploy/aws/scripts/release-scripts.test.sh",
-    "test:production-deployment": "node --test deploy/aws/production/cloudformation.test.mjs deploy/aws/production/artifacts.test.mjs && bash deploy/aws/production/scripts/release-scripts.test.sh && bash deploy/aws/production/scripts/edge-scripts.test.sh && bash deploy/aws/production/scripts/backup-scripts.test.sh && bash deploy/aws/production/scripts/smoke-test.test.sh",
+    "test:production-deployment": "node --test deploy/aws/production/cloudformation.test.mjs deploy/aws/production/artifacts.test.mjs deploy/aws/production/cd-cloudformation.test.mjs deploy/aws/production/cd-workflow.test.mjs && bash deploy/aws/production/scripts/release-scripts.test.sh && bash deploy/aws/production/scripts/edge-scripts.test.sh && bash deploy/aws/production/scripts/backup-scripts.test.sh && bash deploy/aws/production/scripts/smoke-test.test.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

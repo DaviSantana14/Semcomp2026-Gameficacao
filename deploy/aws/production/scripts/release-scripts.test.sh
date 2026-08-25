@@ -11,6 +11,7 @@ publish_script="$script_dir/publish.ps1"
 deploy_script="$script_dir/deploy-release.sh"
 rollback_script="$script_dir/rollback-release.sh"
 admin_password_script="$script_dir/set-admin-password.sh"
+backup_script="$script_dir/backup-postgres.sh"
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -84,7 +85,8 @@ done
 
 for marker in 'get-parameters-by-path' '/semcomp/production/' '0600' 'BACKUP_BUCKET' \
   '/opt/semcomp/shared/nginx/active.conf' 'prisma' '/nginx-health' \
-  'semcomp-certbot-renew.timer' 'semcomp-backup.timer'; do
+  'semcomp-certbot-renew.timer' 'semcomp-backup.timer' 'pre-deploy-' \
+  'backup-postgres.sh' 'head-object'; do
   assert_contains "$marker" "$deploy_source" "deploy is missing: $marker"
 done
 if grep -Eq 'docker compose[^\n]*(build|--build)' "$deploy_script"; then
@@ -118,7 +120,10 @@ aws_capture_dir="$(to_posix_path "$AWS_CAPTURE_DIR")"
 args="$*"
 printf '%s\n' "$args" >> "$aws_calls"
 case "$args" in
-  'configure get region'*) printf '%s\n' "${FAKE_CONFIGURED_REGION:-sa-east-1}" ;;
+  'configure get region'*)
+    if [[ "${FAKE_CONFIGURED_REGION_EXIT:-0}" == '1' ]]; then exit 1; fi
+    printf '%s\n' "${FAKE_CONFIGURED_REGION:-sa-east-1}"
+    ;;
   *'sts get-caller-identity'*) printf '%s\n' "${FAKE_ACCOUNT:-000000000000}" ;;
   *'ssm put-parameter'*)
     printf '%s\n' mutation >> "$aws_mutations"
@@ -161,7 +166,7 @@ case "$args" in
   *'ssm get-command-invocation'*) printf 'Success\t0\n' ;;
   *'s3api head-object'*)
     if [[ -v AWS_HEAD_OBJECT_FAIL ]]; then exit 1; fi
-    printf '%s\n' '{"ContentLength":1}'
+    printf '%s\n' '1'
     ;;
   *'s3 cp'*)
     printf '%s\n' mutation >> "$aws_mutations"
@@ -178,7 +183,11 @@ case "$args" in
         positional_args+=("$arg")
       fi
     done
-    if [[ "${positional_args[0]:-}" == s3://* ]]; then
+    if [[ "${positional_args[0]:-}" == '-' && "${positional_args[1]:-}" == s3://* ]]; then
+      cat >/dev/null
+    elif [[ "${positional_args[0]:-}" == s3://*backups/.staging/* && "${positional_args[1]:-}" == s3://*backups/production/* ]]; then
+      :
+    elif [[ "${positional_args[0]:-}" == s3://* ]]; then
       download_source="$(to_posix_path "${AWS_ROLLBACK_MANIFEST:-}")"
       [[ -n "$download_source" && -f "$download_source" ]] || exit 1
       cp -- "$download_source" "${positional_args[1]}"
@@ -220,6 +229,13 @@ to_posix_path() {
 printf '%s\n' "$*" >> "$(to_posix_path "$DOCKER_CALLS")"
 if [[ "$*" == *'login --username AWS'* ]]; then
   cat >/dev/null
+fi
+if [[ "$*" == *'pg_dump -Fc'* ]]; then
+  printf '%s\n' backup-archive
+fi
+if [[ "$*" == *'up -d postgres migrate'* ]]; then
+  grep -Fq 'backups/production/pre-deploy-' "$(to_posix_path "$AWS_CALLS")" || exit 97
+  grep -Fq 's3api head-object' "$(to_posix_path "$AWS_CALLS")" || exit 98
 fi
 if [[ "$*" == push\ * ]]; then
   : > "$(to_posix_path "$ECR_PUBLISHED_FILE")"
@@ -290,6 +306,7 @@ if command -v pwsh >/dev/null 2>&1; then
 
 run_pwsh() {
   env FAKE_CONFIGURED_REGION="${FAKE_CONFIGURED_REGION:-}" \
+    FAKE_CONFIGURED_REGION_EXIT="${FAKE_CONFIGURED_REGION_EXIT:-0}" \
     FAKE_ACCOUNT="${FAKE_ACCOUNT:-}" \
     pwsh -NoProfile -NonInteractive -File "$1" "${@:2}"
 }
@@ -378,6 +395,13 @@ assert_contains "push 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-produ
   "$docker_source" 'web was not pushed by full SHA'
 
 : > "$DOCKER_CALLS"
+FAKE_CONFIGURED_REGION_EXIT=1 FAKE_ACCOUNT=000000000000 FAKE_ECR_IMAGES_EXIST=1 \
+  run_pwsh "$publish_script" -ExpectedAccountId 000000000000 -Region sa-east-1 \
+  -StackName semcomp-production -RepositoryPath "$publish_repo" >/dev/null
+assert_contains "pull 123456789012.dkr.ecr.sa-east-1.amazonaws.com/semcomp-production/api:$release_sha" \
+  "$(<"$DOCKER_CALLS")" 'profile-less OIDC publisher did not continue with environment region'
+
+: > "$DOCKER_CALLS"
 FAKE_ECR_IMAGES_EXIST=1 FAKE_CONFIGURED_REGION=sa-east-1 FAKE_ACCOUNT=000000000000 \
   run_pwsh "$publish_script" -ExpectedAccountId 000000000000 -Region sa-east-1 \
   -StackName semcomp-production -RepositoryPath "$publish_repo" >/dev/null
@@ -410,6 +434,7 @@ make_release_fixture() {
   mkdir -p "$root/releases/$sha/deploy/aws/production/scripts" \
     "$root/releases/$previous/deploy/aws/production/scripts" "$root/shared"
   cp "$deploy_script" "$root/releases/$sha/deploy/aws/production/scripts/deploy-release.sh"
+  cp "$backup_script" "$root/releases/$sha/deploy/aws/production/scripts/backup-postgres.sh"
   cp "$script_dir/../compose.yml" "$root/releases/$sha/deploy/aws/production/compose.yml"
   cp "$script_dir/../nginx-maintenance.conf" "$root/releases/$sha/deploy/aws/production/nginx-maintenance.conf"
   cp "$script_dir/../compose.yml" "$root/releases/$previous/deploy/aws/production/compose.yml"
