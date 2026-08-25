@@ -19,7 +19,7 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
 const PROFILE_AREA_HREFS: Record<AdminProfile, readonly string[]> = {
   GENERAL: ADMIN_AREAS.map((area) => area.href),
   SHOP: ["/admin/lojinha"],
-  ACTIVITIES: ["/admin/atividades", "/admin/codigos"],
+  ACTIVITIES: ["/admin/atividades", "/admin/codigos", "/admin/participantes"],
 };
 
 export function adminAreasForProfile(profile: AdminProfile) {
@@ -37,6 +37,9 @@ export function firstAdminRoute(profile: AdminProfile) {
 
 export function canAccessAdminRoute(profile: AdminProfile, pathname: string) {
   return PROFILE_AREA_HREFS[profile].some(
-    (href) => pathname === href || pathname.startsWith(`${href}/`),
+    (href) =>
+      pathname === href ||
+      (!(profile === "ACTIVITIES" && href === "/admin/participantes") &&
+        pathname.startsWith(`${href}/`)),
   );
 }

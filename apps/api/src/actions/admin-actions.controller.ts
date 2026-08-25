@@ -55,6 +55,9 @@ import {
   ReusableCodesQueryDto,
 } from './dto/reusable-codes-query.dto';
 import { UpdateActionDto } from './dto/update-action.dto';
+import { AdminQuestionGrantResponseDto } from './dto/admin-question-grant-response.dto';
+import { QuestionGrantParticipantsQueryDto } from './dto/question-grant-participants-query.dto';
+import { QuestionGrantParticipantsPageResponseDto } from './dto/question-grant-participant-response.dto';
 import { getAdminOperationContext } from '../common/request-context';
 import type { AuthenticatedRequest } from '../common/request-context';
 
@@ -187,6 +190,34 @@ export class AdminActionsController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.actions.update(id, dto, getAdminOperationContext(request));
+  }
+
+  @Post('admin/actions/:actionId/participants/:participantId/grant')
+  @ApiOperation({ summary: 'Conceder pontos de pergunta a participante' })
+  @ApiCreatedResponse({ type: AdminQuestionGrantResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  @ApiNotFoundResponse({ type: HttpErrorResponseDto })
+  @ApiConflictResponse({ type: HttpErrorResponseDto })
+  grantQuestionAction(
+    @Param('actionId') actionId: string,
+    @Param('participantId') participantId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.actions.grantQuestionAction(
+      actionId,
+      participantId,
+      getAdminOperationContext(request),
+    );
+  }
+
+  @Get('admin/question-grants/participants')
+  @ApiOperation({ summary: 'Buscar participantes para registrar pergunta' })
+  @ApiOkResponse({ type: QuestionGrantParticipantsPageResponseDto })
+  @ApiBadRequestResponse({ type: HttpErrorResponseDto })
+  findQuestionGrantParticipants(
+    @Query() query: QuestionGrantParticipantsQueryDto,
+  ) {
+    return this.actions.findQuestionGrantParticipants(query);
   }
 
   @Get('admin/reusable-codes')

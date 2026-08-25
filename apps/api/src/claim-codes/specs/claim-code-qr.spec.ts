@@ -5,7 +5,11 @@ import {
   RGBLuminanceSource,
 } from '@zxing/library';
 import sharp from 'sharp';
-import { renderQrCardPng, type QrCard } from '../claim-code-qr';
+import {
+  renderQrCardLabelSvg,
+  renderQrCardPng,
+  type QrCard,
+} from '../claim-code-qr';
 
 jest.setTimeout(30_000);
 
@@ -50,5 +54,30 @@ describe('claim-code QR card renderer', () => {
 
     expect(png.toString('base64')).not.toContain('Credenciamento <VIP>');
     expect(png.length).toBeGreaterThan(0);
+  });
+
+  it('renders the code as the primary label using the bundled Linux font', () => {
+    const label = renderQrCardLabelSvg(card).toString('utf8');
+
+    expect(label).toContain('font-family="DejaVu Sans"');
+    expect(label).toContain('font-size="80"');
+    expect(label).toContain('font-weight="700"');
+    expect(label).toContain('>ABCD-EFGH</text>');
+  });
+
+  it('paints a substantial dark code label immediately below the QR', async () => {
+    const png = await renderQrCardPng(card);
+    const { data, info } = await sharp(png)
+      .extract({ left: 0, top: 1050, width: 1200, height: 130 })
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const darkPixels = data.reduce(
+      (total, luminance) => total + (luminance < 100 ? 1 : 0),
+      0,
+    );
+
+    expect(info.width).toBe(1200);
+    expect(darkPixels).toBeGreaterThan(5_000);
   });
 });

@@ -32,7 +32,13 @@ describe("admin profile routes", () => {
     expect(canAccessAdminRoute("SHOP", "/admin/atividades")).toBe(false);
     expect(canAccessAdminRoute("ACTIVITIES", "/admin/codigos")).toBe(true);
     expect(canAccessAdminRoute("ACTIVITIES", "/admin/participantes")).toBe(
-      false,
+      true,
     );
+    expect(
+      canAccessAdminRoute("ACTIVITIES", "/admin/participantes/participant-1"),
+    ).toBe(false);
+    expect(
+      adminAreasForProfile("ACTIVITIES").map((area) => area.href),
+    ).toContain("/admin/participantes");
   });
 });

@@ -12,6 +12,7 @@ import {
   ActionsRepository,
   ActionUpdateInput,
 } from './actions.repository';
+import { randomUUID } from 'node:crypto';
 import { CreateActionDto } from './dto/create-action.dto';
 import {
   ActionStatusFilter,
@@ -23,6 +24,7 @@ import {
   ReusableCodesQueryDto,
 } from './dto/reusable-codes-query.dto';
 import { UpdateActionDto } from './dto/update-action.dto';
+import { QuestionGrantParticipantsQueryDto } from './dto/question-grant-participants-query.dto';
 import {
   AuditActorType,
   AuditEntityType,
@@ -205,6 +207,17 @@ export class ActionsService {
     );
   }
 
+  async findQuestionGrantParticipants(
+    query: QuestionGrantParticipantsQueryDto,
+  ) {
+    const page = await this.repository.findQuestionGrantParticipantPage({
+      page: query.page,
+      limit: query.limit,
+      search: query.search?.trim(),
+    });
+    return paginate(page.rows, page.total, query.page, query.limit);
+  }
+
   async findReusableCodes(query: ReusableCodesQueryDto) {
     const page = await this.repository.findReusableCodePage({
       page: query.page,
@@ -307,6 +320,106 @@ export class ActionsService {
 
   redeem(actionId: string, userId: string) {
     return this.redeemAction(actionId, userId, 'DIRECT');
+  }
+
+  async grantQuestionAction(
+    actionId: string,
+    participantId: string,
+    context: AdminOperationContext,
+  ) {
+    try {
+      return await this.repository.withTransaction(async (repository) => {
+        const action = await repository.lockActionById(actionId);
+        if (!action) {
+          throw new NotFoundException('Atividade pontuável não encontrada.');
+        }
+        if (action.type !== 'QUESTION') {
+          throw new BadRequestException(
+            'A atividade selecionada não é uma atividade de pergunta.',
+          );
+        }
+        if (!action.isActive) {
+          throw new BadRequestException(
+            'Esta atividade está inativa e não pode ser concedida.',
+          );
+        }
+        const participant =
+          await repository.lockParticipantForQuestionGrant(participantId);
+        if (!participant) {
+          throw new NotFoundException('Participante não encontrado.');
+        }
+        if (!participant.isActive) {
+          throw new BadRequestException(
+            'Este participante está inativo e não pode receber pontos.',
+          );
+        }
+        const pointEventId = randomUUID();
+        const grantedAt = new Date();
+        const reason =
+          'Pergunta em palestra registrada manualmente pelo administrador.';
+        const nextPoints = participant.points + action.points;
+        const nextXp = participant.xp + action.points;
+        const auditEvent = await this.audit.record(repository.auditWriter!, {
+          actor: { actorType: AuditActorType.ADMIN, ...context },
+          operation: AuditOperation.PARTICIPANT_BALANCE_ADJUSTED,
+          entityType: AuditEntityType.POINT_EVENT,
+          entityId: pointEventId,
+          participantId,
+          reason,
+          before: {
+            participantId,
+            points: participant.points,
+            xp: participant.xp,
+            role: participant.role,
+            isActive: participant.isActive,
+          },
+          after: {
+            participantId,
+            points: nextPoints,
+            xp: nextXp,
+            role: participant.role,
+            isActive: participant.isActive,
+            pointEventId,
+          },
+          metadata: { pointEventId, actionId },
+        });
+        const pointEvent = await repository.createActionPointEvent({
+          id: pointEventId,
+          userId: participantId,
+          actionId,
+          points: action.points,
+          xpDelta: action.points,
+          redemptionMethod: 'DIRECT',
+          actorAdminId: context.actorAdminId,
+          auditEventId: auditEvent.id,
+          description: reason,
+          createdAt: grantedAt,
+        });
+        const progress = await repository.incrementUserProgress(
+          participantId,
+          action.points,
+          action.points,
+        );
+        return {
+          action: { id: action.id, name: action.name, points: action.points },
+          participantId,
+          pointEventId: pointEvent.id,
+          awardedPoints: action.points,
+          awardedXp: pointEvent.xpDelta,
+          currentPoints: progress.points,
+          currentXp: progress.xp,
+          currentLevel: progress.level,
+          grantedAt,
+        };
+      });
+    } catch (error) {
+      if (error instanceof PersistenceUniqueConstraintError) {
+        throw new ConflictException(
+          'Este participante já recebeu os pontos desta palestra.',
+        );
+      }
+      throw error;
+    }
   }
 
   private async redeemAction(

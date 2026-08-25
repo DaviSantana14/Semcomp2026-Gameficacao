@@ -9,6 +9,8 @@ import {
   fetchClaimCodeBulkOperation,
   fetchCodeRedemptions,
   fetchCodeRedemptionsExportCount,
+  fetchQuestionGrantParticipants,
+  grantQuestionAction,
 } from "./actions.service";
 
 vi.mock("@/lib/http/client", () => ({ apiFetch: vi.fn() }));
@@ -106,6 +108,25 @@ describe("fetchClaimCodeBatches", () => {
     );
     expect(downloadFileMock).toHaveBeenCalledWith(
       "/admin/code-redemptions/export.csv?search=Ana+Silva&actionId=action-1&method=claim_code&from=2026-08-22&to=2026-08-24",
+    );
+  });
+
+  it("busca participantes mínimos e concede a pergunta pelas rotas administrativas", async () => {
+    await fetchQuestionGrantParticipants({
+      page: 1,
+      limit: 20,
+      search: "Ana Silva",
+    });
+    await grantQuestionAction("question-1", "participant-1");
+
+    expect(apiFetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/admin/question-grants/participants?page=1&limit=20&search=Ana+Silva",
+    );
+    expect(apiFetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/admin/actions/question-1/participants/participant-1/grant",
+      { method: "POST" },
     );
   });
 });
