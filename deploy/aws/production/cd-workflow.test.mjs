@@ -27,6 +27,7 @@ test("serializes deployments without cancelling an active release", () => {
   const job = deployMatch.groups.body;
 
   assert.match(job, /group: semcomp-production/);
+  assert.match(job, /queue: max/);
   assert.match(job, /cancel-in-progress: false/);
   assert.match(job, /timeout-minutes: 30/);
 });
@@ -38,8 +39,17 @@ test("uses OIDC variables and the immutable publisher", () => {
   assert.match(job, /id-token: write/);
   assert.match(job, /contents: read/);
   assert.match(job, /aws-actions\/configure-aws-credentials@[0-9a-f]{40}/);
+  assert.match(job, /allowed-account-ids:\s*\$\{\{ vars\.AWS_ACCOUNT_ID \}\}/);
   assert.match(job, /vars\.AWS_DEPLOY_ROLE_ARN/);
   assert.match(job, /vars\.AWS_ACCOUNT_ID/);
   assert.match(job, /deploy\/aws\/production\/scripts\/publish\.ps1/);
   assert.doesNotMatch(job, /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/);
+
+  const externalActions = [...job.matchAll(/^\s+uses:\s+([^\s]+)$/gm)].map(
+    ([, action]) => action,
+  );
+  assert.ok(externalActions.length >= 2, "deployment must use checkout and OIDC actions");
+  for (const action of externalActions) {
+    assert.match(action, /@[0-9a-f]{40}$/, `action must be SHA-pinned: ${action}`);
+  }
 });

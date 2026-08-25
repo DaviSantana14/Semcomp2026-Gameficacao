@@ -50,11 +50,22 @@ ambiente. Um `FAIL` é bloqueante; corrigir a causa antes de repetir.
 O job `deploy-production` roda somente depois dos jobs `deployment-artifacts`
 e `build` ficarem verdes em um push na `main`. Ele assume a role indicada por
 `AWS_DEPLOY_ROLE_ARN` no ambiente GitHub `production`; não existem access keys
-persistentes no repositório.
+persistentes no repositório. A fila `queue: max` serializa até 100 pushes sem
+substituir um deploy pendente por outro.
 
 A identidade OIDC pertence à stack IAM-only `semcomp-production-cd`. Essa
 stack não contém recursos de runtime e nunca deve ser usada para atualizar a
 stack `semcomp-production` durante uma configuração ou correção do CD.
+
+Antes de qualquer migração em uma instalação que já tenha release ativo, o
+host cria e confirma um objeto não vazio em
+`backups/production/pre-deploy-<SHA>.dump`. Se essa etapa falhar, a migração e
+a troca do release são abortadas.
+
+Ao recriar ou reparar o ambiente GitHub `production`, manter somente a branch
+`main`, sem required reviewers e sem wait timer. Se o ID da instância ou o nome
+do bucket mudarem, atualizar os parâmetros da stack IAM-only por change set;
+nunca adicionar os recursos de runtime a ela.
 
 Para conferir o release ativo sem exibir segredos:
 

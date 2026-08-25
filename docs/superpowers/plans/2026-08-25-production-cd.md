@@ -16,6 +16,8 @@
 - The GitHub environment is `production` and permits only the `main` deployment branch.
 - Authentication uses OIDC; no persistent AWS access key is stored in GitHub.
 - A deployment already running is never cancelled by a newer push.
+- `queue: max` preserves up to 100 successful pending pushes instead of
+  replacing an older pending deployment.
 - Images remain immutable and are activated only by digest through the existing publication scripts.
 - The CD role cannot read production parameters or backups and cannot alter CloudFormation resources.
 
@@ -25,6 +27,10 @@
 - Create `deploy/aws/production/cd-cloudformation.test.mjs`: enforce IAM-only isolation, the OIDC trust boundary, and the AWS permission boundary.
 - Create `deploy/aws/production/cd-workflow.test.mjs`: enforce the main/CI/environment/concurrency workflow gates.
 - Modify `.github/workflows/ci.yml`: add the production deployment job.
+- Modify `deploy/aws/production/scripts/publish.ps1`: accept an absent AWS CLI
+  profile while validating the explicit/OIDC environment region.
+- Modify `deploy/aws/production/scripts/deploy-release.sh`: create and verify a
+  SHA-scoped backup before migrations when a release is already active.
 - Modify `package.json`: include the CD workflow contract in `test:production-deployment`.
 - Modify `docs/operations/marco-14-runbook.md`: document automatic deployment, evidence, and failure handling.
 
@@ -83,7 +89,8 @@ test("limits the GitHub deployment role to immutable release publication", () =>
 
   assert.match(role, /releases\/\*/);
   assert.match(role, /AWS-RunShellScript/);
-  assert.match(role, /!Ref ProductionInstance/);
+  assert.match(role, /instance\/\$\{ProductionInstanceId\}/);
+  assert.match(role, /aws:RequestedRegion:\s*sa-east-1/);
   assert.doesNotMatch(role, /ssm:GetParameters?\b/);
   assert.doesNotMatch(role, /backups\/\*/);
   assert.doesNotMatch(role, /cloudformation:(?:Update|Create|Delete)/);
@@ -107,7 +114,7 @@ Expected: FAIL mentioning `resource GitHubActionsOidcProvider must exist`.
 Add `GitHubActionsOidcProvider` with URL
 `https://token.actions.githubusercontent.com` and client ID
 `sts.amazonaws.com`. Add `GitHubActionsDeployRole` with deterministic role name
-`${AWS::StackName}-github-deploy`, session limit 3600 seconds, and this trust
+`semcomp-production-github-deploy`, session limit 3600 seconds, and this trust
 condition:
 
 ```yaml
@@ -130,11 +137,14 @@ Define inline statements with these exact boundaries:
           - Sid: DescribeProductionStack
             Effect: Allow
             Action: cloudformation:DescribeStacks
-            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*'
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProductionStackName}/*'
           - Sid: AuthenticateToEcr
             Effect: Allow
             Action: ecr:GetAuthorizationToken
             Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: sa-east-1
           - Sid: PublishProductionImages
             Effect: Allow
             Action:
@@ -147,22 +157,25 @@ Define inline statements with these exact boundaries:
               - ecr:PutImage
               - ecr:UploadLayerPart
             Resource:
-              - !GetAtt ApiRepository.Arn
-              - !GetAtt WebRepository.Arn
+              - !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/semcomp-production/api'
+              - !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/semcomp-production/web'
           - Sid: PublishReleaseArtifacts
             Effect: Allow
             Action: s3:PutObject
-            Resource: !Sub '${BackupBucket.Arn}/releases/*'
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ReleaseBucketName}/releases/*'
           - Sid: DispatchProductionRelease
             Effect: Allow
             Action: ssm:SendCommand
             Resource:
               - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
-              - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProductionInstance}'
+              - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProductionInstanceId}'
           - Sid: ObserveProductionRelease
             Effect: Allow
             Action: ssm:GetCommandInvocation
             Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: sa-east-1
 ```
 
 Add the output:
@@ -178,7 +191,7 @@ Add the output:
 Run:
 
 ```powershell
-node --test deploy/aws/production/cloudformation.test.mjs
+node --test deploy/aws/production/cd-cloudformation.test.mjs
 ```
 
 Expected: all CloudFormation contract tests PASS.
@@ -186,8 +199,8 @@ Expected: all CloudFormation contract tests PASS.
 - [ ] **Step 5: Commit the infrastructure boundary**
 
 ```powershell
-git add deploy/aws/production/cloudformation.yml deploy/aws/production/cloudformation.test.mjs
-git commit -m "feat: add github oidc deployment role"
+git add deploy/aws/production/cd-cloudformation.yml deploy/aws/production/cd-cloudformation.test.mjs
+git commit -m "fix: isolate production cd identity stack"
 ```
 
 ---
@@ -283,11 +296,12 @@ Append this job to `.github/workflows/ci.yml`:
       url: https://gameficacao.semcomp.com.br
     concurrency:
       group: semcomp-production
+      queue: max
       cancel-in-progress: false
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
@@ -297,6 +311,7 @@ Append this job to `.github/workflows/ci.yml`:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           role-session-name: semcomp-production-${{ github.run_id }}
           aws-region: sa-east-1
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
 
       - name: Publish immutable production release
         shell: pwsh
@@ -324,6 +339,40 @@ Expected: every Node and shell contract test PASS.
 git add .github/workflows/ci.yml package.json deploy/aws/production/cd-workflow.test.mjs
 git commit -m "ci: deploy main automatically to production"
 ```
+
+---
+
+### Task 2.5: Make unattended publication recoverable
+
+**Files:**
+
+- Modify: `deploy/aws/production/scripts/publish.ps1`
+- Modify: `deploy/aws/production/scripts/deploy-release.sh`
+- Modify: `deploy/aws/production/scripts/release-scripts.test.sh`
+
+- [ ] **Step 1: Add regressions for a profile-less OIDC runner and pre-migration backup**
+
+The publisher must continue when `aws configure get region` returns exit code
+1 because no profile exists, while still rejecting any explicit environment or
+profile region other than `sa-east-1`. A deploy with a previous release must
+record and verify `backups/production/pre-deploy-<SHA>.dump` before the Docker
+`migrate` service is started.
+
+- [ ] **Step 2: Implement the guarded behavior**
+
+Treat only exit codes 0 and 1 from the optional profile lookup as valid. Check
+`AWS_REGION` and `AWS_DEFAULT_REGION` when present. On the host, call
+`backup-postgres.sh`, verify a positive `ContentLength` with `head-object`, and
+abort before migration on any failure. The initial deployment may skip this
+backup because no database/release exists yet.
+
+- [ ] **Step 3: Run the release contracts**
+
+```powershell
+bash deploy/aws/production/scripts/release-scripts.test.sh
+```
+
+Expected: `release scripts test: ok`.
 
 ---
 
@@ -416,8 +465,10 @@ aws iam list-open-id-connect-providers --output json
 ```
 
 Expected for this new account: no provider whose ARN ends in
-`token.actions.githubusercontent.com`. If one exists, import it into the stack
-before deploying instead of creating a duplicate.
+`token.actions.githubusercontent.com`. If one exists and is not already owned
+by `semcomp-production-cd`, stop before deployment. Redesign the template to
+receive that provider ARN and omit `AWS::IAM::OIDCProvider`; do not attempt a
+duplicate creation or an undocumented import against production.
 
 - [ ] **Step 3: Validate and deploy the updated stack**
 
@@ -449,9 +500,10 @@ In repository Settings → Environments:
 
 1. Create or open `production`.
 2. Under deployment branches, choose selected branches and add only `main`.
-3. Add environment variable `AWS_DEPLOY_ROLE_ARN` with `$deployRoleArn`.
-4. Add environment variable `AWS_ACCOUNT_ID` with `$accountId`.
-5. Do not add `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY`.
+3. Leave required reviewers empty and the wait timer disabled.
+4. Add environment variable `AWS_DEPLOY_ROLE_ARN` with `$deployRoleArn`.
+5. Add environment variable `AWS_ACCOUNT_ID` with `$accountId`.
+6. Do not add `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY`.
 
 Expected: the environment lists only `main` and exactly the two non-secret AWS
 variables above.

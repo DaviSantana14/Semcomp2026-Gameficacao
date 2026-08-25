@@ -40,8 +40,10 @@ nem excluir esses recursos.
 4. O script reutiliza ou constrói as imagens da API e do frontend, testa as
    imagens, publica referências imutáveis no ECR, envia o arquivo e o manifesto
    do release ao S3 e despacha a ativação pelo Systems Manager.
-5. A EC2 baixa o release, executa `prisma migrate deploy`, sobe os serviços,
-   aguarda o health check e move o link `current` somente após a validação.
+5. A EC2 baixa o release e, quando já existe um release ativo, cria e verifica
+   `backups/production/pre-deploy-<SHA>.dump` antes de executar
+   `prisma migrate deploy`. Só então sobe os serviços, aguarda o health check e
+   move o link `current` após a validação.
 
 ## Permissões AWS
 
@@ -64,9 +66,11 @@ falhar antes da ativação, o release atual não será alterado. Se o runtime no
 falhar antes da troca do link, `deploy-release.sh` interromperá a ativação e
 tentará manter ou reiniciar o release anterior conforme a lógica já testada.
 
-Somente uma publicação de produção poderá executar por vez. Um novo push ficará
-na fila; ele não cancelará o deploy em andamento. O job terá limite de tempo
-para impedir execução indefinida.
+Somente uma publicação de produção poderá executar por vez. A concorrência usa
+`queue: max`, preservando até 100 pushes pendentes em ordem, sem cancelar o
+deploy em andamento. O job terá limite de tempo para impedir execução
+indefinida. Se o backup pré-deploy falhar ou estiver vazio, a migração não
+começa.
 
 ## Verificação
 
@@ -98,5 +102,7 @@ Antes de habilitar o CD serão verificados:
 - O GitHub autentica na AWS por OIDC sem access key persistente.
 - Deploys concorrentes são serializados e um deploy em andamento não é
   cancelado.
+- Um release com banco existente só migra depois de criar e verificar o backup
+  pré-deploy identificado pelo SHA.
 - O release ativo na EC2 termina com o mesmo SHA do commit publicado.
 - `https://gameficacao.semcomp.com.br/api/health` permanece saudável.

@@ -263,6 +263,32 @@ chmod 0600 "$candidate_env"
 if ! compose_for_release "$release_root" "$candidate_env" config --quiet >/dev/null 2>&1; then
   fail 'Production Compose configuration validation failed.'
 fi
+
+if [[ -n "$previous_release" ]]; then
+  backup_script="$release_root/deploy/aws/production/scripts/backup-postgres.sh"
+  [[ -f "$backup_script" ]] || fail 'Pre-deploy backup script is missing.'
+  predeploy_backup_key="backups/production/pre-deploy-$release_sha.dump"
+  if ! DEPLOY_ENV=production \
+    AWS_REGION="$aws_region" \
+    BACKUP_BUCKET="$release_bucket" \
+    BACKUP_KEY="$predeploy_backup_key" \
+    COMPOSE_PROJECT_NAME="$compose_project_name" \
+    COMPOSE_ENV_FILE="$candidate_env" \
+    SHARED_DIR="$shared_dir" \
+    bash "$backup_script" >/dev/null; then
+    fail 'Pre-deploy production database backup failed.'
+  fi
+  backup_size="$(aws s3api head-object \
+    --bucket "$release_bucket" \
+    --key "$predeploy_backup_key" \
+    --query ContentLength \
+    --output text \
+    --region "$aws_region" 2>/dev/null)" \
+    || fail 'Unable to verify the pre-deploy production database backup.'
+  [[ "$backup_size" =~ ^[1-9][0-9]*$ ]] \
+    || fail 'Pre-deploy production database backup is empty.'
+fi
+
 if ! compose_for_release "$release_root" "$candidate_env" up -d postgres migrate >/dev/null 2>&1; then
   fail 'Production PostgreSQL or prisma migrate deploy failed.'
 fi

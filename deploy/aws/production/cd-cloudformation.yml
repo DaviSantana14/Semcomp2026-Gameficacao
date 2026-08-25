@@ -60,6 +60,9 @@ Resources:
                 Effect: Allow
                 Action: ecr:GetAuthorizationToken
                 Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: sa-east-1
               - Sid: PublishProductionImages
                 Effect: Allow
                 Action:
@@ -88,6 +91,9 @@ Resources:
                 Effect: Allow
                 Action: ssm:GetCommandInvocation
                 Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: sa-east-1
       Tags:
         - Key: Environment
           Value: production

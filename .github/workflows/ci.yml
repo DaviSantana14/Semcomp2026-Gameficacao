@@ -194,11 +194,12 @@ jobs:
       url: https://gameficacao.semcomp.com.br
     concurrency:
       group: semcomp-production
+      queue: max
       cancel-in-progress: false
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
@@ -208,6 +209,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           role-session-name: semcomp-production-${{ github.run_id }}
           aws-region: sa-east-1
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
 
       - name: Publish immutable production release
         shell: pwsh

@@ -89,6 +89,7 @@ test("limits publication to the existing production release paths", () => {
   assert.match(role, /\$\{ReleaseBucketName\}\/releases\/\*/);
   assert.match(role, /AWS-RunShellScript/);
   assert.match(role, /instance\/\$\{ProductionInstanceId\}/);
+  assert.match(role, /aws:RequestedRegion:\s*sa-east-1/);
   assert.doesNotMatch(role, /ssm:GetParameters?\b/);
   assert.doesNotMatch(role, /backups\/\*/);
   assert.doesNotMatch(role, /(?:Delete|Terminate|Stop|Reboot|Detach|Disassociate)/);
