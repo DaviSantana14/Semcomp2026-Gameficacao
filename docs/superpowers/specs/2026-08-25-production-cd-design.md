@@ -17,8 +17,11 @@ exclusiva que não cancela uma publicação já iniciada.
 O GitHub Actions obterá credenciais AWS temporárias por OIDC. A stack
 CloudFormation `semcomp-production` declarará o provedor OIDC do GitHub e uma
 role de publicação cuja relação de confiança aceitará somente o repositório
-`DaviSantana14/Semcomp2026-Gameficacao`, a branch `main` e o ambiente
-`production`. Não serão armazenadas chaves AWS permanentes em GitHub Secrets.
+`DaviSantana14/Semcomp2026-Gameficacao` no ambiente `production`. Como o claim
+OIDC de um job com ambiente identifica o ambiente em vez da branch, a `main`
+será exigida tanto pelo gatilho do workflow quanto pela regra de deployment
+branches do ambiente `production`. Não serão armazenadas chaves AWS
+permanentes em GitHub Secrets.
 
 ## Fluxo da publicação
 
