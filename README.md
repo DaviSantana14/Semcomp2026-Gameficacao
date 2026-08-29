@@ -2,7 +2,7 @@
 
 Plataforma criada para gamificar a experiência dos participantes da SEMCOMP 2026. O sistema conecta atividades, pontuação, ranking e recompensas em uma jornada simples para o congressista, com ferramentas de controle, auditoria e acompanhamento para a equipe do evento.
 
-A aplicação foi construída ao longo de 8 meses e 14 marcos, saindo de uma ideia documentada até operar em produção em [`gameficacao.semcomp.com.br`](https://gameficacao.semcomp.com.br).
+A aplicação foi construída ao longo de 8 meses e 14 marcos, saindo de uma ideia documentada até operar em produção.
 
 ## Principais funcionalidades
 
@@ -88,4 +88,3 @@ docs/operations/          Checklists e runbook operacional
 scripts/load/             Ensaios de carga e validações
 ```
 
-Para conhecer a operação de produção, consulte o [runbook do Marco 14](docs/operations/marco-14-runbook.md) e os checklists de [abertura](docs/operations/marco-14-opening-checklist.md) e [encerramento](docs/operations/marco-14-closing-checklist.md).
